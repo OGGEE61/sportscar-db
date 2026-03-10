@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 
 app = Flask(__name__)
+app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -15,15 +16,25 @@ NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 def dashboard():
     conn = get_conn()
 
+    s = conn.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins,
+            (SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder')                          AS placeholder_vins,
+            (SELECT COUNT(*) FROM listing_observations)                                              AS total_obs,
+            (SELECT COUNT(*) FROM listing_observations WHERE removed_at IS NULL)                     AS active_obs,
+            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
+             WHERE source_listing_id IS NOT NULL)                                                    AS unique_ads,
+            (SELECT AVG(price_pln) FROM listing_observations
+             WHERE removed_at IS NULL AND price_pln > 0)                                            AS avg_price
+    """).fetchone()
     stats = {
-        "total_vins":        conn.execute("SELECT COUNT(*) FROM vehicles").fetchone()[0],
-        "placeholder_vins":  conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder'").fetchone()[0],
-        "total_obs":         conn.execute("SELECT COUNT(*) FROM listing_observations").fetchone()[0],
-        "active_obs":        conn.execute("SELECT COUNT(*) FROM listing_observations WHERE removed_at IS NULL").fetchone()[0],
-        "unique_ads":        conn.execute("SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE source_listing_id IS NOT NULL").fetchone()[0],
+        "total_vins":       s["total_vins"],
+        "placeholder_vins": s["placeholder_vins"],
+        "total_obs":        s["total_obs"],
+        "active_obs":       s["active_obs"],
+        "unique_ads":       s["unique_ads"],
+        "avg_price":        round(s["avg_price"]) if s["avg_price"] else 0,
     }
-    avg = conn.execute("SELECT AVG(price_pln) FROM listing_observations WHERE removed_at IS NULL AND price_pln > 0").fetchone()[0]
-    stats["avg_price"] = round(avg) if avg else 0
 
     recent = conn.execute("""
         SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status,
@@ -343,8 +354,7 @@ def resolve_vin(vin):
         resolve_placeholder(vin, new_vin, reason=reason,
                              corrected_by="manual", source_method="manual")
     except Exception as e:
-        # TODO: flash error
-        pass
+        return f"VIN resolution failed: {e}", 400
     return redirect(url_for("vehicle_detail", vin=new_vin))
 
 
@@ -452,6 +462,192 @@ def api_vehicles():
     rows = conn.execute("SELECT * FROM vehicles ORDER BY updated_at DESC").fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCRAPER INGEST  (scrapers POST here → pending_listing for manual review)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/ingest_pending", methods=["POST"])
+def api_ingest_pending():
+    p = request.get_json(force=True)
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT OR IGNORE INTO pending_listings
+              (source, source_listing_id, source_url,
+               raw_title, raw_description, photos,
+               make, model, variant, year, body_type,
+               engine_cc, power_hp, fuel_type,
+               drivetrain, transmission, color_ext, doors,
+               price_pln, price_eur, mileage_km,
+               location_city, location_region,
+               seller_type, seller_name,
+               vin, vin_confidence, is_listing_active)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            p.get("source", "olx"),
+            p.get("source_listing_id"),
+            p.get("source_url"),
+            p.get("raw_title"),
+            p.get("raw_description"),
+            json.dumps(p.get("photos", [])),
+            p.get("make"),
+            p.get("model"),
+            p.get("variant"),
+            p.get("year"),
+            p.get("body_type"),
+            p.get("engine_cc"),
+            p.get("power_hp"),
+            p.get("fuel_type"),
+            p.get("drivetrain"),
+            p.get("transmission"),
+            p.get("color_ext"),
+            p.get("doors"),
+            p.get("price_pln"),
+            p.get("price_eur"),
+            p.get("mileage_km"),
+            p.get("location_city"),
+            p.get("location_region"),
+            p.get("seller_type"),
+            p.get("seller_name"),
+            p.get("vin"),
+            p.get("vin_confidence", "none"),
+            1,  # scraped now = listing is active
+        ))
+        conn.commit()
+        lid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        return jsonify({"status": "ok", "id": lid})
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REVIEW QUEUE
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/review")
+def review_queue():
+    status_filter = request.args.get("status", "pending")
+    conn = get_conn()
+    listings = conn.execute("""
+        SELECT * FROM pending_listings
+        WHERE status = ?
+        ORDER BY scraped_at DESC
+    """, (status_filter,)).fetchall()
+    counts = {r["status"]: r["cnt"] for r in conn.execute("""
+        SELECT status, COUNT(*) AS cnt FROM pending_listings GROUP BY status
+    """).fetchall()}
+    conn.close()
+    return render_template("review.html",
+        listings=listings, counts=counts, status_filter=status_filter)
+
+
+@app.route("/review/<int:pid>")
+def review_detail(pid):
+    conn = get_conn()
+    listing = conn.execute(
+        "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
+    conn.close()
+    if not listing:
+        return "Not found", 404
+    photos = json.loads(listing["photos"]) if listing["photos"] else []
+    return render_template("review_detail.html", listing=listing, photos=photos)
+
+
+@app.route("/review/<int:pid>/approve", methods=["POST"])
+def review_approve(pid):
+    data = request.form
+    conn = get_conn()
+    listing = conn.execute(
+        "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
+    if not listing:
+        conn.close()
+        return "Not found", 404
+
+    vin = data.get("vin", "").strip().upper()
+    if not vin or len(vin) != 17:
+        vin = make_placeholder_vin("olx", listing["source_listing_id"] or str(pid))
+
+    try:
+        conn.execute("""
+            INSERT INTO vehicles
+              (vin, make, model, variant, year, body_type,
+               engine_cc, power_hp, drivetrain, transmission,
+               color_ext, vin_status, source_method)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(vin) DO UPDATE SET
+              make        = COALESCE(excluded.make, make),
+              model       = COALESCE(excluded.model, model),
+              power_hp    = COALESCE(excluded.power_hp, power_hp),
+              updated_at  = datetime('now')
+        """, (
+            vin,
+            data.get("make")         or listing["make"]  or "Unknown",
+            data.get("model")        or listing["model"] or "Unknown",
+            data.get("variant")      or listing["variant"],
+            int(data["year"])        if data.get("year")       else (listing["year"] or 0),
+            data.get("body_type")    or listing["body_type"],
+            int(data["engine_cc"])   if data.get("engine_cc")  else listing["engine_cc"],
+            int(data["power_hp"])    if data.get("power_hp")   else listing["power_hp"],
+            data.get("drivetrain")   or listing["drivetrain"],
+            data.get("transmission") or listing["transmission"],
+            data.get("color_ext")    or listing["color_ext"],
+            "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
+            f"scraper-{listing['source']}",
+        ))
+
+        source_method = f"scraper-{listing['source']}"
+        conn.execute("""
+            INSERT INTO listing_observations
+              (vin, source, source_listing_id, source_url, title,
+               price_pln, mileage_km, location_city,
+               seller_type, seller_name,
+               first_seen_at, observed_at, source_method, notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            vin, listing["source"],
+            listing["source_listing_id"],
+            listing["source_url"],
+            listing["raw_title"],
+            float(data["price_pln"])  if data.get("price_pln")  else listing["price_pln"],
+            int(data["mileage_km"])   if data.get("mileage_km") else listing["mileage_km"],
+            data.get("location_city") or listing["location_city"],
+            data.get("seller_type")   or listing["seller_type"] or "private",
+            data.get("seller_name")   or listing["seller_name"],
+            listing["scraped_at"], listing["scraped_at"],
+            source_method,
+            data.get("notes"),
+        ))
+
+        conn.execute("""
+            UPDATE pending_listings
+            SET status='approved', reviewed_at=datetime('now'), review_notes=?
+            WHERE id=?
+        """, (data.get("notes"), pid))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return f"Error approving listing: {e}", 500
+
+    conn.close()
+    return redirect(url_for("vehicle_detail", vin=vin))
+
+
+@app.route("/review/<int:pid>/reject", methods=["POST"])
+def review_reject(pid):
+    reason = request.form.get("reason", "")
+    conn = get_conn()
+    conn.execute("""
+        UPDATE pending_listings
+        SET status='rejected', reviewed_at=datetime('now'), review_notes=?
+        WHERE id=?
+    """, (reason, pid))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("review_queue"))
 
 
 if __name__ == "__main__":
