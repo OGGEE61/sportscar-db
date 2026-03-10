@@ -17,6 +17,9 @@ Most car-tracking tools show you a snapshot: current listings, current price. Sp
 
 The **VIN is the permanent identity key**. All listing observations, condition reports, and tags attach to a VIN — not to an ad. If a car appears on OtoMoto and OLX simultaneously, both observations live under the same VIN.
 
+<img width="1408" height="768" alt="Gemini_Generated_Image_wtgp3bwtgp3bwtgp" src="https://github.com/user-attachments/assets/15602997-05dc-43a8-91f8-71bec77e35fb" />
+
+
 ---
 
 ## Features
