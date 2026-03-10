@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Add Vehicle – SportsCar DB{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Add Vehicle</h2>
+  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/add">
+      <h5 class="mb-3">Identity</h5>
+      <div class="row g-3 mb-4">
+        <div class="col-md-4">
+          <label class="form-label">VIN <span class="text-danger">*</span></label>
+          <input name="vin" class="form-control font-monospace" maxlength="17" required value="{{ form.get('vin','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Make <span class="text-danger">*</span></label>
+          <input name="make" class="form-control" required value="{{ form.get('make','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Model <span class="text-danger">*</span></label>
+          <input name="model" class="form-control" required value="{{ form.get('model','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Variant</label>
+          <input name="variant" class="form-control" value="{{ form.get('variant','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Year <span class="text-danger">*</span></label>
+          <input name="year" class="form-control" type="number" min="1900" max="2100" required value="{{ form.get('year','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Body type</label>
+          <input name="body_type" class="form-control" value="{{ form.get('body_type','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">VIN status</label>
+          <select name="vin_status" class="form-select">
+            <option value="unverified" {% if form.get('vin_status','unverified')=='unverified' %}selected{% endif %}>Unverified</option>
+            <option value="verified"   {% if form.get('vin_status')=='verified'   %}selected{% endif %}>Verified</option>
+            <option value="placeholder"{% if form.get('vin_status')=='placeholder'%}selected{% endif %}>Placeholder</option>
+          </select>
+        </div>
+      </div>
+
+      <h5 class="mb-3">Engine &amp; drivetrain</h5>
+      <div class="row g-3 mb-4">
+        <div class="col-md-2">
+          <label class="form-label">Engine cc</label>
+          <input name="engine_cc" class="form-control" type="number" value="{{ form.get('engine_cc','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Cylinders</label>
+          <input name="engine_cyl" class="form-control" type="number" value="{{ form.get('engine_cyl','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Power HP</label>
+          <input name="power_hp" class="form-control" type="number" value="{{ form.get('power_hp','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Drivetrain</label>
+          <select name="drivetrain" class="form-select">
+            <option value="">—</option>
+            {% for d in ['RWD','FWD','AWD','4WD'] %}
+            <option {% if form.get('drivetrain')==d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Transmission</label>
+          <select name="transmission" class="form-select">
+            <option value="">—</option>
+            {% for t in ['manual','automatic','semi-auto'] %}
+            <option {% if form.get('transmission')==t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Ext. color</label>
+          <input name="color_ext" class="form-control" value="{{ form.get('color_ext','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Int. color</label>
+          <input name="color_int" class="form-control" value="{{ form.get('color_int','') }}">
+        </div>
+      </div>
+
+      <h5 class="mb-3">First listing (optional)</h5>
+      <div class="row g-3 mb-4">
+        <div class="col-md-2">
+          <label class="form-label">Price PLN</label>
+          <input name="price_pln" class="form-control" type="number" step="0.01" value="{{ form.get('price_pln','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Mileage km</label>
+          <input name="mileage_km" class="form-control" type="number" value="{{ form.get('mileage_km','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Source</label>
+          <input name="source" class="form-control" value="{{ form.get('source','manual') }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Source URL</label>
+          <input name="source_url" class="form-control" type="url" value="{{ form.get('source_url','') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Seller type</label>
+          <select name="seller_type" class="form-select">
+            <option value="private" {% if form.get('seller_type','private')=='private' %}selected{% endif %}>Private</option>
+            <option value="dealer"  {% if form.get('seller_type')=='dealer'  %}selected{% endif %}>Dealer</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Listing notes</label>
+          <input name="listing_notes" class="form-control" value="{{ form.get('listing_notes','') }}">
+        </div>
+      </div>
+
+      <h5 class="mb-3">Notes &amp; tags</h5>
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <label class="form-label">Notes</label>
+          <textarea name="notes" class="form-control" rows="2">{{ form.get('notes','') }}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Tags (comma-separated)</label>
+          <input name="tags" class="form-control" placeholder="e.g. track, modified, rare" value="{{ form.get('tags','') }}">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary px-5">Save vehicle</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

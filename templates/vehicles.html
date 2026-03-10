@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Vehicles – SportsCar DB{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Vehicles</h2>
+  <a href="/add" class="btn btn-primary btn-sm">+ Add Vehicle</a>
+</div>
+
+<!-- Filters -->
+<form class="row g-2 mb-4" method="get">
+  <div class="col-md-4">
+    <input name="q" class="form-control" placeholder="Search VIN / make / model…" value="{{ q }}">
+  </div>
+  <div class="col-md-2">
+    <select name="make" class="form-select">
+      <option value="">All makes</option>
+      {% for m in makes %}
+      <option value="{{ m }}" {% if m == selected_make %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="status" class="form-select">
+      <option value="">All statuses</option>
+      <option value="verified"    {% if status=='verified'    %}selected{% endif %}>Verified</option>
+      <option value="unverified"  {% if status=='unverified'  %}selected{% endif %}>Unverified</option>
+      <option value="placeholder" {% if status=='placeholder' %}selected{% endif %}>Placeholder</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="sort" class="form-select">
+      <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Last updated</option>
+      <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Year ↓</option>
+      <option value="year_asc"   {% if sort=='year_asc'   %}selected{% endif %}>Year ↑</option>
+      <option value="power"      {% if sort=='power'      %}selected{% endif %}>Power ↓</option>
+      <option value="obs"        {% if sort=='obs'        %}selected{% endif %}>Observations ↓</option>
+      <option value="price"      {% if sort=='price'      %}selected{% endif %}>Price ↑</option>
+    </select>
+  </div>
+  <div class="col-md-2 d-flex gap-2">
+    <button class="btn btn-primary flex-fill">Filter</button>
+    <a href="/vehicles" class="btn btn-outline-secondary">Reset</a>
+  </div>
+</form>
+
+<p class="text-muted small">{{ vehicles|length }} result(s)</p>
+
+<div class="table-responsive">
+  <table class="table table-hover table-sm align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>VIN</th><th>Make</th><th>Model</th><th>Year</th><th>HP</th>
+        <th>Min price</th><th>Max price</th><th>Obs</th><th>Ads</th><th>Last seen</th><th>Tags</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in vehicles %}
+      <tr>
+        <td><a href="/vehicle/{{ v.vin }}" class="font-monospace small">{{ v.vin }}</a></td>
+        <td>{{ v.make }}</td>
+        <td>{{ v.model }}{% if v.variant %} <small class="text-muted">{{ v.variant }}</small>{% endif %}</td>
+        <td>{{ v.year }}</td>
+        <td>{{ v.power_hp or '—' }}</td>
+        <td>{{ "{:,.0f}".format(v.min_price) if v.min_price else '—' }}</td>
+        <td>{{ "{:,.0f}".format(v.max_price) if v.max_price else '—' }}</td>
+        <td>{{ v.obs_count }}</td>
+        <td>{{ v.ad_count }}</td>
+        <td class="text-nowrap small">{{ v.last_observed[:16] if v.last_observed else '—' }}</td>
+        <td>
+          {% if v.tags %}
+            {% for tag in v.tags.split(',') %}
+            <span class="badge bg-info text-dark">{{ tag }}</span>
+            {% endfor %}
+          {% endif %}
+        </td>
+        <td><span class="badge badge-{{ v.vin_status }}">{{ v.vin_status }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12" class="text-center py-4 text-muted">No vehicles found</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
