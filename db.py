@@ -149,6 +149,64 @@ def init_db():
         applied_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""")
     c.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(1,'initial_schema')")
+    c.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(2,'pending_listings')")
+    c.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(3,'pending_is_listing_active')")
+
+    # ── pending_listings ───────────────────────────────────────────────────────
+    # Scraper inbox: every scraped listing lands here for manual review before
+    # being committed to vehicles / listing_observations.
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS pending_listings (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        source              TEXT NOT NULL DEFAULT 'olx',
+        source_listing_id   TEXT,
+        source_url          TEXT,
+        scraped_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        status              TEXT NOT NULL DEFAULT 'pending',
+            -- 'pending' | 'approved' | 'rejected'
+        -- raw content preserved for manual review
+        raw_title           TEXT,
+        raw_description     TEXT,
+        photos              TEXT,       -- JSON array of photo URLs
+        -- auto-detected vehicle fields (all editable on review page)
+        make                TEXT,
+        model               TEXT,
+        variant             TEXT,
+        year                INTEGER,
+        body_type           TEXT,
+        engine_cc           INTEGER,
+        power_hp            INTEGER,
+        fuel_type           TEXT,
+        drivetrain          TEXT,
+        transmission        TEXT,
+        color_ext           TEXT,
+        doors               INTEGER,
+        -- listing observation fields
+        price_pln           REAL,
+        price_eur           REAL,
+        mileage_km          INTEGER,
+        location_city       TEXT,
+        location_region     TEXT,
+        seller_type         TEXT,
+        seller_name         TEXT,
+        -- vin
+        vin                 TEXT,
+        vin_confidence      TEXT DEFAULT 'none',
+            -- 'found_in_schema' | 'found_in_description' | 'none'
+        -- listing still live on source platform (1=active, 0=removed)
+        is_listing_active   INTEGER NOT NULL DEFAULT 1,
+        -- review audit
+        review_notes        TEXT,
+        reviewed_at         TEXT,
+        UNIQUE(source, source_listing_id)
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_listings(status)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_pending_scraped ON pending_listings(scraped_at)")
+
+    # Migration v3: add is_listing_active if upgrading from v2 (table already exists without it)
+    existing_cols = [r[1] for r in c.execute("PRAGMA table_info(pending_listings)").fetchall()]
+    if "is_listing_active" not in existing_cols:
+        c.execute("ALTER TABLE pending_listings ADD COLUMN is_listing_active INTEGER NOT NULL DEFAULT 1")
 
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     c.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")

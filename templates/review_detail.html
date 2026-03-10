@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}Review: {{ listing.raw_title or listing.make ~ ' ' ~ listing.model }} – SportsCar DB{% endblock %}
+
+{% block head %}
+<style>
+  .photo-strip { display:flex; gap:8px; overflow-x:auto; padding-bottom:8px; }
+  .photo-strip img { height:160px; width:240px; object-fit:cover; border-radius:6px;
+                     cursor:pointer; flex-shrink:0; transition:opacity .15s; }
+  .photo-strip img:hover { opacity:.85; }
+  .vin-found   { background:#d1e7dd; border:1px solid #a3cfbb; }
+  .vin-maybe   { background:#fff3cd; border:1px solid #ffe08a; }
+  .vin-none    { background:#f8f9fa; }
+  .raw-desc    { white-space:pre-wrap; font-size:.85rem; max-height:220px;
+                 overflow-y:auto; background:#f8f9fa; padding:12px;
+                 border-radius:6px; border:1px solid #dee2e6; }
+  .section-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+                   color:#6c757d; font-weight:600; margin-bottom:.5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header bar -->
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <a href="/review" class="text-muted small">← Review Queue</a>
+    <h2 class="mb-0 mt-1">
+      {{ listing.raw_title or (listing.make ~ ' ' ~ listing.model) }}
+    </h2>
+    <div class="small text-muted mt-1">
+      Source: <strong>{{ listing.source | upper }}</strong>
+      &nbsp;·&nbsp; ID: <code>{{ listing.source_listing_id }}</code>
+      &nbsp;·&nbsp; Scraped: {{ listing.scraped_at[:16] }}
+      {% if listing.source_url %}
+      &nbsp;·&nbsp; <a href="{{ listing.source_url }}" target="_blank">Open original ↗</a>
+      {% endif %}
+      &nbsp;·&nbsp;
+      {% if listing.is_listing_active %}
+      <span class="badge bg-success">listing active</span>
+      {% else %}
+      <span class="badge bg-secondary">listing removed</span>
+      {% endif %}
+    </div>
+  </div>
+  <span class="badge fs-6
+    {% if listing.status == 'pending' %}bg-warning text-dark
+    {% elif listing.status == 'approved' %}bg-success
+    {% else %}bg-danger{% endif %}">
+    {{ listing.status }}
+  </span>
+</div>
+
+<div class="row g-4">
+
+  <!-- LEFT: photos + raw description -->
+  <div class="col-lg-5">
+
+    <!-- Photo strip -->
+    {% if photos %}
+    <div class="section-label">Photos ({{ photos|length }})</div>
+    <div class="photo-strip mb-3">
+      {% for url in photos %}
+      <img src="{{ url }}" alt="Photo {{ loop.index }}"
+           onclick="window.open('{{ url }}','_blank')"
+           onerror="this.style.display='none'">
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-secondary py-2 mb-3">No photos scraped</div>
+    {% endif %}
+
+    <!-- Raw description -->
+    <div class="section-label">Original description</div>
+    <div class="raw-desc mb-3">{{ listing.raw_description or '(no description)' }}</div>
+
+    <!-- VIN status -->
+    <div class="section-label">VIN detection</div>
+    <div class="p-3 rounded mb-3
+      {% if listing.vin_confidence == 'found_in_schema' %}vin-found
+      {% elif listing.vin_confidence == 'found_in_description' %}vin-maybe
+      {% else %}vin-none{% endif %}">
+      {% if listing.vin %}
+      <code class="fs-6">{{ listing.vin }}</code>
+      <span class="ms-2 small text-muted">
+        {% if listing.vin_confidence == 'found_in_schema' %}Found in listing schema (high confidence)
+        {% elif listing.vin_confidence == 'found_in_description' %}Found in description text (verify manually)
+        {% endif %}
+      </span>
+      {% else %}
+      <span class="text-muted">No VIN detected — will create placeholder on approve</span>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- RIGHT: editable form -->
+  <div class="col-lg-7">
+
+    {% if listing.status == 'pending' %}
+
+    <form method="post" action="/review/{{ listing.id }}/approve">
+
+      <div class="section-label">Vehicle identity</div>
+      <div class="row g-2 mb-3">
+        <div class="col-12">
+          <label class="form-label small mb-1">VIN
+            <span class="text-muted fw-normal">(17 chars · leave blank to auto-generate placeholder)</span>
+          </label>
+          <input name="vin" class="form-control font-monospace
+            {% if listing.vin_confidence == 'found_in_schema' %}border-success
+            {% elif listing.vin_confidence == 'found_in_description' %}border-warning{% endif %}"
+            maxlength="17" value="{{ listing.vin or '' }}"
+            placeholder="XXXXXXXXXXXXXXXXX">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Make</label>
+          <input name="make" class="form-control" value="{{ listing.make or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Model</label>
+          <input name="model" class="form-control" value="{{ listing.model or '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Variant / trim</label>
+          <input name="variant" class="form-control" value="{{ listing.variant or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Year</label>
+          <input name="year" class="form-control" type="number" value="{{ listing.year or '' }}">
+        </div>
+      </div>
+
+      <div class="section-label">Specs</div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Body type</label>
+          <input name="body_type" class="form-control" value="{{ listing.body_type or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Engine cc</label>
+          <input name="engine_cc" class="form-control" type="number" value="{{ listing.engine_cc or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Power HP</label>
+          <input name="power_hp" class="form-control" type="number" value="{{ listing.power_hp or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Fuel</label>
+          <select name="fuel_type" class="form-select">
+            <option value="">—</option>
+            {% for f in ['petrol','diesel','hybrid','electric'] %}
+            <option {% if listing.fuel_type == f %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Doors</label>
+          <input name="doors" class="form-control" type="number" value="{{ listing.doors or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Drivetrain</label>
+          <select name="drivetrain" class="form-select">
+            <option value="">—</option>
+            {% for d in ['RWD','FWD','AWD','4WD'] %}
+            <option {% if listing.drivetrain == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Transmission</label>
+          <select name="transmission" class="form-select">
+            <option value="">—</option>
+            {% for t in ['manual','automatic','semi-auto'] %}
+            <option {% if listing.transmission == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Ext. color</label>
+          <input name="color_ext" class="form-control" value="{{ listing.color_ext or '' }}">
+        </div>
+      </div>
+
+      <div class="section-label">Listing details</div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Price PLN</label>
+          <input name="price_pln" class="form-control" type="number" step="0.01"
+                 value="{{ listing.price_pln or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Mileage km</label>
+          <input name="mileage_km" class="form-control" type="number"
+                 value="{{ listing.mileage_km or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">City</label>
+          <input name="location_city" class="form-control" value="{{ listing.location_city or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Seller type</label>
+          <select name="seller_type" class="form-select">
+            <option value="private" {% if listing.seller_type == 'private' %}selected{% endif %}>Private</option>
+            <option value="dealer"  {% if listing.seller_type == 'dealer'  %}selected{% endif %}>Dealer</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small mb-1">Seller name</label>
+          <input name="seller_name" class="form-control" value="{{ listing.seller_name or '' }}">
+        </div>
+      </div>
+
+      <div class="section-label">Your notes</div>
+      <div class="mb-4">
+        <textarea name="notes" class="form-control" rows="2"
+                  placeholder="Optional notes about this vehicle…"></textarea>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="d-flex gap-3 align-items-center">
+        <button type="submit" class="btn btn-success px-5 py-2 fs-5">
+          Approve &amp; save
+        </button>
+
+        <button type="button" class="btn btn-outline-danger px-4"
+                data-bs-toggle="collapse" data-bs-target="#rejectPanel">
+          Reject
+        </button>
+      </div>
+
+    </form>
+
+    <!-- Reject panel (collapsible) -->
+    <div class="collapse mt-3" id="rejectPanel">
+      <div class="card card-body border-danger">
+        <form method="post" action="/review/{{ listing.id }}/reject" class="row g-2">
+          <div class="col-md-8">
+            <input name="reason" class="form-control" placeholder="Reason for rejection (optional)">
+          </div>
+          <div class="col-md-4">
+            <button type="submit" class="btn btn-danger w-100">Confirm reject</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% else %}
+    <!-- Already reviewed -->
+    <div class="alert alert-{% if listing.status == 'approved' %}success{% else %}danger{% endif %}">
+      <strong>{{ listing.status | capitalize }}</strong>
+      {% if listing.reviewed_at %} on {{ listing.reviewed_at[:16] }}{% endif %}
+      {% if listing.review_notes %}<br>{{ listing.review_notes }}{% endif %}
+    </div>
+    {% if listing.status == 'approved' %}
+    <a href="/vehicle/{{ listing.vin }}" class="btn btn-outline-success">View vehicle →</a>
+    {% endif %}
+    {% endif %}
+
+  </div>
+</div>
+
+{% endblock %}
