@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – SportsCar DB{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Dashboard</h2>
+
+<!-- Stat cards -->
+<div class="row g-3 mb-4">
+  {% set cards = [
+    ("Total VINs",       stats.total_vins,       "primary"),
+    ("Placeholders",     stats.placeholder_vins,  "warning"),
+    ("Observations",     stats.total_obs,         "info"),
+    ("Active Listings",  stats.active_obs,        "success"),
+    ("Unique Ads",       stats.unique_ads,        "secondary"),
+    ("Avg Price (PLN)",  "{:,}".format(stats.avg_price), "dark"),
+  ] %}
+  {% for label, val, color in cards %}
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card stat-card border-{{ color }} h-100">
+      <div class="card-body p-3">
+        <div class="small text-muted">{{ label }}</div>
+        <div class="fs-4 fw-bold">{{ val }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Charts row -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">Makes distribution</div>
+      <div class="card-body"><canvas id="chartMakes" height="200"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">Price ranges (active listings)</div>
+      <div class="card-body"><canvas id="chartPrices" height="200"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card h-100">
+      <div class="card-header">Weekly observations (last 12 weeks)</div>
+      <div class="card-body"><canvas id="chartWeekly" height="120"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header">Source methods</div>
+      <div class="card-body"><canvas id="chartSources" height="200"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent observations -->
+<div class="card">
+  <div class="card-header">Recent observations (last 10)</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>VIN</th><th>Make</th><th>Model</th><th>Year</th><th>HP</th>
+          <th>Price PLN</th><th>Mileage</th><th>Source</th><th>Observed</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+        <tr>
+          <td><a href="/vehicle/{{ r.vin }}">{{ r.vin[:12] }}…</a></td>
+          <td>{{ r.make }}</td>
+          <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
+          <td>{{ r.year }}</td>
+          <td>{{ r.power_hp or '—' }}</td>
+          <td>{{ "{:,.0f}".format(r.price_pln) if r.price_pln else '—' }}</td>
+          <td>{{ "{:,}".format(r.mileage_km) if r.mileage_km else '—' }}</td>
+          <td><span class="badge bg-secondary">{{ r.source_method }}</span></td>
+          <td class="text-nowrap">{{ r.observed_at[:16] }}</td>
+          <td>
+            <span class="badge badge-{{ r.vin_status }}">{{ r.vin_status }}</span>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10" class="text-center text-muted py-3">No observations yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PALETTE = ['#0d6efd','#6f42c1','#d63384','#fd7e14','#ffc107','#198754','#0dcaf0','#6c757d','#20c997','#dc3545','#0d6efd','#adb5bd'];
+
+function barChart(id, data, labelKey, valueKey) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d[labelKey]),
+      datasets: [{ data: data.map(d => d[valueKey]), backgroundColor: PALETTE }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function pieChart(id, data, labelKey, valueKey) {
+  new Chart(document.getElementById(id), {
+    type: 'doughnut',
+    data: {
+      labels: data.map(d => d[labelKey]),
+      datasets: [{ data: data.map(d => d[valueKey]), backgroundColor: PALETTE }]
+    },
+    options: { plugins: { legend: { position: 'bottom' } } }
+  });
+}
+
+barChart('chartMakes',  {{ makes_dist|safe }},  'make', 'cnt');
+barChart('chartPrices', {{ price_ranges|safe }}, 'rng',  'cnt');
+barChart('chartWeekly', {{ weekly|safe }},       'week', 'cnt');
+pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
+</script>
+{% endblock %}

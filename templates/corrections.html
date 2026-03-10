@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}VIN Corrections – SportsCar DB{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">VIN Correction Log</h2>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>#</th><th>Date</th><th>Old VIN</th><th>New VIN</th><th>Reason</th><th>By</th><th>Method</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in log %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td class="text-nowrap small">{{ c.created_at[:16] }}</td>
+          <td class="font-monospace small"><a href="/vehicle/{{ c.old_vin }}">{{ c.old_vin }}</a></td>
+          <td class="font-monospace small"><a href="/vehicle/{{ c.new_vin }}">{{ c.new_vin }}</a></td>
+          <td>{{ c.reason or '—' }}</td>
+          <td>{{ c.corrected_by or '—' }}</td>
+          <td><span class="badge bg-secondary">{{ c.source_method }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center py-4 text-muted">No corrections recorded</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

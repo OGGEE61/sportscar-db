@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h2 class="mb-1">{{ vehicle.make }} {{ vehicle.model }}
+      {% if vehicle.variant %}<small class="text-muted fs-5">{{ vehicle.variant }}</small>{% endif %}
+    </h2>
+    <code class="fs-6">{{ vehicle.vin }}</code>
+    <span class="badge badge-{{ vehicle.vin_status }} ms-2">{{ vehicle.vin_status }}</span>
+  </div>
+  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
+</div>
+
+<!-- Vehicle details -->
+<div class="card mb-4">
+  <div class="card-header">Vehicle details</div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% set fields = [
+        ("Year", vehicle.year), ("Body type", vehicle.body_type),
+        ("Engine cc", vehicle.engine_cc), ("Cylinders", vehicle.engine_cyl),
+        ("Power HP", vehicle.power_hp), ("Drivetrain", vehicle.drivetrain),
+        ("Transmission", vehicle.transmission), ("Ext. color", vehicle.color_ext),
+        ("Int. color", vehicle.color_int), ("Source method", vehicle.source_method),
+        ("Created", vehicle.created_at[:16] if vehicle.created_at else None),
+        ("Updated", vehicle.updated_at[:16] if vehicle.updated_at else None),
+      ] %}
+      {% for label, val in fields %}
+      <div class="col-6 col-md-3">
+        <div class="small text-muted">{{ label }}</div>
+        <div>{{ val or '—' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if vehicle.notes %}
+    <div class="mt-2"><span class="text-muted small">Notes:</span> {{ vehicle.notes }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Resolve placeholder -->
+{% if vehicle.vin_status == 'placeholder' %}
+<div class="card mb-4 border-warning">
+  <div class="card-header bg-warning text-dark">Resolve placeholder VIN</div>
+  <div class="card-body">
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/resolve" class="row g-2">
+      <div class="col-md-5">
+        <input name="new_vin" class="form-control" placeholder="Real VIN (17 chars)" maxlength="17" required>
+      </div>
+      <div class="col-md-5">
+        <input name="reason" class="form-control" placeholder="Reason" value="placeholder resolved">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-warning w-100">Resolve</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Tags -->
+<div class="card mb-4">
+  <div class="card-header">Tags</div>
+  <div class="card-body">
+    {% for t in tags %}
+    <span class="badge bg-info text-dark me-1">{{ t.tag }} <small class="opacity-75">{{ t.source_method }}</small></span>
+    {% else %}
+    <span class="text-muted">No tags</span>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Price timeline chart -->
+{% if price_timeline != '[]' %}
+<div class="card mb-4">
+  <div class="card-header">Price history</div>
+  <div class="card-body"><canvas id="chartPrice" height="100"></canvas></div>
+</div>
+{% endif %}
+
+<!-- Ad groups / observations -->
+<div class="card mb-4">
+  <div class="card-header">Listings ({{ ad_groups|length }} ads + {{ ungrouped|length }} ungrouped)</div>
+  <div class="card-body p-0">
+    {% for key, obs_list in ad_groups.items() %}
+    <div class="border-bottom p-3">
+      <div class="fw-semibold mb-2 small text-muted">Ad: {{ key }}</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr>
+            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>City</th><th>Seller</th><th>Removed</th>
+          </tr></thead>
+          <tbody>
+            {% for o in obs_list %}
+            <tr>
+              <td class="small">{{ o.observed_at[:16] }}</td>
+              <td>{{ "{:,.0f}".format(o.price_pln) if o.price_pln else '—' }}</td>
+              <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
+              <td>{{ o.location_city or '—' }}</td>
+              <td>{{ o.seller_type or '—' }}</td>
+              <td>{{ o.removed_at[:10] if o.removed_at else '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+    {% if ungrouped %}
+    <div class="p-3">
+      <div class="fw-semibold mb-2 small text-muted">Ungrouped observations</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr>
+            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>Source</th><th>Method</th>
+          </tr></thead>
+          <tbody>
+            {% for o in ungrouped %}
+            <tr>
+              <td class="small">{{ o.observed_at[:16] }}</td>
+              <td>{{ "{:,.0f}".format(o.price_pln) if o.price_pln else '—' }}</td>
+              <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
+              <td>{{ o.source }}</td>
+              <td><span class="badge bg-secondary">{{ o.source_method }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    {% if not ad_groups and not ungrouped %}
+    <p class="text-muted p-3 mb-0">No observations yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Add observation -->
+<div class="card mb-4">
+  <div class="card-header">Add observation</div>
+  <div class="card-body">
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_observation" class="row g-2">
+      <div class="col-md-2"><input name="source" class="form-control" placeholder="Source" value="manual"></div>
+      <div class="col-md-2"><input name="source_listing_id" class="form-control" placeholder="Listing ID"></div>
+      <div class="col-md-3"><input name="source_url" class="form-control" placeholder="URL"></div>
+      <div class="col-md-2"><input name="price_pln" class="form-control" type="number" placeholder="Price PLN"></div>
+      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Mileage km"></div>
+      <div class="col-md-2"><input name="location_city" class="form-control" placeholder="City"></div>
+      <div class="col-md-2">
+        <select name="seller_type" class="form-select">
+          <option value="private">Private</option>
+          <option value="dealer">Dealer</option>
+        </select>
+      </div>
+      <div class="col-md-6"><input name="notes" class="form-control" placeholder="Notes"></div>
+      <div class="col-md-2"><button class="btn btn-outline-primary w-100">Add</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Condition reports -->
+<div class="card mb-4">
+  <div class="card-header">Condition reports</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr>
+        <th>Date</th><th>Mileage</th><th>Accident free</th><th>Service</th><th>Score</th><th>By</th>
+      </tr></thead>
+      <tbody>
+        {% for c in conditions %}
+        <tr>
+          <td>{{ c.report_date }}</td>
+          <td>{{ "{:,}".format(c.mileage_km) if c.mileage_km else '—' }}</td>
+          <td>
+            {% if c.accident_free == 1 %}Yes
+            {% elif c.accident_free == 0 %}No
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ c.service_history or '—' }}</td>
+          <td>{{ c.condition_score or '—' }}</td>
+          <td>{{ c.inspection_by or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted text-center py-2">No reports</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer">
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_condition" class="row g-2">
+      <div class="col-md-2"><input name="report_date" class="form-control" type="date"></div>
+      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Mileage"></div>
+      <div class="col-md-2">
+        <select name="accident_free" class="form-select">
+          <option value="">Accident free?</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+      <div class="col-md-2"><input name="condition_score" class="form-control" type="number" min="1" max="10" placeholder="Score 1-10"></div>
+      <div class="col-md-2"><input name="inspection_by" class="form-control" placeholder="Inspected by"></div>
+      <div class="col-md-2"><button class="btn btn-outline-secondary w-100">Add report</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Correction log -->
+{% if corrections %}
+<div class="card mb-4">
+  <div class="card-header">VIN correction history</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Date</th><th>Old VIN</th><th>New VIN</th><th>Reason</th><th>By</th></tr></thead>
+      <tbody>
+        {% for c in corrections %}
+        <tr>
+          <td class="small">{{ c.created_at[:16] }}</td>
+          <td class="font-monospace small">{{ c.old_vin }}</td>
+          <td class="font-monospace small">{{ c.new_vin }}</td>
+          <td>{{ c.reason or '—' }}</td>
+          <td>{{ c.corrected_by or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if price_timeline != '[]' %}
+<script>
+const pt = {{ price_timeline|safe }};
+new Chart(document.getElementById('chartPrice'), {
+  type: 'line',
+  data: {
+    labels: pt.map(d => d.observed_at.slice(0,10)),
+    datasets: [{
+      label: 'Price PLN',
+      data: pt.map(d => d.price_pln),
+      borderColor: '#0d6efd',
+      backgroundColor: 'rgba(13,110,253,.1)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: 4,
+    }]
+  },
+  options: { scales: { y: { beginAtZero: false } }, plugins: { legend: { display: false } } }
+});
+</script>
+{% endif %}
+{% endblock %}
