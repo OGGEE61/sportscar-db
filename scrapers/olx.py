@@ -1,444 +1,312 @@
 """
 scrapers/olx.py
 ===============
-Scrapes OLX.pl for German performance/sports cars and posts each listing
-to the local /api/ingest_pending endpoint for manual review.
+Scrapes OLX.pl for performance/sports cars using the Cloudflare Browser
+Rendering /crawl endpoint (headless browser, returns Markdown per page).
 
 Usage:
-    python scrapers/olx.py              # all targets
-    python scrapers/olx.py bmw m3       # single target (make slug, model slug)
-    python scrapers/olx.py --dry-run    # print what would be scraped, don't POST
+    python scrapers/olx.py                     # all brands
+    python scrapers/olx.py BMW                 # single brand
+    python scrapers/olx.py BMW m3              # single model
+    python scrapers/olx.py BMW m3 --dry-run    # preview without POSTing
 
-Requires:
-    pip install requests beautifulsoup4
+Requires environment variables (see .env.example):
+    CF_ACCOUNT_ID, CF_BR_API_TOKEN
 """
 
-import requests
-import json
+import os
 import re
 import sys
+import json
 import time
-import random
 import logging
-from bs4 import BeautifulSoup
+import requests
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
 
-BASE_URL    = "https://www.olx.pl"
-INGEST_URL  = "http://127.0.0.1:5555/api/ingest_pending"
-YEAR_FROM   = 1990
-YEAR_TO     = 2020
-MAX_PAGES   = 10          # max pages to scrape per target (20 listings/page)
-DELAY_MIN   = 0.5         # seconds between requests (human-like)
-DELAY_MAX   = 1.5
+CF_ACCOUNT_ID  = os.getenv("CF_ACCOUNT_ID", "")
+CF_BR_API_TOKEN = os.getenv("CF_BR_API_TOKEN", "")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s",
-                    datefmt="%H:%M:%S")
+CRAWL_BASE = (
+    "https://api.cloudflare.com/client/v4/accounts"
+    "/{account_id}/browser-rendering/crawl"
+)
+
+FLASK_INGEST_URL = "http://127.0.0.1:5555/api/ingest_pending"
+
+POLL_INTERVAL  = 5      # seconds between status polls
+CRAWL_TIMEOUT  = 1200   # seconds before giving up on a crawl job
+CRAWL_LIMIT    = 100    # max pages per model crawl
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-7s  %(message)s",
+    datefmt="%H:%M:%S",
+)
 log = logging.getLogger("olx")
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+# ─────────────────────────────────────────────────────────────────────────────
+# Targets
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Brand name → list of OLX model filter slugs
+TARGETS: dict[str, list[str]] = {
+    "BMW":          ["m2", "m3", "m4", "m5", "m6", "m8",
+                     "x3-m", "x4-m", "x5-m", "x6-m"],
+    "Mercedes-AMG": ["a45", "cla45", "c63", "e63", "s63",
+                     "sls-amg", "amg-gt", "gle63", "gls63", "gl63"],
+    "Audi":         ["rs3", "rs4", "rs5", "rs6", "rs7", "r8", "tt-rs",
+                     "s3", "s4", "s5", "s6", "s7", "sq5", "sq7",
+                     "rs-q3", "rs-q3-sportback", "rs-q8"],
+    "Porsche":      ["911", "boxster", "cayman", "panamera", "cayenne", "macan"],
+    "VW":           ["golf-r", "gti", "r32", "scirocco-r"],
+}
+
+# Brand name → OLX make slug used in URL paths
+MAKE_SLUGS: dict[str, str] = {
+    "BMW":          "bmw",
+    "Mercedes-AMG": "mercedes-benz",
+    "Audi":         "audi",
+    "Porsche":      "porsche",
+    "VW":           "volkswagen",
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Targets  (make_slug, model_slug, keywords_that_must_appear_in_title)
-# OLX model slugs for Polish site. Adjust if any return 0 results.
+# Regex patterns
 # ─────────────────────────────────────────────────────────────────────────────
 
-# (make_slug, olx_model_slug, keywords_to_verify_in_title)
-# OLX model slugs confirmed from URL pattern:
-# /motoryzacja/samochody/{make}/?search[filter_enum_model][0]={model_slug}
-TARGETS = [
-    # BMW M-division
-    ("bmw", "m2",   ["M2"]),
-    ("bmw", "m3",   ["M3"]),
-    ("bmw", "m4",   ["M4"]),
-    ("bmw", "m5",   ["M5"]),
-    ("bmw", "m6",   ["M6"]),
-    ("bmw", "m8",   ["M8"]),
-    ("bmw", "x3-m", ["X3M", "X3 M"]),
-    ("bmw", "x4-m", ["X4M", "X4 M"]),
-    ("bmw", "x5-m", ["X5M", "X5 M"]),
-    ("bmw", "x6-m", ["X6M", "X6 M"]),
-
-    # Mercedes-AMG
-    ("mercedes-benz", "klasa-a",   ["A45", "A 45"]),
-    ("mercedes-benz", "cla",       ["CLA45", "CLA 45"]),
-    ("mercedes-benz", "klasa-c",   ["C63", "C 63"]),
-    ("mercedes-benz", "klasa-e",   ["E63", "E 63"]),
-    ("mercedes-benz", "klasa-s",   ["S63", "S 63"]),
-    ("mercedes-benz", "sls-amg",   ["SLS"]),
-    ("mercedes-benz", "amg-gt",    ["AMG GT"]),
-    ("mercedes-benz", "gle",       ["GLE 63", "GLE63", "GLE AMG"]),
-    ("mercedes-benz", "gls",       ["GLS 63", "GLS63", "GLS AMG"]),
-    ("mercedes-benz", "gl",        ["GL 63", "GL63"]),
-
-    # Audi RS / S
-    ("audi", "rs3",            ["RS3", "RS 3"]),
-    ("audi", "rs4",            ["RS4", "RS 4"]),
-    ("audi", "rs5",            ["RS5", "RS 5"]),
-    ("audi", "rs6",            ["RS6", "RS 6"]),
-    ("audi", "rs7",            ["RS7", "RS 7"]),
-    ("audi", "r8",             ["R8"]),
-    ("audi", "tt-rs",          ["TT RS", "TTRS"]),
-    ("audi", "s3",             ["S3"]),
-    ("audi", "s4",             ["S4"]),
-    ("audi", "s5",             ["S5"]),
-    ("audi", "s6",             ["S6"]),
-    ("audi", "s7",             ["S7"]),
-    ("audi", "sq5",            ["SQ5"]),
-    ("audi", "sq7",            ["SQ7"]),
-    ("audi", "rs-q3",          ["RS Q3"]),
-    ("audi", "rs-q3-sportback",["RS Q3", "RSQ3"]),
-    ("audi", "rs-q8",          ["RS Q8", "RSQ8"]),
-
-    # Porsche
-    ("porsche", "911",      ["911"]),
-    ("porsche", "boxster",  ["Boxster"]),
-    ("porsche", "cayman",   ["Cayman"]),
-    ("porsche", "panamera", ["Panamera"]),
-    ("porsche", "cayenne",  ["Cayenne"]),
-    ("porsche", "macan",    ["Macan"]),
-
-    # VW performance
-    ("volkswagen", "golf",     ["Golf R", "GTI R32", "R32"]),
-    ("volkswagen", "scirocco", ["Scirocco R"]),
-]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# OLX HTML attribute label → our field name
-# ─────────────────────────────────────────────────────────────────────────────
-
-PL_PARAM_MAP = {
-    "rok produkcji":     "year",
-    "przebieg":          "mileage_km",
-    "pojemność skokowa": "engine_cc",
-    "moc":               "power_hp",
-    "rodzaj paliwa":     "fuel_type",
-    "skrzynia biegów":   "transmission",
-    "napęd":             "drivetrain",
-    "kolor":             "color_ext",
-    "typ nadwozia":      "body_type",
-    "liczba drzwi":      "doors",
-    "stan":              "condition",
-}
-
-VIN_RE    = re.compile(r'\b[A-HJ-NPR-Z0-9]{17}\b')
-POWER_RE  = re.compile(r'(\d{2,4})\s*(?:KM|HP|PS|cv)', re.IGNORECASE)
-ENGINE_RE = re.compile(r'(\d+)[.,](\d)\s*(?:l\b|litr|L\b)?', re.IGNORECASE)
-MILE_RE   = re.compile(r'(\d[\d\s]{2,7})\s*km', re.IGNORECASE)
+VIN_RE   = re.compile(r'\b[A-HJ-NPR-Z0-9]{17}\b')
+PRICE_RE = re.compile(r'(\d[\d\s]{2,9})\s*(zł|PLN)', re.IGNORECASE)
+MILE_RE  = re.compile(r'(\d[\d\s]{1,7})\s*km')  # case-sensitive: lowercase km=kilometers, KM=horsepower in Polish
+YEAR_RE  = re.compile(r'\b(198[5-9]|199\d|20[0-3]\d)\b')  # 1985-2039: covers all M-car generations
+ID_RE    = re.compile(r'ID([A-Za-z0-9]+)\.html')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HTTP helpers
+# URL builders
 # ─────────────────────────────────────────────────────────────────────────────
 
-def make_session():
-    s = requests.Session()
-    s.headers.update(HEADERS)
-    return s
-
-
-def get(session, url, **kwargs):
-    """GET with random human-like delay, retry once on failure."""
-    time.sleep(random.uniform(DELAY_MIN, DELAY_MAX))
-    try:
-        r = session.get(url, timeout=15, **kwargs)
-        r.raise_for_status()
-        r.encoding = "utf-8"   # force UTF-8 — OLX is always UTF-8
-        return r
-    except requests.HTTPError as e:
-        if e.response.status_code == 404:
-            return None
-        raise
-    except requests.RequestException as e:
-        log.warning("Request failed (%s), retrying in 10s…", e)
-        time.sleep(10)
-        r = session.get(url, timeout=20, **kwargs)
-        r.raise_for_status()
-        r.encoding = "utf-8"
-        return r
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Parsing helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def parse_jsonld(soup):
-    """Extract all schema.org data from JSON-LD script tags."""
-    result = {}
-    for tag in soup.find_all("script", type="application/ld+json"):
-        try:
-            data = json.loads(tag.string or "")
-        except (json.JSONDecodeError, TypeError):
-            continue
-
-        schema_type = data.get("@type", "")
-
-        if schema_type in ("Car", "Vehicle", "MotorizedVehicle"):
-            brand = data.get("brand", {})
-            result["make"]      = brand.get("name") if isinstance(brand, dict) else brand
-            result["model"]     = data.get("model")
-            result["body_type"] = data.get("bodyType")
-            result["color_ext"] = data.get("color")
-
-            year = data.get("productionDate") or data.get("modelDate")
-            result["year"] = int(str(year)[:4]) if year else None
-
-            vin = data.get("vehicleIdentificationNumber", "").strip().upper()
-            if vin and len(vin) == 17 and VIN_RE.fullmatch(vin):
-                result["vin"]            = vin
-                result["vin_confidence"] = "found_in_schema"
-
-            result["description"] = data.get("description", "")
-
-            images = data.get("image", [])
-            result["photos"] = ([images] if isinstance(images, str) else images)
-
-            offers = data.get("offers", {})
-            if isinstance(offers, dict):
-                result["price_pln"] = offers.get("price")
-
-            area = data.get("areaServed", {})
-            if isinstance(area, dict):
-                result["location_city"] = area.get("name")
-            elif isinstance(area, str):
-                result["location_city"] = area
-
-        elif schema_type == "Product":
-            result["source_listing_id"] = str(data.get("sku") or data.get("productID") or "")
-            if not result.get("photos"):
-                images = data.get("image", [])
-                result["photos"] = [images] if isinstance(images, str) else images
-
-    return result
-
-
-def parse_params(soup):
-    """Extract structured parameters from the OLX listing HTML."""
-    params = {}
-
-    # Strategy 1: data-testid based (current OLX structure)
-    container = (
-        soup.find(attrs={"data-testid": "ad-params-container"}) or
-        soup.find(attrs={"data-testid": "ad-params"}) or
-        soup.find(attrs={"data-testid": "ad-details"})
+def olx_search_url(brand: str, model: str) -> str:
+    """Build OLX.pl search URL for a brand + model combination."""
+    make_slug = MAKE_SLUGS[brand]
+    return (
+        f"https://www.olx.pl/motoryzacja/samochody/{make_slug}/"
+        f"?search%5Bfilter_enum_model%5D%5B0%5D={model}"
     )
-    if container:
-        for item in container.find_all("li"):
-            texts = [p.get_text(strip=True) for p in item.find_all(["p", "span", "strong"])]
-            if len(texts) >= 2:
-                label = texts[0].lower().rstrip(":")
-                value = texts[1]
-                field = PL_PARAM_MAP.get(label)
-                if field:
-                    params[field] = value
-
-    # Strategy 2: look for any <li> with two adjacent <p> tags (label + value)
-    if not params:
-        for li in soup.find_all("li"):
-            ps = li.find_all("p", recursive=False)
-            if len(ps) == 2:
-                label = ps[0].get_text(strip=True).lower().rstrip(":")
-                value = ps[1].get_text(strip=True)
-                field = PL_PARAM_MAP.get(label)
-                if field:
-                    params[field] = value
-
-    return params
 
 
-def clean_params(raw):
-    """Coerce extracted HTML param strings to the right Python types."""
-    out = {}
-    for field, val in raw.items():
-        if not val:
-            continue
-        val = str(val).strip()
-        if field == "mileage_km":
-            digits = re.sub(r"[^\d]", "", val)
-            out[field] = int(digits) if digits else None
-        elif field == "engine_cc":
-            digits = re.sub(r"[^\d]", "", val)
-            out[field] = int(digits) if digits else None
-        elif field == "power_hp":
-            m = re.search(r"(\d+)", val)
-            out[field] = int(m.group(1)) if m else None
-        elif field == "year":
-            m = re.search(r"(\d{4})", val)
-            out[field] = int(m.group(1)) if m else None
-        elif field == "doors":
-            m = re.search(r"(\d+)", val)
-            out[field] = int(m.group(1)) if m else None
-        elif field == "transmission":
-            v = val.lower()
-            if "automat" in v:
-                out[field] = "automatic"
-            elif "manual" in v or "ręczna" in v:
-                out[field] = "manual"
-            else:
-                out[field] = val
-        elif field == "drivetrain":
-            v = val.lower()
-            if "4x4" in v or "4wd" in v or "awd" in v or "quattro" in v or "xdrive" in v:
-                out[field] = "AWD"
-            elif "rwd" in v or "tylny" in v or "tył" in v:
-                out[field] = "RWD"
-            elif "fwd" in v or "przód" in v:
-                out[field] = "FWD"
-            else:
-                out[field] = val
-        elif field == "fuel_type":
-            v = val.lower()
-            if "benzyn" in v or "petrol" in v:
-                out[field] = "petrol"
-            elif "diesel" in v:
-                out[field] = "diesel"
-            elif "hybrid" in v:
-                out[field] = "hybrid"
-            elif "elektr" in v:
-                out[field] = "electric"
-            else:
-                out[field] = val
-        else:
-            out[field] = val
-    return out
+def _crawl_url(job_id: str = "") -> str:
+    base = CRAWL_BASE.format(account_id=CF_ACCOUNT_ID)
+    return f"{base}/{job_id}" if job_id else base
 
 
-def scan_description_for_vin(text):
-    """Return first valid-looking VIN found in free text."""
-    if not text:
-        return None
-    for m in VIN_RE.finditer(text.upper()):
-        candidate = m.group()
-        # Basic VIN sanity: no I, O, Q, must be 17 chars
-        if len(candidate) == 17:
-            return candidate
-    return None
-
-
-def extract_seller_type(soup):
-    """Detect private vs dealer from page."""
-    page_text = soup.get_text(" ", strip=True).lower()
-    if "dealer" in page_text or "firma" in page_text or "salon" in page_text:
-        return "dealer"
-    return "private"
+def _headers() -> dict:
+    return {
+        "Authorization": f"Bearer {CF_BR_API_TOKEN}",
+        "Content-Type": "application/json",
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Search result parsing
+# Crawl API
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_listing_urls(soup):
-    """Extract OLX listing URLs from a rendered search results page.
+def submit_crawl(url: str) -> str:
+    """POST a crawl job and return the job_id."""
+    make_slug = next(
+        (s for s in MAKE_SLUGS.values() if f"/{s}/" in url),
+        "samochody",
+    )
+    payload = {
+        "url": url,
+        "limit": CRAWL_LIMIT,
+        "depth": 2,
+        "formats": ["markdown"],
+        "render": True,
+        "source": "links",
+        "rejectResourceTypes": ["image", "media", "font", "stylesheet"],
+        "gotoOptions": {"waitUntil": "networkidle2", "timeout": 60000},
+        "options": {
+            "includePatterns": [
+                f"https://www.olx.pl/motoryzacja/samochody/{make_slug}/**",
+                "https://www.olx.pl/d/oferta/**",
+            ],
+            "excludePatterns": [],
+        },
+    }
+    resp = requests.post(_crawl_url(), json=payload, headers=_headers(), timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    if not data.get("success"):
+        raise RuntimeError(f"Crawl submit failed: {data.get('errors')}")
+    job_id: str = data["result"]
+    log.info("Crawl job submitted: %s", job_id)
+    return job_id
 
-    Primary: data-cy='l-card' cards (confirmed selector as of 2025).
-    Fallback: any <a href> containing /d/oferta/.
-    Only returns olx.pl URLs — skips aggregated otomoto.pl cards.
+
+def poll_crawl(job_id: str, timeout_secs: int = CRAWL_TIMEOUT) -> list[dict]:
     """
-    urls = set()
+    Poll until the crawl job reaches a terminal status, then fetch and
+    return all records (handles pagination for results > 10 MB).
+    """
+    terminal = {"completed", "errored", "cancelled_due_to_timeout",
+                "cancelled_due_to_limits", "cancelled_by_user"}
 
-    def is_olx_url(url):
-        return "olx.pl/d/oferta/" in url or "olx.pl/oferta/" in url
+    deadline = time.time() + timeout_secs
+    while time.time() < deadline:
+        resp = requests.get(
+            _crawl_url(job_id),
+            params={"limit": 1},
+            headers=_headers(),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        status = data.get("result", {}).get("status", "running")
+        log.info("  Crawl status: %s", status)
+        if status in terminal:
+            break
+        time.sleep(POLL_INTERVAL)
+    else:
+        raise TimeoutError(f"Crawl job {job_id} did not finish within {timeout_secs}s")
 
-    # Primary: listing cards identified by data-cy="l-card"
-    for card in soup.select("[data-cy='l-card']"):
-        link = card if card.name == "a" else card.find("a", href=True)
-        if link and link.get("href"):
-            href = link["href"]
-            full = href if href.startswith("http") else BASE_URL + href
-            if is_olx_url(full):
-                urls.add(full.split("?")[0])   # strip tracking params
+    if status != "completed":
+        log.warning("Crawl job %s ended with status: %s", job_id, status)
+        return []
 
-    # Fallback: any anchor with /d/oferta/ in the href
-    if not urls:
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if "/d/oferta/" in href:
-                full = href if href.startswith("http") else BASE_URL + href
-                if is_olx_url(full):
-                    urls.add(full.split("?")[0])
+    # Fetch all records with cursor-based pagination
+    records: list[dict] = []
+    params: dict = {"status": "completed"}
+    while True:
+        resp = requests.get(
+            _crawl_url(job_id),
+            params=params,
+            headers=_headers(),
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        batch = data.get("result", {}).get("records", [])
+        records.extend(batch)
+        cursor = data.get("result", {}).get("cursor")
+        if not cursor:
+            break
+        params["cursor"] = cursor
 
-    return list(urls)
+    log.info("  Crawl fetched %d records", len(records))
+    return records
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Listing scraper
+# Markdown parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
-def scrape_listing(session, url):
-    """Fetch one listing page and return a dict ready for /api/ingest_pending."""
-    resp = get(session, url)
-    if resp is None:
+def _digits(text: str) -> int | None:
+    """Strip whitespace/non-digits and return int, or None."""
+    clean = re.sub(r"[^\d]", "", text)
+    return int(clean) if clean else None
+
+
+def parse_listing_from_markdown(record: dict) -> dict | None:
+    """
+    Parse one crawl record into a listing dict for /api/ingest_pending.
+    Returns None if the record is a search results page, not a listing detail.
+    """
+    url = record.get("url", "")
+
+    # Skip search results pages — keep only individual listing detail pages
+    if "/d/oferta/" not in url and "/oferta/" not in url:
         return None
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    jld   = parse_jsonld(soup)
-    praw  = parse_params(soup)
-    pclean = clean_params(praw)
-
-    # Merge: JSON-LD wins where it has data, HTML params fill in the rest
-    def pick(field, fallback=None):
-        return jld.get(field) or pclean.get(field) or fallback
-
-    description = jld.get("description", "")
-
-    # VIN: schema > description scan
-    vin            = jld.get("vin")
-    vin_confidence = jld.get("vin_confidence", "none")
-    if not vin:
-        vin = scan_description_for_vin(description)
-        if vin:
-            vin_confidence = "found_in_description"
-
-    # Year filter – skip if outside our range
-    year = pick("year") or pclean.get("year")
-    if year and (int(year) < YEAR_FROM or int(year) > YEAR_TO):
-        log.debug("  skip year %s out of range", year)
+    # Skip errored / blocked records
+    rec_status = record.get("status")
+    if rec_status not in (None, 200, "200", "completed"):
+        log.debug("  skip %s (status=%s)", url, rec_status)
         return None
 
-    # Extract listing ID from URL  (…-IDxxxxxxx.html)
-    listing_id_match = re.search(r'-ID([A-Za-z0-9]+)\.html', url)
-    source_listing_id = jld.get("source_listing_id") or (
-        listing_id_match.group(1) if listing_id_match else None
+    markdown = record.get("markdown") or ""
+    metadata = record.get("metadata") or {}
+    title = metadata.get("title") or ""
+
+    # source_listing_id — OLX URLs end in ID{id}.html
+    m = ID_RE.search(url)
+    source_listing_id = m.group(1) if m else None
+
+    # Price (PLN)
+    price_pln = None
+    pm = PRICE_RE.search(markdown)
+    if pm:
+        price_pln = _digits(pm.group(1))
+
+    # Mileage
+    mileage_km = None
+    mm = MILE_RE.search(markdown)
+    if mm:
+        mileage_km = _digits(mm.group(1))
+
+    # Year (first plausible 4-digit year)
+    year = None
+    ym = YEAR_RE.search(markdown)
+    if ym:
+        year = int(ym.group(1))
+
+    # VIN
+    vin = None
+    vin_confidence = "none"
+    vm = VIN_RE.search(markdown.upper())
+    if vm:
+        vin = vm.group()
+        vin_confidence = "found_in_description"
+
+    # Location: look for "Lokalizacja" or "Miejsce" label in markdown
+    location_city = None
+    location_region = None
+    loc_m = re.search(
+        r'(?:Lokalizacja|Miejsce|Location)[:\s]*([^\n,]+)(?:,\s*([^\n]+))?',
+        markdown, re.IGNORECASE
     )
+    if loc_m:
+        location_city = loc_m.group(1).strip() or None
+        location_region = (loc_m.group(2) or "").strip() or None
 
-    # Seller info
-    seller_type = extract_seller_type(soup)
+    # Seller type
+    lower_md = markdown.lower()
+    seller_type = "private"
+    if any(kw in lower_md for kw in ("dealer", "firma", "salon", "komisem", "komis")):
+        seller_type = "dealer"
 
     return {
         "source":             "olx",
         "source_listing_id":  source_listing_id,
         "source_url":         url,
-        "raw_title":          soup.title.string.strip() if soup.title else "",
-        "raw_description":    description,
-        "photos":             jld.get("photos", []),
-        "make":               pick("make"),
-        "model":              pick("model"),
+        "raw_title":          title,
+        "raw_description":    markdown[:4000],  # cap to avoid DB column limits
+        "photos":             [],
+        "make":               None,   # injected by scrape_model after parsing
+        "model":              None,
         "variant":            None,
         "year":               year,
-        "body_type":          pick("body_type"),
-        "engine_cc":          pick("engine_cc"),
-        "power_hp":           pick("power_hp"),
-        "fuel_type":          pick("fuel_type"),
-        "drivetrain":         pick("drivetrain"),
-        "transmission":       pick("transmission"),
-        "color_ext":          pick("color_ext"),
-        "doors":              pick("doors"),
-        "price_pln":          pick("price_pln"),
+        "body_type":          None,
+        "engine_cc":          None,
+        "power_hp":           None,
+        "fuel_type":          None,
+        "drivetrain":         None,
+        "transmission":       None,
+        "color_ext":          None,
+        "doors":              None,
+        "price_pln":          price_pln,
         "price_eur":          None,
-        "mileage_km":         pick("mileage_km"),
-        "location_city":      pick("location_city"),
-        "location_region":    None,
+        "mileage_km":         mileage_km,
+        "location_city":      location_city,
+        "location_region":    location_region,
         "seller_type":        seller_type,
         "seller_name":        None,
         "vin":                vin,
@@ -447,112 +315,84 @@ def scrape_listing(session, url):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Target scraper
+# Ingest
 # ─────────────────────────────────────────────────────────────────────────────
 
-def scrape_target(session, make_slug, model_slug, keywords, dry_run=False, ingest_session=None):
-    # Confirmed: float year filter, enum model, page param
-    def build_url(page=1):
-        return (
-            f"{BASE_URL}/motoryzacja/samochody/{make_slug}/"
-            f"?search%5Bfilter_enum_model%5D%5B0%5D={model_slug}"
-            f"&search%5Bfilter_float_year%3Afrom%5D={YEAR_FROM}"
-            f"&search%5Bfilter_float_year%3Ato%5D={YEAR_TO}"
-            f"&page={page}"
+def ingest(listing: dict, dry_run: bool = False) -> None:
+    """POST a parsed listing to Flask /api/ingest_pending."""
+    if dry_run:
+        sys.stdout.buffer.write(
+            json.dumps(listing, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
         )
-
-    total_posted = 0
-    seen_urls = set()    # track across pages to detect when OLX stops returning new ones
-
-    for page in range(1, MAX_PAGES + 1):
-        url = build_url(page)
-        log.info("[%s/%s] page %d", make_slug, model_slug, page)
-
-        resp = get(session, url)
-        if resp is None:
-            log.warning("  404 — skipping %s/%s", make_slug, model_slug)
-            return total_posted
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        listing_urls = get_listing_urls(soup)
-
-        if not listing_urls:
-            log.info("  no listings on page %d, stopping", page)
-            break
-
-        # Stop if OLX is cycling the same listings (happens after last real page)
-        new_urls = [u for u in listing_urls if u not in seen_urls]
-        if not new_urls:
-            log.info("  no new URLs on page %d, pagination exhausted", page)
-            break
-        seen_urls.update(new_urls)
-        log.info("  %d new listing URLs (page %d)", len(new_urls), page)
-
-        for listing_url in new_urls:
-            log.info("    scraping %s", listing_url)
-            data = scrape_listing(session, listing_url)
-
-            if data is None:
-                continue
-
-            # Keyword check: title must mention the model we're searching for
-            title_check = (data.get("raw_title") or "").upper()
-            if keywords and not any(kw.upper() in title_check for kw in keywords):
-                log.info("    skip (keyword mismatch) — %s", (data.get("raw_title") or "")[:60])
-                continue
-
-            if dry_run:
-                print(json.dumps(data, ensure_ascii=False, indent=2))
-            else:
-                try:
-                    poster = ingest_session or requests
-                    r = poster.post(INGEST_URL, json=data, timeout=10)
-                    result = r.json()
-                    if result.get("status") == "ok" and result.get("id"):
-                        log.info("    posted → pending id=%s", result["id"])
-                        total_posted += 1
-                    elif result.get("id") == 0 or "already exists" in str(result):
-                        log.debug("    duplicate, skipped")
-                    else:
-                        log.warning("    ingest error: %s", result)
-                except Exception as e:
-                    log.error("    POST failed: %s", e)
-
-    return total_posted
+        return
+    try:
+        r = requests.post(FLASK_INGEST_URL, json=listing, timeout=10)
+        result = r.json()
+        if result.get("status") == "ok":
+            log.info("    posted → pending id=%s", result.get("id"))
+        else:
+            log.warning("    ingest response: %s", result)
+    except Exception as e:
+        log.error("    POST failed: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main
+# Scrape helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main():
+def scrape_model(brand: str, model: str, dry_run: bool = False) -> None:
+    """Crawl one brand + model, parse all listing records, ingest each."""
+    log.info("[%s / %s] submitting crawl", brand, model)
+    url = olx_search_url(brand, model)
+    try:
+        job_id = submit_crawl(url)
+        records = poll_crawl(job_id)
+    except Exception as e:
+        log.error("[%s / %s] crawl failed: %s", brand, model, e)
+        return
+
+    ingested = 0
+    for record in records:
+        listing = parse_listing_from_markdown(record)
+        if listing is None:
+            continue
+        # Inject brand/model context
+        listing["make"] = brand
+        listing["model"] = model
+        ingest(listing, dry_run=dry_run)
+        ingested += 1
+
+    log.info("[%s / %s] ingested %d listings", brand, model, ingested)
+
+
+def scrape_brand(brand: str, dry_run: bool = False) -> None:
+    """Iterate all models for one brand."""
+    models = TARGETS.get(brand)
+    if not models:
+        log.error("Unknown brand: %s  (valid: %s)", brand, list(TARGETS))
+        return
+    for model in models:
+        scrape_model(brand, model, dry_run=dry_run)
+
+
+def scrape_all(dry_run: bool = False) -> None:
+    """Iterate all brands and models."""
+    for brand in TARGETS:
+        scrape_brand(brand, dry_run=dry_run)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
     args = [a for a in args if a != "--dry-run"]
 
-    # Optional: single target  e.g.  python scrapers/olx.py bmw m3
     if len(args) == 2:
-        targets = [(args[0], args[1], [])]
+        scrape_model(args[0], args[1], dry_run)   # e.g. BMW m3
+    elif len(args) == 1:
+        scrape_brand(args[0], dry_run)             # e.g. BMW
     else:
-        targets = TARGETS
-
-    session = make_session()
-    ingest_session = requests.Session()  # persistent connection to local Flask server
-    grand_total = 0
-
-    for make_slug, model_slug, keywords in targets:
-        try:
-            n = scrape_target(session, make_slug, model_slug, keywords,
-                              dry_run=dry_run, ingest_session=ingest_session)
-            grand_total += n
-        except KeyboardInterrupt:
-            log.info("Interrupted.")
-            break
-        except Exception as e:
-            log.error("Error on %s/%s: %s", make_slug, model_slug, e)
-
-    log.info("Done. Total listings posted: %d", grand_total)
-
-
-if __name__ == "__main__":
-    main()
+        scrape_all(dry_run)                        # no args → all brands

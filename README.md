@@ -44,14 +44,14 @@ The **VIN is the permanent identity key**. All listing observations, condition r
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.11+, Flask |
-| Database | SQLite (single file, WAL mode) |
+| Database | SQLite (local dev) or Cloudflare D1 (production) |
 | Frontend | Bootstrap 5, Chart.js |
-| Scraping | requests + BeautifulSoup4 |
+| Scraping | Cloudflare Browser Rendering `/crawl` (headless, JS-rendered) |
 | Deployment | Any machine with Python — no Docker required |
 
 ---
 
-## Quick start
+## Quick start (local SQLite — no cloud setup needed)
 
 ```bash
 # 1. Clone
@@ -80,21 +80,82 @@ Open **http://127.0.0.1:5555** in your browser.
 
 ---
 
+## Cloud setup (Cloudflare D1 + Browser Rendering)
+
+This step is optional. The app works fully with local SQLite out of the box.
+
+### 1. Create a Cloudflare account and install Wrangler
+
+```bash
+npm install -g wrangler
+wrangler login
+```
+
+### 2. Create the D1 database
+
+```bash
+wrangler d1 create sportscar-db
+# Note the database_id shown in the output
+```
+
+### 3. Push the schema
+
+```bash
+wrangler d1 execute sportscar-db --file=schema.sql --remote
+```
+
+### 4. (Optional) Migrate existing SQLite data
+
+```bash
+# Export your local data to SQL first, then:
+wrangler d1 execute sportscar-db --file=export.sql --remote
+```
+
+### 5. Create an API token
+
+Go to **Cloudflare Dashboard → My Profile → API Tokens → Create Token**.
+Required permissions:
+- `D1:Edit` — for the sportscar-db database
+- `Browser Rendering:Edit` — for the OLX scraper
+
+### 6. Configure environment variables
+
+```bash
+cp .env.example .env
+# Edit .env and fill in your CF_ACCOUNT_ID, CF_D1_DATABASE_ID,
+# CF_API_TOKEN, and CF_BR_API_TOKEN.
+# Then set DB_BACKEND=d1 to activate the D1 backend.
+```
+
+---
+
 ## Running the OLX scraper
 
 The scraper requires the Flask app to be running (it POSTs to `/api/ingest_pending`).
+It uses the **Cloudflare Browser Rendering `/crawl` endpoint** — a real headless browser
+that handles JavaScript-rendered pages. Set `CF_BR_API_TOKEN` in your `.env` before running.
 
 ```bash
 # In one terminal — start the web app
 python app.py
 
 # In another terminal — run the scraper
-python scrapers/olx.py                  # all 40+ targets
-python scrapers/olx.py bmw m3           # single target
-python scrapers/olx.py --dry-run        # preview without posting
+python scrapers/olx.py                    # all brands and models
+python scrapers/olx.py BMW                # single brand (all its models)
+python scrapers/olx.py BMW m3             # single model
+python scrapers/olx.py BMW x3-m --dry-run # preview parsed output, nothing posted
 ```
 
-Scraped listings appear in **Review Queue** (`/review`). Review each listing, correct any fields, then approve or reject. Approved listings are committed to `vehicles` + `listing_observations`.
+Each crawl job runs remotely on Cloudflare infrastructure (~7–10 minutes per model,
+up to 100 listing pages rendered). Progress is logged to stdout.
+
+Scraped listings land in the **Review Queue** (`/review`). Review each listing,
+correct any fields, then approve or reject. Approved listings are committed to
+`vehicles` + `listing_observations`. Duplicate submissions (same `source` +
+`source_listing_id`) are silently ignored.
+
+> **Note:** The Browser Rendering API token requires `Browser Rendering: Edit` permission.
+> A token with only `Read` will return HTTP 401 on crawl submission.
 
 ### Scraper targets (as of March 2026)
 
@@ -253,12 +314,14 @@ All vehicles as a JSON array.
 ```
 sportscar-db/
 ├── app.py                  # Flask routes — all UI pages + REST API
-├── db.py                   # Schema definition, migrations, init_db(), resolve_placeholder()
+├── db.py                   # Schema, D1Backend, get_db() factory, migrations
+├── schema.sql              # DDL for wrangler d1 execute --file=schema.sql --remote
 ├── seed.py                 # Demo data — 6 cars with realistic price histories
 ├── requirements.txt        # Python dependencies
+├── .env.example            # Environment variable template
 ├── scrapers/
 │   ├── __init__.py
-│   └── olx.py              # OLX.pl scraper — search + detail extraction + ingest
+│   └── olx.py              # OLX.pl scraper via CF Browser Rendering /crawl
 └── templates/
     ├── base.html            # Navbar, Bootstrap 5 + Chart.js CDN
     ├── dashboard.html       # Stat cards + 4 charts
@@ -293,8 +356,12 @@ No data is lost.
 
 ## Roadmap
 
-- [x] OLX scraper 1.0
+- [x] OLX scraper 1.0 (requests + BeautifulSoup4 — deprecated)
+- [x] OLX scraper 2.0 (Cloudflare Browser Rendering `/crawl` — headless, JS-rendered)
+- [x] OLX scraper 2.1 (fixed URL encoding, mileage vs. horsepower disambiguation, include pattern fix, year range 1985–2039)
+- [x] Cloudflare D1 backend (serverless SQLite via REST API, full sqlite3 interface compatibility)
 - [ ] OtoMoto scraper
+- [ ] Mileage extraction improvement (parse "Przebieg" label context from OLX markdown)
 - [ ] Pagination on vehicle list (currently unbounded)
 - [ ] Price alert notifications
 - [ ] CSV / JSON bulk export
