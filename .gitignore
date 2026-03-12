@@ -5,3 +5,7 @@ __pycache__/
 .venv/
 venv/
 files.zip
+.env
+.wrangler/
+*.log
+export.sql

@@ -1,7 +1,13 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from db import get_conn, init_db, make_placeholder_vin, resolve_placeholder
+from db import get_db, init_db, make_placeholder_vin, resolve_placeholder
 from datetime import datetime
 import json
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 app = Flask(__name__)
 app.jinja_env.filters["fromjson"] = json.loads
@@ -14,7 +20,7 @@ NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 @app.route("/")
 def dashboard():
-    conn = get_conn()
+    conn = get_db()
 
     s = conn.execute("""
         SELECT
@@ -95,7 +101,7 @@ def dashboard():
 
 @app.route("/vehicles")
 def vehicles_list():
-    conn  = get_conn()
+    conn  = get_db()
     q     = request.args.get("q", "").strip()
     make  = request.args.get("make", "")
     status = request.args.get("status", "")
@@ -150,7 +156,7 @@ def vehicles_list():
 
 @app.route("/vehicle/<path:vin>")
 def vehicle_detail(vin):
-    conn = get_conn()
+    conn = get_db()
     vehicle = conn.execute("SELECT * FROM vehicles WHERE vin=?", (vin,)).fetchone()
     if not vehicle:
         conn.close()
@@ -211,7 +217,7 @@ def add_vehicle():
     if request.method == "POST":
         data = request.form
         vin  = data["vin"].strip().upper()
-        conn = get_conn()
+        conn = get_db()
         try:
             conn.execute("""
                 INSERT INTO vehicles
@@ -278,7 +284,7 @@ def add_vehicle():
 @app.route("/vehicle/<path:vin>/add_observation", methods=["POST"])
 def add_observation(vin):
     data = request.form
-    conn = get_conn()
+    conn = get_db()
     conn.execute("""
         INSERT INTO listing_observations
           (vin,source,source_listing_id,source_url,price_pln,price_eur,
@@ -318,7 +324,7 @@ def add_observation(vin):
 def add_condition(vin):
     data = request.form
     af = data.get("accident_free")
-    conn = get_conn()
+    conn = get_db()
     conn.execute("""
         INSERT INTO condition_reports
           (vin,report_date,mileage_km,accident_free,service_history,
@@ -364,7 +370,7 @@ def resolve_vin(vin):
 
 @app.route("/corrections")
 def corrections():
-    conn = get_conn()
+    conn = get_db()
     log = conn.execute(
         "SELECT * FROM vin_correction_log ORDER BY created_at DESC").fetchall()
     conn.close()
@@ -393,7 +399,7 @@ def api_ingest():
         else:
             return jsonify({"error": "need either valid vin or source_listing_id"}), 400
 
-    conn = get_conn()
+    conn = get_db()
     # Upsert vehicle (placeholder or real)
     is_placeholder = vin.startswith("UNVERIFIED")
     conn.execute("""
@@ -445,7 +451,7 @@ def api_ingest():
 
 @app.route("/api/stats")
 def api_stats():
-    conn = get_conn()
+    conn = get_db()
     data = {
         "total_vins":       conn.execute("SELECT COUNT(*) FROM vehicles").fetchone()[0],
         "placeholder_vins": conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder'").fetchone()[0],
@@ -458,7 +464,7 @@ def api_stats():
 
 @app.route("/api/vehicles")
 def api_vehicles():
-    conn = get_conn()
+    conn = get_db()
     rows = conn.execute("SELECT * FROM vehicles ORDER BY updated_at DESC").fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
@@ -471,7 +477,7 @@ def api_vehicles():
 @app.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
     p = request.get_json(force=True)
-    conn = get_conn()
+    conn = get_db()
     try:
         conn.execute("""
             INSERT OR IGNORE INTO pending_listings
@@ -531,7 +537,7 @@ def api_ingest_pending():
 @app.route("/review")
 def review_queue():
     status_filter = request.args.get("status", "pending")
-    conn = get_conn()
+    conn = get_db()
     listings = conn.execute("""
         SELECT * FROM pending_listings
         WHERE status = ?
@@ -547,7 +553,7 @@ def review_queue():
 
 @app.route("/review/<int:pid>")
 def review_detail(pid):
-    conn = get_conn()
+    conn = get_db()
     listing = conn.execute(
         "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
     conn.close()
@@ -560,7 +566,7 @@ def review_detail(pid):
 @app.route("/review/<int:pid>/approve", methods=["POST"])
 def review_approve(pid):
     data = request.form
-    conn = get_conn()
+    conn = get_db()
     listing = conn.execute(
         "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
     if not listing:
@@ -639,7 +645,7 @@ def review_approve(pid):
 @app.route("/review/<int:pid>/reject", methods=["POST"])
 def review_reject(pid):
     reason = request.form.get("reason", "")
-    conn = get_conn()
+    conn = get_db()
     conn.execute("""
         UPDATE pending_listings
         SET status='rejected', reviewed_at=datetime('now'), review_notes=?
