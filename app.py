@@ -642,6 +642,32 @@ def review_approve(pid):
     return redirect(url_for("vehicle_detail", vin=vin))
 
 
+@app.route("/review/reject_all_pending")
+def review_reject_all_pending():
+    conn = get_conn()
+    conn.execute(
+        "UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') WHERE status='pending'"
+    )
+    conn.commit()
+    conn.close()
+    return redirect(url_for("review_queue"))
+
+
+@app.route("/review/bulk_reject", methods=["POST"])
+def review_bulk_reject():
+    ids = request.form.getlist("ids")
+    if ids:
+        conn = get_conn()
+        conn.execute(
+            f"UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') "
+            f"WHERE id IN ({','.join('?' * len(ids))})",
+            ids,
+        )
+        conn.commit()
+        conn.close()
+    return redirect(url_for("review_queue"))
+
+
 @app.route("/review/<int:pid>/reject", methods=["POST"])
 def review_reject(pid):
     reason = request.form.get("reason", "")
