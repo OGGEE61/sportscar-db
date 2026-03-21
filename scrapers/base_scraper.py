@@ -22,7 +22,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 API_URL      = "http://127.0.0.1:5555/api/ingest_pending"
-HEADERS      = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+# Must match the browser that generated the datadome / session cookies
+BROWSER_UA   = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/146.0.0.0 Safari/537.36")
+HEADERS      = {"User-Agent": BROWSER_UA}
 VIN_RE       = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "otomoto_cookies.json")
 
@@ -59,10 +63,20 @@ def parse_price(text: str) -> Optional[int]:
 
 
 def load_cookies() -> dict:
+    """Load cookies from otomoto_cookies.json.
+
+    Accepts two formats:
+      - Cookie-Editor array export: [{name, value, ...}, ...]
+      - Simple flat dict:           {name: value, ...}
+    """
     if os.path.exists(COOKIES_FILE):
         try:
             with open(COOKIES_FILE) as f:
-                return json.load(f)
+                data = json.load(f)
+            if isinstance(data, list):
+                return {c["name"]: c["value"] for c in data
+                        if "name" in c and "value" in c}
+            return data
         except Exception:
             pass
     return {}
