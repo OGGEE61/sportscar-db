@@ -687,8 +687,13 @@ def review_approve(pid):
         conn.close()
         return f"Error approving listing: {e}", 500
 
+    next_pending = conn.execute(
+        "SELECT id FROM pending_listings WHERE status='pending' ORDER BY id LIMIT 1"
+    ).fetchone()
     conn.close()
-    return redirect(url_for("vehicle_detail", vin=vin))
+    if next_pending:
+        return redirect(url_for("review_detail", pid=next_pending["id"]))
+    return redirect(url_for("review_list", status="pending"))
 
 
 @app.route("/review/reject_all_pending")
@@ -727,8 +732,13 @@ def review_reject(pid):
         WHERE id=?
     """, (reason, pid))
     conn.commit()
+    next_pending = conn.execute(
+        "SELECT id FROM pending_listings WHERE status='pending' ORDER BY id LIMIT 1"
+    ).fetchone()
     conn.close()
-    return redirect(url_for("review_queue"))
+    if next_pending:
+        return redirect(url_for("review_detail", pid=next_pending["id"]))
+    return redirect(url_for("review_list", status="pending"))
 
 
 if __name__ == "__main__":
