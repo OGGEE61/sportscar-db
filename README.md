@@ -1,41 +1,40 @@
 # SportsCar DB
 
-A lightweight, self-hosted web application for tracking the **performance car secondary market** — price history, listing observations, VIN verification, and condition reports, all backed by a single SQLite file.
+A lightweight, self-hosted web application for tracking the **performance car secondary market** — price history, listing observations, VIN-based identity, and condition reports, all backed by a single SQLite file.
 
-Built for enthusiasts and researchers who want to systematically follow high-end car listings across Polish marketplaces (OLX, OtoMoto) and understand how prices move over time.
+Built for enthusiasts and researchers who want to systematically follow high-end car listings on Polish marketplaces (otomoto.pl) and understand how prices move over time.
+
+<img width="1408" height="768" alt="Gemini_Generated_Image_wtgp3bwtgp3bwtgp" src="https://github.com/user-attachments/assets/15602997-05dc-43a8-91f8-71bec77e35fb" />
 
 ---
 
 ## What it does
 
-Most car-tracking tools show you a snapshot: current listings, current price. SportsCar DB is **observation-based** — every time a scraper or user records a listing, a new row is created with a timestamp. This means you can:
+Most car-tracking tools show a snapshot: current listings, current price. SportsCar DB is **observation-based** — every time a scraper records a listing, a new timestamped row is created. This means you can:
 
 - Watch a single ad's **price drop over weeks** before it sells
 - See **when an ad disappeared** (likely sold)
 - Compare what the same car sold for vs. what it was originally listed at
 - Track market-wide trends: average prices, active inventory, source distribution
 
-The **VIN is the permanent identity key**. All listing observations, condition reports, and tags attach to a VIN — not to an ad. If a car appears on OtoMoto and OLX simultaneously, both observations live under the same VIN.
-
-
-<img width="1408" height="768" alt="Gemini_Generated_Image_wtgp3bwtgp3bwtgp" src="https://github.com/user-attachments/assets/15602997-05dc-43a8-91f8-71bec77e35fb" />
-
-
+The **VIN is the permanent identity key**. All listing observations, condition reports, and tags attach to a VIN — not to an ad ID. If the same car is listed twice at different prices, both observations live under the same VIN.
 
 ---
 
 ## Features
 
-- **Dashboard** — stat cards + 4 live charts (make distribution, price ranges, weekly observation volume, source breakdown)
+- **Dashboard** — stat cards + 4 live charts (make distribution, price ranges, weekly volume, source breakdown)
 - **Vehicle list** — searchable, filterable, sortable table of all tracked VINs
-- **Vehicle detail** — full history per VIN: grouped ad timelines, price chart, condition reports, tags, VIN correction log
-- **Manual entry** — add a vehicle and its first listing observation via web form
-- **OLX scraper** — automated scraping of 40+ model targets across BMW M, Mercedes-AMG, Audi RS/S, Porsche, and VW performance variants
-- **Review queue** — scraped listings land in a staging area (`pending_listings`) for human review before being committed to the database
-- **Placeholder VINs** — listings with no VIN get a deterministic `UNVERIFIED-SOURCE-ID` key; resolve to a real VIN later when discovered
-- **VIN correction workflow** — re-keys all related data from a placeholder/wrong VIN to the correct one, with full audit trail
-- **REST API** — `POST /api/ingest` for direct scraper ingest; `POST /api/ingest_pending` for review-gated ingest; `GET /api/vehicles` and `/api/stats`
-- **Condition reports** — accident-free status, service history, condition score per inspection event
+- **Vehicle detail** — full history per VIN: grouped ad timelines, price chart, condition reports, tags, VIN correction log, photo
+- **VIN decryption** — otomoto encrypts VINs client-side using AES-256-GCM; the scraper decrypts them locally using the listing's numeric ID as key material (no login required)
+- **Photo persistence** — first photo is downloaded and compressed (Pillow, max 800px, JPEG q75) at scrape time; survives listing expiry
+- **Review queue** — scraped listings land in a staging area for human review; approve → goes straight to the next pending listing
+- **Tag management** — add/remove free-text tags on any vehicle detail page
+- **Vehicle deletion** — double-confirm (type VIN + JS dialog); cascades all related data
+- **Placeholder VINs** — listings with no VIN get a deterministic `UNVERIFIED-SOURCE-ID` key; resolve to a real VIN later via the web UI
+- **VIN correction workflow** — re-keys all related data from placeholder/wrong VIN to correct one, with full audit trail
+- **Manual entry** — add a vehicle and first observation via web form
+- **REST API** — `POST /api/ingest_pending`, `POST /api/ingest`, `GET /api/vehicles`, `GET /api/stats`
 
 ---
 
@@ -44,14 +43,15 @@ The **VIN is the permanent identity key**. All listing observations, condition r
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.11+, Flask |
-| Database | SQLite (local dev) or Cloudflare D1 (production) |
+| Database | SQLite |
 | Frontend | Bootstrap 5, Chart.js |
-| Scraping | Cloudflare Browser Rendering `/crawl` (headless, JS-rendered) |
-| Deployment | Any machine with Python — no Docker required |
+| HTTP client | curl_cffi (Chrome TLS fingerprint — bypasses DataDome bot detection) |
+| VIN decryption | Python `cryptography` library — AES-256-GCM |
+| Photo processing | Pillow |
 
 ---
 
-## Quick start (local SQLite — no cloud setup needed)
+## Quick start
 
 ```bash
 # 1. Clone
@@ -69,10 +69,7 @@ source .venv/bin/activate       # macOS / Linux
 # 4. Install dependencies
 pip install -r requirements.txt
 
-# 5. (Optional) Seed demo data — 6 cars with realistic price histories
-python seed.py
-
-# 6. Run
+# 5. Run
 python app.py
 ```
 
@@ -80,92 +77,98 @@ Open **http://127.0.0.1:5555** in your browser.
 
 ---
 
-## Cloud setup (Cloudflare D1 + Browser Rendering)
+## Running the scrapers
 
-This step is optional. The app works fully with local SQLite out of the box.
-
-### 1. Create a Cloudflare account and install Wrangler
+Each scraper is a self-contained Python file. The Flask app must be running first (scrapers POST results to `/api/ingest_pending`).
 
 ```bash
-npm install -g wrangler
-wrangler login
+# Terminal 1 — web app
+python app.py
+
+# Terminal 2 — run any scraper
+python scrapers/audi_rs3_8v.py
+python scrapers/audi_rs5.py
+python scrapers/bmw_m4_f82.py
+python scrapers/mercedes_c63_w204.py
+python scrapers/mercedes_e55_w211.py
+python scrapers/porsche_997.py
 ```
 
-### 2. Create the D1 database
+### Cookie authentication (optional)
 
-```bash
-wrangler d1 create sportscar-db
-# Note the database_id shown in the output
-```
+otomoto requires a logged-in session to display VINs in the browser. The scraper decrypts them locally without needing a session, but having cookies loaded also lets the session check confirm your identity.
 
-### 3. Push the schema
+1. Log into otomoto.pl in Chrome
+2. Install the **Cookie-Editor** browser extension
+3. Click **Export → Export as JSON** → save as `scrapers/otomoto_cookies.json`
 
-```bash
-wrangler d1 execute sportscar-db --file=schema.sql --remote
-```
+The scraper loads this file automatically on startup.
 
-### 4. (Optional) Migrate existing SQLite data
+### Scraper targets
 
-```bash
-# Export your local data to SQL first, then:
-wrangler d1 execute sportscar-db --file=export.sql --remote
-```
-
-### 5. Create an API token
-
-Go to **Cloudflare Dashboard → My Profile → API Tokens → Create Token**.
-Required permissions:
-- `D1:Edit` — for the sportscar-db database
-- `Browser Rendering:Edit` — for the OLX scraper
-
-### 6. Configure environment variables
-
-```bash
-cp .env.example .env
-# Edit .env and fill in your CF_ACCOUNT_ID, CF_D1_DATABASE_ID,
-# CF_API_TOKEN, and CF_BR_API_TOKEN.
-# Then set DB_BACKEND=d1 to activate the D1 backend.
-```
+| Scraper | Model | Years | Defaults |
+|---|---|---|---|
+| `audi_rs3_8v.py` | Audi RS3 8V | 2017–2020 | 400 HP, petrol, AWD, auto, 4-door |
+| `audi_rs4_b8.py` | Audi RS4 B8/B8.5 | 2012–2015 | 450 HP, petrol, AWD, auto |
+| `audi_rs5.py` | Audi RS5 B8/B9 | up to 2020 | 450 HP, petrol, AWD, auto |
+| `bmw_m4_f82.py` | BMW M4 F82 + M3 F80 | 2014–2020 | 431 HP, petrol, RWD, auto |
+| `mercedes_c63_w204.py` | Mercedes C63 AMG W204 | 2008–2015 | 457 HP, petrol, RWD, auto |
+| `mercedes_e55_w211.py` | Mercedes E55 AMG W211 | 2003–2006 | 476 HP, petrol, RWD, auto |
+| `porsche_997.py` | Porsche 911 997 | 2004–2012 | petrol, RWD |
 
 ---
 
-## Running the OLX scraper
+## How it works — end to end
 
-The scraper requires the Flask app to be running (it POSTs to `/api/ingest_pending`).
-It uses the **Cloudflare Browser Rendering `/crawl` endpoint** — a real headless browser
-that handles JavaScript-rendered pages. Set `CF_BR_API_TOKEN` in your `.env` before running.
-
-```bash
-# In one terminal — start the web app
-python app.py
-
-# In another terminal — run the scraper
-python scrapers/olx.py                    # all brands and models
-python scrapers/olx.py BMW                # single brand (all its models)
-python scrapers/olx.py BMW m3             # single model
-python scrapers/olx.py BMW x3-m --dry-run # preview parsed output, nothing posted
+```
+otomoto.pl search pages
+        │
+        │  curl_cffi (Chrome TLS fingerprint — bypasses DataDome)
+        ▼
+  List page: urqlState GraphQL cache in __NEXT_DATA__
+  → listing cards (title, price, location, thumbnail URL)
+        │
+        │  1 request per listing
+        ▼
+  Detail page: __NEXT_DATA__ → advert object
+  ┌─────────────────────────────────────────────┐
+  │  params dict  → year, mileage, power, colour │
+  │  AES-256-GCM decrypt(params["vin"],          │
+  │      key=PBKDF2(SHA256(advert.id)[:16].hex)) │
+  │  → real 17-char VIN (no login required)      │
+  │  photo[0].id  → CDN URL                      │
+  └─────────────────────────────────────────────┘
+        │
+        │  Pillow: download + compress photo
+        │  (max 800px wide, JPEG q75 → static/photos/)
+        ▼
+  POST /api/ingest_pending
+        │
+        ▼
+  pending_listings  (status = 'pending')
+        │
+        ▼
+  /review queue — card grid with local photo, price, VIN badge
+  ┌─────────────────────────────────────────────┐
+  │  Approve → next pending listing immediately  │
+  │  Reject  → next pending listing immediately  │
+  │  Bulk reject, Reject all                     │
+  └─────────────────────────────────────────────┘
+        │ approve
+        ▼
+  vehicles (INSERT OR UPDATE)          ← VIN is the primary key
+  listing_observations (INSERT)        ← one row per sighting
+  pending_listings.status = 'approved'
+  vehicles.photo = local_photo (if none set yet)
 ```
 
-Each crawl job runs remotely on Cloudflare infrastructure (~7–10 minutes per model,
-up to 100 listing pages rendered). Progress is logged to stdout.
+### VIN detection tiers
 
-Scraped listings land in the **Review Queue** (`/review`). Review each listing,
-correct any fields, then approve or reject. Approved listings are committed to
-`vehicles` + `listing_observations`. Duplicate submissions (same `source` +
-`source_listing_id`) are silently ignored.
-
-> **Note:** The Browser Rendering API token requires `Browser Rendering: Edit` permission.
-> A token with only `Read` will return HTTP 401 on crawl submission.
-
-### Scraper targets (as of March 2026)
-
-| Brand | Models |
-|---|---|
-| BMW | M2, M3, M4, M5, M6, M8, X3M, X4M, X5M, X6M |
-| Mercedes-AMG | A45, CLA45, C63, E63, S63, SLS AMG, AMG GT, GLE63, GLS63, GL63 |
-| Audi | RS3, RS4, RS5, RS6, RS7, R8, TT RS, S3–S7, SQ5, SQ7, RS Q3, RS Q3 Sportback, RS Q8 |
-| Porsche | 911, Boxster, Cayman, Panamera, Cayenne, Macan |
-| VW | Golf R/GTI R32, Scirocco R |
+| Priority | Method | Badge |
+|---|---|---|
+| 1 | AES-256-GCM decrypt of `params["vin"]` using `advert.id` | green **VIN** |
+| 2 | Regex scan of seller's description text | yellow **VIN?** |
+| 3 | No VIN → `UNVERIFIED-SOURCE-ID` placeholder | — |
 
 ---
 
@@ -179,133 +182,64 @@ vehicles
   engine_cc, engine_cyl, power_hp
   drivetrain, transmission
   color_ext, color_int
+  photo              — path to locally cached compressed photo
   vin_status         — 'placeholder' | 'unverified' | 'verified'
-  source_method      — how the record was created
-  created_at, updated_at   (updated_at maintained by DB trigger)
+  source_method
+  created_at, updated_at
 
-listing_observations             — one row per scrape / sighting
-  id (PK)
-  vin (FK → vehicles, CASCADE DELETE)
-  source             — 'otomoto' | 'olx' | 'manual' | ...
-  source_listing_id  — the ad's ID on the source platform (groups observations of same ad)
-  source_url
-  title, price_pln, price_eur
-  mileage_km
-  location_city, location_region
-  seller_type, seller_name
-  first_seen_at, observed_at, last_seen_at, removed_at
+listing_observations             — append-only; one row per scrape/sighting
+  vin (FK → vehicles)
+  source             — 'otomoto' | 'olx' | 'manual'
+  source_listing_id  — groups multiple observations of the same ad
+  source_url, title
+  price_pln, mileage_km
+  location_city, seller_type, seller_name
+  first_seen_at, observed_at, removed_at
   source_method, notes
 
-pending_listings                 — scraper staging area (review-before-commit)
-  id (PK)
+pending_listings                 — scraper staging area
   source, source_listing_id, source_url
-  scraped_at
-  status             — 'pending' | 'approved' | 'rejected'
+  scraped_at, status             — 'pending' | 'approved' | 'rejected'
   raw_title, raw_description
-  photos             — JSON array of image URLs
-  make, model, variant, year, body_type
-  engine_cc, power_hp, fuel_type, drivetrain, transmission, color_ext, doors
-  price_pln, price_eur, mileage_km
-  location_city, location_region, seller_type, seller_name
-  vin, vin_confidence  — 'found_in_schema' | 'found_in_description' | 'none'
-  is_listing_active  — 1 if still live when scraped, 0 if removed
-  review_notes, reviewed_at
-  UNIQUE(source, source_listing_id)   — deduplication key
+  photos (JSON), local_photo     — remote URLs + locally cached path
+  make, model, variant, year
+  power_hp, fuel_type, drivetrain, transmission, color_ext
+  price_pln, mileage_km, location_city
+  vin, vin_confidence            — 'found_in_schema' | 'found_in_description' | 'none'
+  UNIQUE(source, source_listing_id)
 
 condition_reports
-  vin (FK)
-  report_date, mileage_km
-  accident_free (0/1/null)
-  service_history, condition_score
-  inspection_by
+  vin (FK), report_date, mileage_km
+  accident_free (0/1/null), service_history
+  condition_score (1–10), inspection_by
 
 tags
-  vin (FK)
-  tag                — free-text label, e.g. 'collector', 'low-mileage'
-  source_method
+  vin (FK), tag, source_method   — free-text labels; add/remove in vehicle detail UI
 
-vin_correction_log
-  old_vin → new_vin  — full audit trail of every VIN re-key
-  reason, corrected_by, created_at
+vin_corrections
+  old_vin → new_vin, reason, corrected_by, created_at
 
 schema_migrations
-  version, name, applied_at   — tracks applied schema changes
+  version, name, applied_at
 ```
 
-**Key design rule:** `listing_observations` is append-only. The same ad observed 4 weeks in a row = 4 rows. This is what powers price-over-time charts and sold/removed detection.
-
----
-
-## Review workflow (scraper → database)
-
-```
-OLX search pages
-      ↓  (scrape listing cards, follow URLs)
-listing detail pages
-      ↓  (JSON-LD + HTML param extraction)
-POST /api/ingest_pending
-      ↓  (INSERT OR IGNORE — deduplication by source+id)
-pending_listings  (status = 'pending')
-      ↓
-/review queue UI — human reviews, edits fields, approves or rejects
-      ↓ approve                              ↓ reject
-vehicles (INSERT or UPDATE)        pending_listings.status = 'rejected'
-listing_observations (INSERT)
-pending_listings.status = 'approved'
-```
-
-### VIN detection priority
-1. `vehicleIdentificationNumber` from JSON-LD schema → `vin_confidence = 'found_in_schema'` (green)
-2. Regex scan of description text → `vin_confidence = 'found_in_description'` (yellow, verify manually)
-3. No VIN found → approve generates an `UNVERIFIED-OLX-{id}` placeholder
+**Key design rule:** `listing_observations` is append-only. The same ad observed 4 weeks in a row = 4 rows. This powers price-over-time charts and sold/removed detection.
 
 ---
 
 ## REST API
 
 ### `POST /api/ingest_pending`
-
-Used by the OLX scraper. Adds a listing to the review queue. Duplicate listings (same `source` + `source_listing_id`) are silently ignored.
-
-```json
-{
-  "source": "olx",
-  "source_listing_id": "IDxxxxxxx",
-  "source_url": "https://www.olx.pl/d/oferta/...",
-  "raw_title": "BMW M3 Competition ...",
-  "make": "BMW", "model": "M3", "year": 2019,
-  "power_hp": 510, "mileage_km": 28000,
-  "price_pln": 295000,
-  "location_city": "Kraków",
-  "photos": ["https://...jpg"],
-  "vin": null, "vin_confidence": "none"
-}
-```
+Adds a listing to the review queue. Duplicates (same `source` + `source_listing_id`) are silently ignored.
 
 ### `POST /api/ingest`
-
-Direct ingest — bypasses the review queue. Creates/updates a vehicle and appends one observation immediately. Use for trusted sources or manual scripting.
-
-```json
-{
-  "vin": "WP0ZZZ99ZTS392124",
-  "make": "Porsche", "model": "911", "year": 2020,
-  "source": "otomoto",
-  "source_listing_id": "OT-48291001",
-  "price_pln": 375000,
-  "mileage_km": 22000
-}
-```
-
-**Response:** `{"status": "ok", "vin": "...", "observation_id": 42, "is_placeholder": false}`
-
-### `GET /api/stats`
-
-Aggregate counts and schema version. Useful for monitoring.
+Direct ingest — bypasses review queue. Creates/updates a vehicle and appends one observation immediately.
 
 ### `GET /api/vehicles`
-
 All vehicles as a JSON array.
+
+### `GET /api/stats`
+Aggregate counts and schema version.
 
 ---
 
@@ -313,42 +247,43 @@ All vehicles as a JSON array.
 
 ```
 sportscar-db/
-├── app.py                  # Flask routes — all UI pages + REST API
-├── db.py                   # Schema, D1Backend, get_db() factory, migrations
-├── schema.sql              # DDL for wrangler d1 execute --file=schema.sql --remote
-├── seed.py                 # Demo data — 6 cars with realistic price histories
-├── requirements.txt        # Python dependencies
-├── .env.example            # Environment variable template
+├── app.py                      # Flask routes — UI pages + REST API
+├── db.py                       # Schema, get_db(), migrations
+├── requirements.txt
 ├── scrapers/
-│   ├── __init__.py
-│   └── olx.py              # OLX.pl scraper via CF Browser Rendering /crawl
+│   ├── base_scraper.py         # curl_cffi engine, VIN decryption, photo download
+│   ├── audi_rs3_8v.py
+│   ├── audi_rs4_b8.py
+│   ├── audi_rs5.py
+│   ├── bmw_m4_f82.py           # runs M4 F82 + M3 F80
+│   ├── mercedes_c63_w204.py
+│   ├── mercedes_e55_w211.py
+│   └── porsche_997.py
+├── static/
+│   └── photos/                 # locally cached + compressed car photos (gitignored)
 └── templates/
-    ├── base.html            # Navbar, Bootstrap 5 + Chart.js CDN
-    ├── dashboard.html       # Stat cards + 4 charts
-    ├── vehicles.html        # Filterable/sortable vehicle table
-    ├── vehicle.html         # VIN detail, price chart, observation timeline
-    ├── add_vehicle.html     # Manual entry form
-    ├── review.html          # Pending/approved/rejected listing cards
-    ├── review_detail.html   # Single listing review form (approve / reject)
-    └── corrections.html     # VIN correction audit log
+    ├── base.html
+    ├── dashboard.html
+    ├── vehicles.html
+    ├── vehicle.html             # detail: price chart, tags, delete, condition reports
+    ├── add_vehicle.html
+    ├── review.html              # card grid: pending / approved / rejected
+    ├── review_detail.html       # single listing approve / reject form
+    └── corrections.html
 ```
 
 ---
 
 ## Placeholder VIN workflow
 
-Some listings on OLX don't show the VIN. The scraper still ingests the data using a deterministic placeholder:
+Listings without a VIN get a deterministic placeholder: `UNVERIFIED-OTOMOTO-99887766`
 
-```
-UNVERIFIED-OLX-99887766
-```
-
-All observations attach to this key. When the real VIN is later discovered (e.g., from a subsequent listing, or by contacting the seller), you resolve it via the web UI on the vehicle detail page. The system:
+All observations attach to this key. When the real VIN is discovered, resolve it via the web UI on the vehicle detail page. The system:
 
 1. Copies the vehicle record to the real VIN
 2. Re-keys all observations, condition reports, and tags
-3. Deletes the placeholder record
-4. Writes a row to `vin_correction_log`
+3. Deletes the placeholder
+4. Writes a row to `vin_corrections`
 
 No data is lost.
 
@@ -356,18 +291,20 @@ No data is lost.
 
 ## Roadmap
 
-- [x] OLX scraper 1.0 (requests + BeautifulSoup4 — deprecated)
-- [x] OLX scraper 2.0 (Cloudflare Browser Rendering `/crawl` — headless, JS-rendered)
-- [x] OLX scraper 2.1 (fixed URL encoding, mileage vs. horsepower disambiguation, include pattern fix, year range 1985–2039)
-- [x] Cloudflare D1 backend (serverless SQLite via REST API, full sqlite3 interface compatibility)
-- [ ] OtoMoto scraper
-- [ ] Mileage extraction improvement (parse "Przebieg" label context from OLX markdown)
-- [ ] Pagination on vehicle list (currently unbounded)
+- [x] otomoto.pl scraper with DataDome bypass (curl_cffi Chrome TLS fingerprint)
+- [x] Client-side AES-256-GCM VIN decryption (no login required)
+- [x] Cookie-based session authentication (Cognito JWT refresh)
+- [x] Local photo persistence (download + compress at ingest time)
+- [x] Known-model spec defaults (HP, drivetrain, fuel auto-filled per scraper)
+- [x] Review queue with fast approve→next flow
+- [x] Tag add/remove on vehicle detail page
+- [x] Vehicle deletion with double-confirm
+- [ ] Scheduled scraping (cron / Windows Task Scheduler)
+- [ ] Mileage history chart per vehicle
 - [ ] Price alert notifications
 - [ ] CSV / JSON bulk export
+- [ ] Pagination on vehicle list
 - [ ] Multi-currency support (EUR ↔ PLN live rate)
-- [ ] Public read-only sharing links per VIN
-- [ ] Scraper scheduling (cron / Windows Task Scheduler)
 
 ---
 
