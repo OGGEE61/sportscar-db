@@ -71,10 +71,22 @@
   <div class="card-header">Tags</div>
   <div class="card-body">
     {% for t in tags %}
-    <span class="badge bg-info text-dark me-1">{{ t.tag }} <small class="opacity-75">{{ t.source_method }}</small></span>
+    <span class="badge bg-info text-dark me-1 align-middle">{{ t.tag }}
+      <small class="opacity-75">{{ t.source_method }}</small>
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
+        <input type="hidden" name="tag" value="{{ t.tag }}">
+        <button type="submit" class="btn-close btn-close-white ms-1"
+                style="font-size:.5rem;vertical-align:middle;"
+                title="Remove tag" onclick="event.stopPropagation()"></button>
+      </form>
+    </span>
     {% else %}
     <span class="text-muted">No tags</span>
     {% endfor %}
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
+      <input name="tag" class="form-control form-control-sm" placeholder="Add tag…" style="width:140px;">
+      <button class="btn btn-sm btn-outline-secondary">+</button>
+    </form>
   </div>
 </div>
 
@@ -234,6 +246,31 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Delete vehicle -->
+<div class="card mb-4 border-danger">
+  <div class="card-header bg-danger text-white">Delete vehicle</div>
+  <div class="card-body">
+    {% if request.args.get('delete_error') %}
+    <div class="alert alert-danger py-1 mb-2">VIN did not match — vehicle not deleted.</div>
+    {% endif %}
+    <p class="small text-muted mb-2">
+      This permanently removes the vehicle and all its observations, tags, and condition reports.
+      Type the VIN to confirm.
+    </p>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/delete"
+          class="row g-2 align-items-center"
+          onsubmit="return confirm('Delete {{ vehicle.vin }} permanently?')">
+      <div class="col-auto">
+        <input name="confirm_vin" class="form-control form-control-sm font-monospace"
+               placeholder="{{ vehicle.vin }}" style="width:200px;">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-danger btn-sm">Delete permanently</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

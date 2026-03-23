@@ -389,6 +389,55 @@ def resolve_vin(vin):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TAGS — add / delete from vehicle detail page
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/vehicle/<path:vin>/add_tag", methods=["POST"])
+def add_tag(vin):
+    tag = request.form.get("tag", "").strip()
+    if tag:
+        conn = get_db()
+        conn.execute(
+            "INSERT OR IGNORE INTO tags(vin,tag,source_method) VALUES(?,?,'manual')",
+            (vin, tag)
+        )
+        conn.commit()
+        conn.close()
+    return redirect(url_for("vehicle_detail", vin=vin))
+
+
+@app.route("/vehicle/<path:vin>/delete_tag", methods=["POST"])
+def delete_tag(vin):
+    tag = request.form.get("tag", "").strip()
+    if tag:
+        conn = get_db()
+        conn.execute("DELETE FROM tags WHERE vin=? AND tag=?", (vin, tag))
+        conn.commit()
+        conn.close()
+    return redirect(url_for("vehicle_detail", vin=vin))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DELETE VEHICLE — requires typing the VIN to confirm
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/vehicle/<path:vin>/delete", methods=["POST"])
+def delete_vehicle(vin):
+    confirm = request.form.get("confirm_vin", "").strip().upper()
+    if confirm != vin.upper():
+        return redirect(url_for("vehicle_detail", vin=vin) + "?delete_error=1")
+    conn = get_db()
+    conn.execute("DELETE FROM listing_observations WHERE vin=?", (vin,))
+    conn.execute("DELETE FROM condition_reports WHERE vin=?", (vin,))
+    conn.execute("DELETE FROM tags WHERE vin=?", (vin,))
+    conn.execute("DELETE FROM vin_corrections WHERE old_vin=? OR new_vin=?", (vin, vin))
+    conn.execute("DELETE FROM vehicles WHERE vin=?", (vin,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("vehicle_list"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # VIN CORRECTION LOG (global view)
 # ─────────────────────────────────────────────────────────────────────────────
 
