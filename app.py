@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from db import get_db, init_db, make_placeholder_vin, resolve_placeholder
 from datetime import datetime
-import json
+import json, os, io, re
 
 try:
     from dotenv import load_dotenv
@@ -12,6 +12,30 @@ except ImportError:
 app = Flask(__name__)
 app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "static", "photos")
+os.makedirs(PHOTOS_DIR, exist_ok=True)
+
+
+def save_photo(url: str, filename: str, max_width: int = 800, quality: int = 75) -> str | None:
+    """Download url, compress to JPEG, save to static/photos/. Returns relative path or None."""
+    if not url:
+        return None
+    try:
+        from PIL import Image
+        from curl_cffi import requests as cffi_requests
+        resp = cffi_requests.get(url, timeout=12, impersonate="chrome")
+        if resp.status_code != 200:
+            return None
+        img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+        w, h = img.size
+        if w > max_width:
+            img = img.resize((max_width, int(h * max_width / w)), Image.LANCZOS)
+        path = os.path.join(PHOTOS_DIR, filename)
+        img.save(path, "JPEG", quality=quality, optimize=True)
+        return f"photos/{filename}"
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -523,6 +547,22 @@ def api_ingest_pending():
         ))
         conn.commit()
         lid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # Download + compress first photo for listings that were actually inserted
+        if lid:
+            photos_list = p.get("photos") or []
+            photo_url   = photos_list[0] if photos_list else None
+            source_id   = p.get("source_listing_id") or str(lid)
+            safe_id     = re.sub(r"[^A-Za-z0-9_-]", "_", str(source_id))
+            filename    = f"{p.get('source', 'olx')}_{safe_id}.jpg"
+            local_photo = save_photo(photo_url, filename)
+            if local_photo:
+                conn.execute(
+                    "UPDATE pending_listings SET local_photo=? WHERE id=?",
+                    (local_photo, lid)
+                )
+                conn.commit()
+
         conn.close()
         return jsonify({"status": "ok", "id": lid})
     except Exception as e:
@@ -633,6 +673,15 @@ def review_approve(pid):
             SET status='approved', reviewed_at=datetime('now'), review_notes=?
             WHERE id=?
         """, (data.get("notes"), pid))
+
+        # Attach photo to the vehicle record if we have one
+        local_photo = listing["local_photo"] if "local_photo" in listing.keys() else None
+        if local_photo:
+            conn.execute(
+                "UPDATE vehicles SET photo=? WHERE vin=? AND (photo IS NULL OR photo='')",
+                (local_photo, vin)
+            )
+
         conn.commit()
     except Exception as e:
         conn.close()

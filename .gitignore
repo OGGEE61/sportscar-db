@@ -9,3 +9,5 @@ files.zip
 .wrangler/
 *.log
 export.sql
+scrapers/otomoto_cookies.json
+static/photos/

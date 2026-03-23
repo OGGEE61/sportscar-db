@@ -365,6 +365,17 @@ def init_db():
     if "is_listing_active" not in existing_cols:
         db.execute("ALTER TABLE pending_listings ADD COLUMN is_listing_active INTEGER NOT NULL DEFAULT 1")
 
+    # Migration v4: local_photo — cached compressed photo path for pending_listings
+    if "local_photo" not in existing_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN local_photo TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(4,'local_photo')")
+
+    # Migration v5: photo column on vehicles — set when a listing is approved
+    v_cols = [r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()]
+    if "photo" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN photo TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(5,'vehicle_photo')")
+
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
     db.execute("""

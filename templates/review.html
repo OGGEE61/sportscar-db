@@ -81,8 +81,11 @@
          title="Open on OLX" onclick="event.stopPropagation()">&#8599;</a>
       {% endif %}
 
-      <!-- Thumbnail -->
-      {% if photos %}
+      <!-- Thumbnail — local cached copy preferred, remote URL as fallback -->
+      {% if l.local_photo %}
+      <img src="/static/{{ l.local_photo }}" class="card-img-top"
+           style="height:200px;object-fit:cover;">
+      {% elif photos %}
       <img src="{{ photos[0] }}" class="card-img-top"
            style="height:200px;object-fit:cover;"
            onerror="this.style.display='none'">
