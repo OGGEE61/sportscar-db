@@ -3,12 +3,18 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3">
-  <div>
-    <h2 class="mb-1">{{ vehicle.make }} {{ vehicle.model }}
-      {% if vehicle.variant %}<small class="text-muted fs-5">{{ vehicle.variant }}</small>{% endif %}
-    </h2>
-    <code class="fs-6">{{ vehicle.vin }}</code>
-    <span class="badge badge-{{ vehicle.vin_status }} ms-2">{{ vehicle.vin_status }}</span>
+  <div class="d-flex gap-3 align-items-start">
+    {% if vehicle.photo %}
+    <img src="/static/{{ vehicle.photo }}" alt="photo"
+         style="width:160px;height:110px;object-fit:cover;border-radius:6px;flex-shrink:0;">
+    {% endif %}
+    <div>
+      <h2 class="mb-1">{{ vehicle.make }} {{ vehicle.model }}
+        {% if vehicle.variant %}<small class="text-muted fs-5">{{ vehicle.variant }}</small>{% endif %}
+      </h2>
+      <code class="fs-6">{{ vehicle.vin }}</code>
+      <span class="badge badge-{{ vehicle.vin_status }} ms-2">{{ vehicle.vin_status }}</span>
+    </div>
   </div>
   <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
 </div>

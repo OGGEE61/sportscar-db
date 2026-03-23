@@ -7,14 +7,21 @@ CONFIG = ScraperConfig(
     make    = "Audi",
     model   = "RS3",
     variant = "8V",
+    source  = "otomoto",
     list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/q-audi-rs3/"
-        "?search%5Bfilter_enum_model%5D%5B0%5D=rs3"
-        "&search%5Bfilter_float_year%3Afrom%5D=2017"
+        "https://www.otomoto.pl/osobowe/audi/rs3"
+        "?search%5Bfilter_float_year%3Afrom%5D=2017"
         "&search%5Bfilter_float_year%3Ato%5D=2020"
         "&page={page}"
     ),
     pages = 5,
+    defaults = {
+        "power_hp":     400,
+        "fuel_type":    "petrol",
+        "transmission": "automatic",
+        "drivetrain":   "AWD",
+        "doors":        4,
+    },
 )
 
 if __name__ == "__main__":

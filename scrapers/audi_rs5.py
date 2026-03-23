@@ -1,7 +1,8 @@
-"""Audi RS5 B8/B9 (2010–2020) — run directly to scrape.
+"""Audi RS5 B8/B9 (up to 2020) — run directly to scrape.
 
-B8  = 2010–2016 (4.2 V8 FSI)
-B9  = 2017–2020 (2.9 TFSI biturbo)
+B8  = 2010–2016 (4.2 V8 FSI, 450 HP)
+B9  = 2017–2020 (2.9 TFSI biturbo, 450 HP)
+Both variants: petrol, AWD, automatic.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -11,14 +12,19 @@ CONFIG = ScraperConfig(
     make    = "Audi",
     model   = "RS5",
     variant = "B8/B9",
+    source  = "otomoto",
     list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/q-audi-rs5/"
-        "?search%5Bfilter_enum_model%5D%5B0%5D=rs5"
-        "&search%5Bfilter_float_year%3Afrom%5D=2010"
-        "&search%5Bfilter_float_year%3Ato%5D=2020"
+        "https://www.otomoto.pl/osobowe/audi/rs5"
+        "?search%5Bfilter_float_year%3Ato%5D=2020"
         "&page={page}"
     ),
     pages = 5,
+    defaults = {
+        "power_hp":     450,
+        "fuel_type":    "petrol",
+        "transmission": "automatic",
+        "drivetrain":   "AWD",
+    },
 )
 
 if __name__ == "__main__":
