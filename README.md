@@ -4,7 +4,8 @@ A lightweight, self-hosted web application for tracking the **performance car se
 
 Built for enthusiasts and researchers who want to systematically follow high-end car listings on Polish marketplaces (otomoto.pl) and understand how prices move over time.
 
-<img width="1408" height="768" alt="Gemini_Generated_Image_wtgp3bwtgp3bwtgp" src="https://github.com/user-attachments/assets/15602997-05dc-43a8-91f8-71bec77e35fb" />
+<img width="1408" height="768" alt="sportscar_diagram" src="https://github.com/user-attachments/assets/eda8dc3d-bf05-4894-8e0d-aaf3686f4d94" />
+
 
 ---
 
