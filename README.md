@@ -30,7 +30,10 @@ The **VIN is the permanent identity key**. All listing observations, condition r
 - **Vehicle detail** — full history per VIN: grouped ad timelines, price chart, condition reports, tags, VIN correction log, photo
 - **VIN decryption** — otomoto encrypts VINs client-side using AES-256-GCM; the scraper decrypts them locally using the listing's numeric ID as key material (no login required)
 - **Photo persistence** — first photo is downloaded and compressed (Pillow, max 800px, JPEG q75) at scrape time; survives listing expiry
-- **Review queue** — scraped listings land in a staging area for human review; approve → goes straight to the next pending listing
+- **Review queue** — new VINs land in a staging area; approve/reject individually or in bulk; known VINs (already verified) bypass review entirely and are silently re-observed
+- **Bulk actions** — select multiple pending listings → approve or reject in one click
+- **Sold/removed detection** — each scraper run reports seen listing IDs; any active observation not in that set is automatically stamped with `removed_at`
+- **Source URL links** — every observation row links back to the original listing page
 - **Tag management** — add/remove free-text tags on any vehicle detail page
 - **Vehicle deletion** — double-confirm (type VIN + JS dialog); cascades all related data
 - **Placeholder VINs** — listings with no VIN get a deterministic `UNVERIFIED-SOURCE-ID` key; resolve to a real VIN later via the web UI
@@ -111,7 +114,7 @@ The scraper loads this file automatically on startup.
 | Scraper | Model | Years | Defaults |
 |---|---|---|---|
 | `audi_rs3_8v.py` | Audi RS3 8V | 2017–2020 | 400 HP, petrol, AWD, auto, 4-door |
-| `audi_rs4_b8.py` | Audi RS4 B8/B8.5 | 2012–2015 | 450 HP, petrol, AWD, auto |
+| `audi_rs4_b8.py` | Audi RS4 (all generations) | all years | 450 HP, petrol, AWD, auto |
 | `audi_rs5.py` | Audi RS5 B8/B9 | up to 2020 | 450 HP, petrol, AWD, auto |
 | `bmw_m4_f82.py` | BMW M4 F82 + M3 F80 | 2014–2020 | 431 HP, petrol, RWD, auto |
 | `mercedes_c63_w204.py` | Mercedes C63 AMG W204 | 2008–2015 | 457 HP, petrol, RWD, auto |
@@ -150,18 +153,28 @@ otomoto.pl search pages
   pending_listings  (status = 'pending')
         │
         ▼
-  /review queue — card grid with local photo, price, VIN badge
-  ┌─────────────────────────────────────────────┐
-  │  Approve → next pending listing immediately  │
-  │  Reject  → next pending listing immediately  │
-  │  Bulk reject, Reject all                     │
-  └─────────────────────────────────────────────┘
-        │ approve
-        ▼
-  vehicles (INSERT OR UPDATE)          ← VIN is the primary key
-  listing_observations (INSERT)        ← one row per sighting
-  pending_listings.status = 'approved'
-  vehicles.photo = local_photo (if none set yet)
+  POST /api/ingest_pending
+        │
+        ├─ VIN already in vehicles? ──yes──► add observation silently [known_vin]
+        │
+        └─ new VIN ──────────────────────► pending_listings (status='pending')
+                                                    │
+                                          /review queue — card grid
+                                          ┌──────────────────────────────────┐
+                                          │  Approve / Reject individually   │
+                                          │  Bulk approve / Bulk reject      │
+                                          │  Reject all pending              │
+                                          │  After any action → back to list │
+                                          └──────────────────────────────────┘
+                                                    │ approve
+                                                    ▼
+                                          vehicles (INSERT OR UPDATE)   ← VIN is PK
+                                          listing_observations (INSERT) ← one row/sighting
+                                          pending_listings.status = 'approved'
+                                          vehicles.photo = local_photo (if none yet)
+
+  End of scraper run:
+  POST /api/mark_removed  →  stamp removed_at on observations not seen this run
 ```
 
 ### VIN detection tiers
@@ -232,7 +245,14 @@ schema_migrations
 ## REST API
 
 ### `POST /api/ingest_pending`
-Adds a listing to the review queue. Duplicates (same `source` + `source_listing_id`) are silently ignored.
+Adds a listing to the review queue. Returns a `tag` field indicating what happened:
+- `pending` — new listing, needs human review
+- `known_vin` — VIN already in vehicles table; observation added silently, no review needed
+- `price_updated` — known listing re-seen with price change >500 PLN; new observation added
+- `duplicate` — exact listing already seen, no action taken
+
+### `POST /api/mark_removed`
+Called by scrapers at the end of each run. Marks any active observation for the given `source/make/model` whose `source_listing_id` was not in the current `seen_ids` set as removed (`removed_at = now`).
 
 ### `POST /api/ingest`
 Direct ingest — bypasses review queue. Creates/updates a vehicle and appends one observation immediately.
@@ -298,9 +318,15 @@ No data is lost.
 - [x] Cookie-based session authentication (Cognito JWT refresh)
 - [x] Local photo persistence (download + compress at ingest time)
 - [x] Known-model spec defaults (HP, drivetrain, fuel auto-filled per scraper)
-- [x] Review queue with fast approve→next flow
+- [x] Review queue — new VINs require human approval; known VINs bypass review
+- [x] Bulk approve / bulk reject in review queue
+- [x] Sold/removed detection via `POST /api/mark_removed`
+- [x] Price change tracking — re-observation when price shifts >500 PLN
+- [x] Source URL links on every observation row
 - [x] Tag add/remove on vehicle detail page
 - [x] Vehicle deletion with double-confirm
+- [x] Polish price format parsing ("238 435,50 zł" → 238 436 PLN)
+- [x] `run_all.py` — single command to run all scrapers in sequence
 - [ ] Scheduled scraping (cron / Windows Task Scheduler)
 - [ ] Mileage history chart per vehicle
 - [ ] Price alert notifications

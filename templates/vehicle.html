@@ -104,11 +104,17 @@
   <div class="card-body p-0">
     {% for key, obs_list in ad_groups.items() %}
     <div class="border-bottom p-3">
-      <div class="fw-semibold mb-2 small text-muted">Ad: {{ key }}</div>
+      <div class="fw-semibold mb-2 small text-muted">
+        Ad: {{ key }}
+        {% set url = obs_list[0].source_url if obs_list else None %}
+        {% if url %}
+        <a href="{{ url }}" target="_blank" class="ms-2 text-decoration-none" title="Open listing">&#8599;</a>
+        {% endif %}
+      </div>
       <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr>
-            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>City</th><th>Seller</th><th>Removed</th>
+            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>City</th><th>Seller</th><th>Removed</th><th></th>
           </tr></thead>
           <tbody>
             {% for o in obs_list %}
@@ -119,6 +125,11 @@
               <td>{{ o.location_city or '—' }}</td>
               <td>{{ o.seller_type or '—' }}</td>
               <td>{{ o.removed_at[:10] if o.removed_at else '' }}</td>
+              <td>
+                {% if o.source_url %}
+                <a href="{{ o.source_url }}" target="_blank" class="text-muted text-decoration-none small">&#8599;</a>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -132,7 +143,7 @@
       <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr>
-            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>Source</th><th>Method</th>
+            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>Source</th><th>Method</th><th></th>
           </tr></thead>
           <tbody>
             {% for o in ungrouped %}
@@ -142,6 +153,11 @@
               <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
               <td>{{ o.source }}</td>
               <td><span class="badge bg-secondary">{{ o.source_method }}</span></td>
+              <td>
+                {% if o.source_url %}
+                <a href="{{ o.source_url }}" target="_blank" class="text-muted text-decoration-none small">&#8599;</a>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>

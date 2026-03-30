@@ -147,12 +147,31 @@
 
       <!-- Footer actions -->
       {% if status_filter == 'pending' %}
-      <div class="card-footer bg-transparent d-flex justify-content-end"
+      <div class="card-footer bg-transparent d-flex justify-content-between align-items-center gap-2"
            onclick="event.stopPropagation()">
         <form method="post" action="/review/{{ l.id }}/reject">
           <input type="hidden" name="reason" value="quick reject">
           <button class="btn btn-danger btn-sm px-3">Reject</button>
         </form>
+        {% if l.vin %}
+        <form method="post" action="/review/{{ l.id }}/approve">
+          <input type="hidden" name="next"     value="queue">
+          <input type="hidden" name="vin"      value="{{ l.vin }}">
+          <input type="hidden" name="make"     value="{{ l.make or '' }}">
+          <input type="hidden" name="model"    value="{{ l.model or '' }}">
+          <input type="hidden" name="variant"  value="{{ l.variant or '' }}">
+          <input type="hidden" name="year"     value="{{ l.year or '' }}">
+          <input type="hidden" name="power_hp" value="{{ l.power_hp or '' }}">
+          <input type="hidden" name="fuel_type"     value="{{ l.fuel_type or '' }}">
+          <input type="hidden" name="drivetrain"    value="{{ l.drivetrain or '' }}">
+          <input type="hidden" name="transmission"  value="{{ l.transmission or '' }}">
+          <input type="hidden" name="color_ext"     value="{{ l.color_ext or '' }}">
+          <input type="hidden" name="price_pln"     value="{{ l.price_pln or '' }}">
+          <input type="hidden" name="mileage_km"    value="{{ l.mileage_km or '' }}">
+          <input type="hidden" name="location_city" value="{{ l.location_city or '' }}">
+          <button class="btn btn-success btn-sm px-3">&#10003; Approve</button>
+        </form>
+        {% endif %}
       </div>
       {% elif status_filter == 'approved' %}
       <div class="card-footer bg-transparent d-flex justify-content-end"

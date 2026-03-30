@@ -105,8 +105,13 @@ def _safe(text: str) -> str:
 
 
 def parse_price(text: str) -> Optional[int]:
-    digits = re.sub(r"[^\d]", "", text)
-    return int(digits) if digits else None
+    # Polish format: "238 435,50 zł" — space=thousands sep, comma=decimal sep
+    text = re.sub(r"[^\d ,.]", "", text).strip()  # keep digits, space, comma, dot
+    text = text.replace(" ", "").replace(",", ".")  # "238435.50"
+    try:
+        return round(float(text))
+    except ValueError:
+        return None
 
 
 def load_cookies() -> dict:
@@ -383,7 +388,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         price_str = (advert.get("price") or {}).get("value")
         if price_str:
             try:
-                price_from_detail = int(re.sub(r"[^\d]", "", price_str))
+                price_from_detail = parse_price(price_str)
             except ValueError:
                 pass
 
