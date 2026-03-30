@@ -531,11 +531,11 @@ def delete_vehicle(vin):
     conn.execute("DELETE FROM listing_observations WHERE vin=?", (vin,))
     conn.execute("DELETE FROM condition_reports WHERE vin=?", (vin,))
     conn.execute("DELETE FROM tags WHERE vin=?", (vin,))
-    conn.execute("DELETE FROM vin_corrections WHERE old_vin=? OR new_vin=?", (vin, vin))
+    conn.execute("DELETE FROM vin_correction_log WHERE old_vin=? OR new_vin=?", (vin, vin))
     conn.execute("DELETE FROM vehicles WHERE vin=?", (vin,))
     conn.commit()
     conn.close()
-    return redirect(url_for("vehicle_list"))
+    return redirect(url_for("vehicles_list"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -763,17 +763,34 @@ def api_ingest_pending():
                          (local_photo, lid))
             conn.commit()
 
-        # ── Auto-approve if VIN is Tier-1 decrypted and looks real ───────────
-        if vc == "found_in_schema" and is_plausible_vin(vin):
-            listing = conn.execute(
-                "SELECT * FROM pending_listings WHERE id=?", (lid,)).fetchone()
-            try:
-                _approve_listing(conn, listing)
+        # ── Known VIN: already verified by a human → add observation directly ──
+        # New VINs always go to the review queue regardless of VIN confidence.
+        # Once a human has approved a car once, subsequent sightings are silent.
+        if vin and is_plausible_vin(vin):
+            known = conn.execute(
+                "SELECT vin FROM vehicles WHERE vin=?", (vin,)
+            ).fetchone()
+            if known:
+                conn.execute("""
+                    INSERT INTO listing_observations
+                      (vin, source, source_listing_id, source_url, title,
+                       price_pln, mileage_km, location_city,
+                       seller_type, first_seen_at, observed_at, source_method)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    vin, source, sid, p.get("source_url"), p.get("raw_title"),
+                    p.get("price_pln"), p.get("mileage_km"), p.get("location_city"),
+                    p.get("seller_type") or "private",
+                    NOW(), NOW(), f"scraper-{source}",
+                ))
+                # Mark the pending row as auto-approved (it's already known)
+                conn.execute(
+                    "UPDATE pending_listings SET status='approved', reviewed_at=datetime('now') WHERE id=?",
+                    (lid,)
+                )
                 conn.commit()
                 conn.close()
-                return jsonify({"status": "ok", "id": lid, "tag": "auto_approved"})
-            except Exception:
-                pass  # fall through — stays pending for manual review
+                return jsonify({"status": "ok", "id": lid, "tag": "known_vin"})
 
         conn.close()
         return jsonify({"status": "ok", "id": lid, "tag": "pending"})
