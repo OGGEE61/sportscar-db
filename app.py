@@ -17,6 +17,107 @@ PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "static", "photos")
 os.makedirs(PHOTOS_DIR, exist_ok=True)
 
 
+def is_plausible_vin(vin: str) -> bool:
+    """Basic sanity check — see base_scraper.py for rationale."""
+    if not vin or len(vin) != 17:
+        return False
+    vin = vin.upper()
+    if not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", vin):
+        return False
+    if len(set(vin)) < 5:
+        return False
+    if max(vin.count(c) for c in set(vin)) >= 7:
+        return False
+    return True
+
+
+def _approve_listing(conn, listing, overrides=None):
+    """Upsert vehicle + insert observation + mark pending row approved.
+
+    overrides: dict of form fields that take precedence over listing values
+               (used by the manual review form). Pass None for auto-approve.
+    Returns the VIN string used.
+    """
+    overrides = overrides or {}
+
+    vin = (overrides.get("vin") or listing["vin"] or "").strip().upper()
+    if not vin or len(vin) != 17:
+        vin = make_placeholder_vin(
+            listing["source"] or "olx",
+            listing["source_listing_id"] or str(listing["id"])
+        )
+
+    def _get(key, cast=None):
+        val = overrides.get(key) if overrides.get(key) else listing[key]
+        if val is None:
+            return None
+        return cast(val) if cast else val
+
+    conn.execute("""
+        INSERT INTO vehicles
+          (vin, make, model, variant, year, body_type,
+           engine_cc, power_hp, drivetrain, transmission,
+           color_ext, vin_status, source_method)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(vin) DO UPDATE SET
+          make        = COALESCE(excluded.make, make),
+          model       = COALESCE(excluded.model, model),
+          power_hp    = COALESCE(excluded.power_hp, power_hp),
+          updated_at  = datetime('now')
+    """, (
+        vin,
+        _get("make") or "Unknown",
+        _get("model") or "Unknown",
+        _get("variant"),
+        int(overrides["year"])      if overrides.get("year")      else (listing["year"] or 0),
+        _get("body_type"),
+        int(overrides["engine_cc"]) if overrides.get("engine_cc") else listing["engine_cc"],
+        int(overrides["power_hp"])  if overrides.get("power_hp")  else listing["power_hp"],
+        _get("drivetrain"),
+        _get("transmission"),
+        _get("color_ext"),
+        "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
+        f"scraper-{listing['source']}",
+    ))
+
+    conn.execute("""
+        INSERT INTO listing_observations
+          (vin, source, source_listing_id, source_url, title,
+           price_pln, mileage_km, location_city,
+           seller_type, seller_name,
+           first_seen_at, observed_at, source_method, notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        vin, listing["source"],
+        listing["source_listing_id"],
+        listing["source_url"],
+        listing["raw_title"],
+        float(overrides["price_pln"])  if overrides.get("price_pln")  else listing["price_pln"],
+        int(overrides["mileage_km"])   if overrides.get("mileage_km") else listing["mileage_km"],
+        overrides.get("location_city") or listing["location_city"],
+        overrides.get("seller_type")   or listing["seller_type"] or "private",
+        overrides.get("seller_name")   or listing["seller_name"],
+        listing["scraped_at"], listing["scraped_at"],
+        f"scraper-{listing['source']}",
+        overrides.get("notes"),
+    ))
+
+    conn.execute("""
+        UPDATE pending_listings
+        SET status='approved', reviewed_at=datetime('now'), review_notes=?
+        WHERE id=?
+    """, (overrides.get("notes"), listing["id"]))
+
+    local_photo = listing["local_photo"] if "local_photo" in listing.keys() else None
+    if local_photo:
+        conn.execute(
+            "UPDATE vehicles SET photo=? WHERE vin=? AND (photo IS NULL OR photo='')",
+            (local_photo, vin)
+        )
+
+    return vin
+
+
 def save_photo(url: str, filename: str, max_width: int = 800, quality: int = 75) -> str | None:
     """Download url, compress to JPEG, save to static/photos/. Returns relative path or None."""
     if not url:
@@ -535,6 +636,35 @@ def api_stats():
     conn.close()
     return jsonify(data)
 
+@app.route("/api/mark_removed", methods=["POST"])
+def api_mark_removed():
+    """Called by scrapers after each run with the listing IDs they observed.
+
+    Any active observation for this source+make+model that is NOT in seen_ids
+    gets removed_at stamped — meaning the listing disappeared (likely sold).
+    """
+    p        = request.get_json(force=True)
+    source   = p.get("source")
+    make     = p.get("make")
+    model    = p.get("model")
+    seen_ids = p.get("seen_ids", [])
+    if not source or not seen_ids:
+        return jsonify({"marked": 0})
+    conn = get_db()
+    placeholders = ",".join("?" * len(seen_ids))
+    cur = conn.execute(f"""
+        UPDATE listing_observations
+        SET removed_at = datetime('now'), last_seen_at = datetime('now')
+        WHERE source = ?
+          AND removed_at IS NULL
+          AND source_listing_id NOT IN ({placeholders})
+          AND vin IN (SELECT vin FROM vehicles WHERE make = ? AND model = ?)
+    """, [source] + list(seen_ids) + [make, model])
+    conn.commit()
+    conn.close()
+    return jsonify({"marked": cur.rowcount})
+
+
 @app.route("/api/vehicles")
 def api_vehicles():
     conn = get_db()
@@ -549,10 +679,15 @@ def api_vehicles():
 
 @app.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
-    p = request.get_json(force=True)
+    p      = request.get_json(force=True)
+    source = p.get("source", "olx")
+    sid    = p.get("source_listing_id")
+    vin    = (p.get("vin") or "").strip().upper()
+    vc     = p.get("vin_confidence", "none")
+
     conn = get_db()
     try:
-        conn.execute("""
+        cur = conn.execute("""
             INSERT OR IGNORE INTO pending_listings
               (source, source_listing_id, source_url,
                raw_title, raw_description, photos,
@@ -565,55 +700,84 @@ def api_ingest_pending():
                vin, vin_confidence, is_listing_active)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            p.get("source", "olx"),
-            p.get("source_listing_id"),
-            p.get("source_url"),
-            p.get("raw_title"),
-            p.get("raw_description"),
+            source, sid, p.get("source_url"),
+            p.get("raw_title"), p.get("raw_description"),
             json.dumps(p.get("photos", [])),
-            p.get("make"),
-            p.get("model"),
-            p.get("variant"),
-            p.get("year"),
-            p.get("body_type"),
-            p.get("engine_cc"),
-            p.get("power_hp"),
-            p.get("fuel_type"),
-            p.get("drivetrain"),
-            p.get("transmission"),
-            p.get("color_ext"),
-            p.get("doors"),
-            p.get("price_pln"),
-            p.get("price_eur"),
-            p.get("mileage_km"),
-            p.get("location_city"),
-            p.get("location_region"),
-            p.get("seller_type"),
-            p.get("seller_name"),
-            p.get("vin"),
-            p.get("vin_confidence", "none"),
-            1,  # scraped now = listing is active
+            p.get("make"), p.get("model"), p.get("variant"),
+            p.get("year"), p.get("body_type"),
+            p.get("engine_cc"), p.get("power_hp"), p.get("fuel_type"),
+            p.get("drivetrain"), p.get("transmission"),
+            p.get("color_ext"), p.get("doors"),
+            p.get("price_pln"), p.get("price_eur"), p.get("mileage_km"),
+            p.get("location_city"), p.get("location_region"),
+            p.get("seller_type"), p.get("seller_name"),
+            vin or None, vc, 1,
         ))
         conn.commit()
+
+        # ── Duplicate path ────────────────────────────────────────────────────
+        if cur.rowcount == 0:
+            existing = conn.execute(
+                "SELECT * FROM pending_listings WHERE source=? AND source_listing_id=?",
+                (source, sid)
+            ).fetchone()
+            if existing and existing["status"] == "approved":
+                new_price = p.get("price_pln")
+                old_price = existing["price_pln"]
+                if new_price and old_price and abs(float(new_price) - float(old_price)) > 500:
+                    # Price changed on an already-approved listing → new observation
+                    existing_vin = existing["vin"]
+                    if existing_vin:
+                        conn.execute("""
+                            INSERT INTO listing_observations
+                              (vin, source, source_listing_id, source_url, title,
+                               price_pln, mileage_km, location_city,
+                               seller_type, first_seen_at, observed_at, source_method)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                        """, (
+                            existing_vin, source, sid,
+                            existing["source_url"], existing["raw_title"],
+                            float(new_price),
+                            p.get("mileage_km") or existing["mileage_km"],
+                            p.get("location_city") or existing["location_city"],
+                            existing["seller_type"] or "private",
+                            NOW(), NOW(),
+                            f"scraper-{source}",
+                        ))
+                        conn.commit()
+                        conn.close()
+                        return jsonify({"status": "ok", "id": existing["id"],
+                                        "tag": "price_updated"})
+            conn.close()
+            return jsonify({"status": "ok", "id": 0, "tag": "duplicate"})
+
         lid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-        # Download + compress first photo for listings that were actually inserted
-        if lid:
-            photos_list = p.get("photos") or []
-            photo_url   = photos_list[0] if photos_list else None
-            source_id   = p.get("source_listing_id") or str(lid)
-            safe_id     = re.sub(r"[^A-Za-z0-9_-]", "_", str(source_id))
-            filename    = f"{p.get('source', 'olx')}_{safe_id}.jpg"
-            local_photo = save_photo(photo_url, filename)
-            if local_photo:
-                conn.execute(
-                    "UPDATE pending_listings SET local_photo=? WHERE id=?",
-                    (local_photo, lid)
-                )
+        # ── Download + compress photo ─────────────────────────────────────────
+        photos_list = p.get("photos") or []
+        photo_url   = photos_list[0] if photos_list else None
+        safe_id     = re.sub(r"[^A-Za-z0-9_-]", "_", str(sid or lid))
+        local_photo = save_photo(photo_url, f"{source}_{safe_id}.jpg")
+        if local_photo:
+            conn.execute("UPDATE pending_listings SET local_photo=? WHERE id=?",
+                         (local_photo, lid))
+            conn.commit()
+
+        # ── Auto-approve if VIN is Tier-1 decrypted and looks real ───────────
+        if vc == "found_in_schema" and is_plausible_vin(vin):
+            listing = conn.execute(
+                "SELECT * FROM pending_listings WHERE id=?", (lid,)).fetchone()
+            try:
+                _approve_listing(conn, listing)
                 conn.commit()
+                conn.close()
+                return jsonify({"status": "ok", "id": lid, "tag": "auto_approved"})
+            except Exception:
+                pass  # fall through — stays pending for manual review
 
         conn.close()
-        return jsonify({"status": "ok", "id": lid})
+        return jsonify({"status": "ok", "id": lid, "tag": "pending"})
+
     except Exception as e:
         conn.close()
         return jsonify({"error": str(e)}), 500
@@ -654,83 +818,14 @@ def review_detail(pid):
 
 @app.route("/review/<int:pid>/approve", methods=["POST"])
 def review_approve(pid):
-    data = request.form
     conn = get_db()
     listing = conn.execute(
         "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
     if not listing:
         conn.close()
         return "Not found", 404
-
-    vin = data.get("vin", "").strip().upper()
-    if not vin or len(vin) != 17:
-        vin = make_placeholder_vin("olx", listing["source_listing_id"] or str(pid))
-
     try:
-        conn.execute("""
-            INSERT INTO vehicles
-              (vin, make, model, variant, year, body_type,
-               engine_cc, power_hp, drivetrain, transmission,
-               color_ext, vin_status, source_method)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(vin) DO UPDATE SET
-              make        = COALESCE(excluded.make, make),
-              model       = COALESCE(excluded.model, model),
-              power_hp    = COALESCE(excluded.power_hp, power_hp),
-              updated_at  = datetime('now')
-        """, (
-            vin,
-            data.get("make")         or listing["make"]  or "Unknown",
-            data.get("model")        or listing["model"] or "Unknown",
-            data.get("variant")      or listing["variant"],
-            int(data["year"])        if data.get("year")       else (listing["year"] or 0),
-            data.get("body_type")    or listing["body_type"],
-            int(data["engine_cc"])   if data.get("engine_cc")  else listing["engine_cc"],
-            int(data["power_hp"])    if data.get("power_hp")   else listing["power_hp"],
-            data.get("drivetrain")   or listing["drivetrain"],
-            data.get("transmission") or listing["transmission"],
-            data.get("color_ext")    or listing["color_ext"],
-            "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
-            f"scraper-{listing['source']}",
-        ))
-
-        source_method = f"scraper-{listing['source']}"
-        conn.execute("""
-            INSERT INTO listing_observations
-              (vin, source, source_listing_id, source_url, title,
-               price_pln, mileage_km, location_city,
-               seller_type, seller_name,
-               first_seen_at, observed_at, source_method, notes)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            vin, listing["source"],
-            listing["source_listing_id"],
-            listing["source_url"],
-            listing["raw_title"],
-            float(data["price_pln"])  if data.get("price_pln")  else listing["price_pln"],
-            int(data["mileage_km"])   if data.get("mileage_km") else listing["mileage_km"],
-            data.get("location_city") or listing["location_city"],
-            data.get("seller_type")   or listing["seller_type"] or "private",
-            data.get("seller_name")   or listing["seller_name"],
-            listing["scraped_at"], listing["scraped_at"],
-            source_method,
-            data.get("notes"),
-        ))
-
-        conn.execute("""
-            UPDATE pending_listings
-            SET status='approved', reviewed_at=datetime('now'), review_notes=?
-            WHERE id=?
-        """, (data.get("notes"), pid))
-
-        # Attach photo to the vehicle record if we have one
-        local_photo = listing["local_photo"] if "local_photo" in listing.keys() else None
-        if local_photo:
-            conn.execute(
-                "UPDATE vehicles SET photo=? WHERE vin=? AND (photo IS NULL OR photo='')",
-                (local_photo, vin)
-            )
-
+        _approve_listing(conn, listing, overrides=dict(request.form))
         conn.commit()
     except Exception as e:
         conn.close()
@@ -767,69 +862,8 @@ def review_bulk_approve():
             ).fetchone()
             if not listing:
                 continue
-            vin = (listing["vin"] or "").strip().upper()
-            if not vin or len(vin) != 17:
-                vin = make_placeholder_vin(
-                    listing["source"] or "olx",
-                    listing["source_listing_id"] or str(pid)
-                )
             try:
-                conn.execute("""
-                    INSERT INTO vehicles
-                      (vin, make, model, variant, year, body_type,
-                       engine_cc, power_hp, drivetrain, transmission,
-                       color_ext, vin_status, source_method)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(vin) DO UPDATE SET
-                      make       = COALESCE(excluded.make, make),
-                      model      = COALESCE(excluded.model, model),
-                      power_hp   = COALESCE(excluded.power_hp, power_hp),
-                      updated_at = datetime('now')
-                """, (
-                    vin,
-                    listing["make"]  or "Unknown",
-                    listing["model"] or "Unknown",
-                    listing["variant"],
-                    listing["year"] or 0,
-                    listing["body_type"],
-                    listing["engine_cc"],
-                    listing["power_hp"],
-                    listing["drivetrain"],
-                    listing["transmission"],
-                    listing["color_ext"],
-                    "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
-                    f"scraper-{listing['source']}",
-                ))
-                conn.execute("""
-                    INSERT INTO listing_observations
-                      (vin, source, source_listing_id, source_url, title,
-                       price_pln, mileage_km, location_city,
-                       seller_type, seller_name,
-                       first_seen_at, observed_at, source_method)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    vin, listing["source"],
-                    listing["source_listing_id"],
-                    listing["source_url"],
-                    listing["raw_title"],
-                    listing["price_pln"],
-                    listing["mileage_km"],
-                    listing["location_city"],
-                    listing["seller_type"] or "private",
-                    listing["seller_name"],
-                    listing["scraped_at"], listing["scraped_at"],
-                    f"scraper-{listing['source']}",
-                ))
-                conn.execute(
-                    "UPDATE pending_listings SET status='approved', reviewed_at=datetime('now') WHERE id=?",
-                    (pid,)
-                )
-                local_photo = listing["local_photo"] if "local_photo" in listing.keys() else None
-                if local_photo:
-                    conn.execute(
-                        "UPDATE vehicles SET photo=? WHERE vin=? AND (photo IS NULL OR photo='')",
-                        (local_photo, vin)
-                    )
+                _approve_listing(conn, listing)
             except Exception:
                 pass
         conn.commit()

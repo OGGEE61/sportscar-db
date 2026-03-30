@@ -35,7 +35,8 @@ try:
 except ImportError:
     _CRYPTO_OK = False
 
-API_URL      = "http://127.0.0.1:5555/api/ingest_pending"
+API_BASE     = "http://127.0.0.1:5555"
+API_URL      = f"{API_BASE}/api/ingest_pending"
 BROWSER_UA   = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -47,6 +48,27 @@ HEADERS      = {
 }
 VIN_RE       = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "otomoto_cookies.json")
+
+
+def is_plausible_vin(vin: str) -> bool:
+    """Return True if vin looks like a real VIN.
+
+    We can't use the ISO check digit for European cars (only NA-market VINs
+    have a mandated check digit at position 9), so we use softer heuristics:
+      - 17 chars, valid charset
+      - at least 5 distinct characters  (rejects all-same-digit fakes)
+      - no single character appears 7+ times (rejects heavily-repeated fakes)
+    """
+    if not vin or len(vin) != 17:
+        return False
+    vin = vin.upper()
+    if not VIN_RE.fullmatch(vin):
+        return False
+    if len(set(vin)) < 5:
+        return False
+    if max(vin.count(c) for c in set(vin)) >= 7:
+        return False
+    return True
 
 
 # ── config ────────────────────────────────────────────────────────────────────
@@ -336,7 +358,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         enc_vin = params.get("vin", "")
         if enc_vin and advert_id:
             plain = _decrypt_vin(enc_vin, advert_id)
-            if plain and len(plain) == 17 and VIN_RE.fullmatch(plain):
+            if plain and is_plausible_vin(plain):
                 vin_found      = plain
                 vin_confidence = "found_in_schema"
 
@@ -686,10 +708,25 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     resp = requests.post(API_URL, json=payload, timeout=5,
                                          impersonate="chrome")
                     rj   = resp.json()
-                    tag  = "new" if rj.get("id", 0) > 0 else "duplicate"
+                    tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
                     print(f"    > API {resp.status_code} [{tag}]")
                 except Exception as e:
                     print(f"    > API error: {_safe(str(e))}")
+
+    # Sold/removed detection — mark active observations not seen this run
+    if post_to_api and seen_ids:
+        try:
+            r = requests.post(
+                f"{API_BASE}/api/mark_removed",
+                json={"source": cfg.source, "make": cfg.make,
+                      "model": cfg.model, "seen_ids": list(seen_ids)},
+                timeout=5, impersonate="chrome",
+            )
+            marked = r.json().get("marked", 0)
+            if marked:
+                print(f"[sold] {marked} listing(s) marked as removed (not seen this run).")
+        except Exception:
+            pass
 
     print(f"\nDone. {len(results)} listings processed.")
     return results
