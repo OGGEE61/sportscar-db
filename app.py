@@ -756,6 +756,87 @@ def review_reject_all_pending():
     return redirect(url_for("review_queue"))
 
 
+@app.route("/review/bulk_approve", methods=["POST"])
+def review_bulk_approve():
+    ids = request.form.getlist("ids")
+    if ids:
+        conn = get_db()
+        for pid in ids:
+            listing = conn.execute(
+                "SELECT * FROM pending_listings WHERE id=? AND status='pending'", (pid,)
+            ).fetchone()
+            if not listing:
+                continue
+            vin = (listing["vin"] or "").strip().upper()
+            if not vin or len(vin) != 17:
+                vin = make_placeholder_vin(
+                    listing["source"] or "olx",
+                    listing["source_listing_id"] or str(pid)
+                )
+            try:
+                conn.execute("""
+                    INSERT INTO vehicles
+                      (vin, make, model, variant, year, body_type,
+                       engine_cc, power_hp, drivetrain, transmission,
+                       color_ext, vin_status, source_method)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(vin) DO UPDATE SET
+                      make       = COALESCE(excluded.make, make),
+                      model      = COALESCE(excluded.model, model),
+                      power_hp   = COALESCE(excluded.power_hp, power_hp),
+                      updated_at = datetime('now')
+                """, (
+                    vin,
+                    listing["make"]  or "Unknown",
+                    listing["model"] or "Unknown",
+                    listing["variant"],
+                    listing["year"] or 0,
+                    listing["body_type"],
+                    listing["engine_cc"],
+                    listing["power_hp"],
+                    listing["drivetrain"],
+                    listing["transmission"],
+                    listing["color_ext"],
+                    "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
+                    f"scraper-{listing['source']}",
+                ))
+                conn.execute("""
+                    INSERT INTO listing_observations
+                      (vin, source, source_listing_id, source_url, title,
+                       price_pln, mileage_km, location_city,
+                       seller_type, seller_name,
+                       first_seen_at, observed_at, source_method)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    vin, listing["source"],
+                    listing["source_listing_id"],
+                    listing["source_url"],
+                    listing["raw_title"],
+                    listing["price_pln"],
+                    listing["mileage_km"],
+                    listing["location_city"],
+                    listing["seller_type"] or "private",
+                    listing["seller_name"],
+                    listing["scraped_at"], listing["scraped_at"],
+                    f"scraper-{listing['source']}",
+                ))
+                conn.execute(
+                    "UPDATE pending_listings SET status='approved', reviewed_at=datetime('now') WHERE id=?",
+                    (pid,)
+                )
+                local_photo = listing["local_photo"] if "local_photo" in listing.keys() else None
+                if local_photo:
+                    conn.execute(
+                        "UPDATE vehicles SET photo=? WHERE vin=? AND (photo IS NULL OR photo='')",
+                        (local_photo, vin)
+                    )
+            except Exception:
+                pass
+        conn.commit()
+        conn.close()
+    return redirect(url_for("review_queue"))
+
+
 @app.route("/review/bulk_reject", methods=["POST"])
 def review_bulk_reject():
     ids = request.form.getlist("ids")

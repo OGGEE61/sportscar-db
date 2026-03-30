@@ -41,6 +41,10 @@
   </div>
   <span class="small text-muted" id="sel-count">0 selected</span>
   <div class="d-flex gap-2 ms-auto">
+    <button type="button" class="btn btn-success btn-sm" id="bulk-approve-btn" disabled
+            onclick="submitBulkApprove()">
+      Approve selected
+    </button>
     <button type="submit" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
       Reject selected
     </button>
@@ -107,11 +111,16 @@
           {% endif %}
         </div>
 
-        <div class="text-muted small mb-3">
+        <div class="text-muted small mb-1">
           {{ l.make or '?' }} {{ l.model or '' }}
           {% if l.year %} · {{ l.year }}{% endif %}
           {% if l.power_hp %} · {{ l.power_hp }} HP{% endif %}
         </div>
+        {% if l.vin %}
+        <div class="mb-2">
+          <code class="small text-secondary">{{ l.vin }}</code>
+        </div>
+        {% endif %}
 
         <!-- Price + mileage prominent -->
         <div class="d-flex justify-content-between align-items-end">
@@ -184,17 +193,35 @@ document.querySelectorAll('.remove-approved-btn').forEach(btn => {
 });
 
 {% if status_filter == 'pending' %}
-const selectAll = document.getElementById('select-all');
-const checks    = () => document.querySelectorAll('.card-check');
-const btn       = document.getElementById('bulk-reject-btn');
-const counter   = document.getElementById('sel-count');
+const selectAll  = document.getElementById('select-all');
+const checks     = () => document.querySelectorAll('.card-check');
+const rejectBtn  = document.getElementById('bulk-reject-btn');
+const approveBtn = document.getElementById('bulk-approve-btn');
+const counter    = document.getElementById('sel-count');
 
 function updateBar() {
   const n = [...checks()].filter(c => c.checked).length;
   counter.textContent = n + ' selected';
-  btn.disabled = n === 0;
+  rejectBtn.disabled  = n === 0;
+  approveBtn.disabled = n === 0;
   selectAll.indeterminate = n > 0 && n < checks().length;
   selectAll.checked = n > 0 && n === checks().length;
+}
+
+function submitBulkApprove() {
+  const selected = [...checks()].filter(c => c.checked);
+  if (!selected.length) return;
+  if (!confirm(`Approve ${selected.length} listing(s)?`)) return;
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/review/bulk_approve';
+  selected.forEach(c => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'ids'; inp.value = c.value;
+    form.appendChild(inp);
+  });
+  document.body.appendChild(form);
+  form.submit();
 }
 
 selectAll.addEventListener('change', () => {
