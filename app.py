@@ -118,7 +118,7 @@ def _approve_listing(conn, listing, overrides=None):
     return vin
 
 
-def save_photo(url: str, filename: str, max_width: int = 800, quality: int = 75) -> str | None:
+def save_photo(url: str, filename: str, max_width: int = 800, quality: int = 75):
     """Download url, compress to JPEG, save to static/photos/. Returns relative path or None."""
     if not url:
         return None

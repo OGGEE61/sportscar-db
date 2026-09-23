@@ -9,9 +9,6 @@ Built for enthusiasts and researchers who want to systematically follow high-end
 
 ## What it does
 
-<img width="1408" height="768" alt="sportscar_diagram" src="https://github.com/user-attachments/assets/eda8dc3d-bf05-4894-8e0d-aaf3686f4d94" />
-
-
 Most car-tracking tools show a snapshot: current listings, current price. SportsCar DB is **observation-based** — every time a scraper records a listing, a new timestamped row is created. This means you can:
 
 - Watch a single ad's **price drop over weeks** before it sells
