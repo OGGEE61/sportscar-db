@@ -14,7 +14,10 @@ app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "static", "photos")
-os.makedirs(PHOTOS_DIR, exist_ok=True)
+try:
+    os.makedirs(PHOTOS_DIR, exist_ok=True)
+except OSError:
+    pass  # Serverless read-only filesystem (e.g. Vercel)
 
 
 def is_plausible_vin(vin: str) -> bool:
