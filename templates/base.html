@@ -29,6 +29,9 @@
         <li class="nav-item"><a class="nav-link" href="/add">Add Vehicle</a></li>
         <li class="nav-item"><a class="nav-link" href="/corrections">Corrections</a></li>
         <li class="nav-item"><a class="nav-link" href="/review">Review Queue</a></li>
+        {% if session.get('logged_in') %}
+        <li class="nav-item"><a class="nav-link text-danger" href="/logout">Logout</a></li>
+        {% endif %}
       </ul>
     </div>
   </div>

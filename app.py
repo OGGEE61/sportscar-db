@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from db import get_db, init_db, make_placeholder_vin, resolve_placeholder
 from datetime import datetime
 import json, os, io, re
@@ -10,6 +10,7 @@ except ImportError:
     pass
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "fallback-dev-secret-key")
 app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -18,6 +19,28 @@ try:
     os.makedirs(PHOTOS_DIR, exist_ok=True)
 except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
+
+@app.before_request
+def require_login():
+    if request.path.startswith("/api/") or request.path.startswith("/static/") or request.path == "/login":
+        return
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if admin_password and not session.get("logged_in"):
+        return redirect(url_for("login"))
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        if request.form.get("password") == os.environ.get("ADMIN_PASSWORD"):
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        return render_template("login.html", error="Invalid password")
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("logged_in", None)
+    return redirect(url_for("login"))
 
 
 def is_plausible_vin(vin: str) -> bool:
