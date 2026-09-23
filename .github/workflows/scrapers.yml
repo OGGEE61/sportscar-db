@@ -1,0 +1,37 @@
+name: Run Scrapers
+
+on:
+  schedule:
+    # Run every day at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Scrapers
+      env:
+        # Secret token for authentication with Vercel API
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        # The URL where the Vercel app is hosted
+        VERCEL_URL: ${{ secrets.VERCEL_URL }} 
+      run: |
+        # Override the base_scraper POST URLs to point to Vercel
+        # We assume the scraper uses VERCEL_URL if provided
+        export BASE_URL=$VERCEL_URL
+        python run_all.py || echo "Some scrapers failed, but continuing"

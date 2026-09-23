@@ -57,134 +57,90 @@
 </div>
 {% endif %}
 
-<div class="row g-3">
+<div class="list-group">
   {% for l in listings %}
   {% set photos = l.photos | fromjson if l.photos else [] %}
-  <div class="col-md-6 col-xl-4">
-    <!-- The whole card is clickable via JS; interactive controls stop propagation -->
-    <div class="card h-100 shadow-sm position-relative review-card"
-         data-href="/review/{{ l.id }}"
-         style="cursor:pointer;">
+  <div class="list-group-item d-flex gap-3 align-items-center py-3">
 
-      <!-- Checkbox top-left -->
-      {% if status_filter == 'pending' %}
-      <div class="position-absolute top-0 start-0 m-2" style="z-index:10">
-        <input class="form-check-input card-check" type="checkbox"
-               name="ids" value="{{ l.id }}" onclick="event.stopPropagation()">
-      </div>
-      {% endif %}
+    <!-- Checkbox (only in pending) -->
+    {% if status_filter == 'pending' %}
+    <input class="form-check-input flex-shrink-0 card-check" type="checkbox"
+           name="ids" value="{{ l.id }}" style="font-size: 1.5em; cursor: pointer;">
+    {% endif %}
 
-      <!-- External link top-right -->
-      {% if l.source_url %}
-      <a href="{{ l.source_url }}" target="_blank"
-         class="position-absolute top-0 end-0 m-2 btn btn-sm btn-light border"
-         style="z-index:10;line-height:1;padding:4px 7px;"
-         title="Open on OLX" onclick="event.stopPropagation()">&#8599;</a>
-      {% endif %}
-
-      <!-- Thumbnail — local cached copy preferred, remote URL as fallback -->
+    <!-- Thumbnail -->
+    <a href="/review/{{ l.id }}" class="flex-shrink-0" title="Review details">
       {% if l.local_photo %}
-      <img src="/static/{{ l.local_photo }}" class="card-img-top"
-           style="height:200px;object-fit:cover;">
+      <img src="/static/{{ l.local_photo }}" class="rounded shadow-sm"
+           style="width: 100px; height: 75px; object-fit: cover;">
       {% elif photos %}
-      <img src="{{ photos[0] }}" class="card-img-top"
-           style="height:200px;object-fit:cover;"
+      <img src="{{ photos[0] }}" class="rounded shadow-sm"
+           style="width: 100px; height: 75px; object-fit: cover;"
            onerror="this.style.display='none'">
       {% else %}
-      <div class="bg-secondary d-flex align-items-center justify-content-center"
-           style="height:200px;">
-        <span class="text-white opacity-50">No photo</span>
+      <div class="bg-secondary rounded shadow-sm d-flex align-items-center justify-content-center"
+           style="width: 100px; height: 75px;">
+        <span class="text-white opacity-50" style="font-size: 0.7em;">No photo</span>
       </div>
       {% endif %}
+    </a>
 
-      <div class="card-body">
-        <!-- Title + VIN badge -->
-        <div class="d-flex justify-content-between align-items-start mb-1">
-          <h6 class="card-title mb-0 text-truncate" style="max-width:85%"
-              title="{{ l.raw_title }}">
-            {{ l.raw_title or (l.make ~ ' ' ~ l.model) }}
-          </h6>
-          {% if l.vin_confidence == 'found_in_schema' %}
-          <span class="badge bg-success ms-1">VIN</span>
-          {% elif l.vin_confidence == 'found_in_description' %}
-          <span class="badge bg-warning text-dark ms-1">VIN?</span>
+    <!-- Details -->
+    <div class="flex-grow-1 min-w-0">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <a href="/review/{{ l.id }}" class="text-decoration-none text-dark text-truncate fw-semibold"
+           style="max-width: 70%;" title="{{ l.raw_title }}">
+          {{ l.raw_title or (l.make ~ ' ' ~ l.model) }}
+        </a>
+        <span class="fs-5 fw-bold text-success text-nowrap ms-2">
+          {{ "{:,.0f} PLN".format(l.price_pln) if l.price_pln else '— PLN' }}
+        </span>
+      </div>
+
+      <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
+        <span>{{ l.make or '?' }} {{ l.model or '' }}</span>
+        {% if l.year %}<span class="border-start ps-2">{{ l.year }}</span>{% endif %}
+        {% if l.mileage_km %}<span class="border-start ps-2">{{ "{:,} km".format(l.mileage_km) }}</span>{% endif %}
+        {% if l.power_hp %}<span class="border-start ps-2">{{ l.power_hp }} HP</span>{% endif %}
+        <span class="border-start ps-2">{{ l.location_city or '' }}</span>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        {% if l.vin %}
+        <code class="small text-secondary">{{ l.vin }}</code>
+        {% endif %}
+        {% if l.vin_confidence == 'found_in_schema' %}
+        <span class="badge bg-success" style="font-size: 0.6em;">VIN</span>
+        {% elif l.vin_confidence == 'found_in_description' %}
+        <span class="badge bg-warning text-dark" style="font-size: 0.6em;">VIN?</span>
+        {% endif %}
+
+        <span class="ms-auto small">
+          {% if l.is_listing_active %}
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle me-1">active</span>
+          {% else %}
+          <span class="badge bg-secondary-subtle text-secondary-emphasis border me-1">removed</span>
           {% endif %}
-        </div>
-
-        <div class="text-muted small mb-1">
-          {{ l.make or '?' }} {{ l.model or '' }}
-          {% if l.year %} · {{ l.year }}{% endif %}
-          {% if l.power_hp %} · {{ l.power_hp }} HP{% endif %}
-        </div>
-        {% if l.vin %}
-        <div class="mb-2">
-          <code class="small text-secondary">{{ l.vin }}</code>
-        </div>
-        {% endif %}
-
-        <!-- Price + mileage prominent -->
-        <div class="d-flex justify-content-between align-items-end">
-          <span class="fs-5 fw-bold text-success">
-            {{ "{:,.0f} PLN".format(l.price_pln) if l.price_pln else '— PLN' }}
-          </span>
-          <span class="text-muted">
-            {{ "{:,} km".format(l.mileage_km) if l.mileage_km else '' }}
-          </span>
-        </div>
-
-        <div class="text-muted small mt-2 d-flex justify-content-between">
-          <span>{{ l.location_city or '' }}</span>
-          <span>
-            {% if l.is_listing_active %}
-            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">active</span>
-            {% else %}
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border">removed</span>
-            {% endif %}
-            {{ l.scraped_at[:10] }}
-          </span>
-        </div>
+          <span class="text-muted">{{ l.scraped_at[:10] }}</span>
+        </span>
       </div>
+    </div>
 
-      <!-- Footer actions -->
-      {% if status_filter == 'pending' %}
-      <div class="card-footer bg-transparent d-flex justify-content-between align-items-center gap-2"
-           onclick="event.stopPropagation()">
-        <form method="post" action="/review/{{ l.id }}/reject">
-          <input type="hidden" name="reason" value="quick reject">
-          <button class="btn btn-danger btn-sm px-3">Reject</button>
-        </form>
-        {% if l.vin %}
-        <form method="post" action="/review/{{ l.id }}/approve">
-          <input type="hidden" name="next"     value="queue">
-          <input type="hidden" name="vin"      value="{{ l.vin }}">
-          <input type="hidden" name="make"     value="{{ l.make or '' }}">
-          <input type="hidden" name="model"    value="{{ l.model or '' }}">
-          <input type="hidden" name="variant"  value="{{ l.variant or '' }}">
-          <input type="hidden" name="year"     value="{{ l.year or '' }}">
-          <input type="hidden" name="power_hp" value="{{ l.power_hp or '' }}">
-          <input type="hidden" name="fuel_type"     value="{{ l.fuel_type or '' }}">
-          <input type="hidden" name="drivetrain"    value="{{ l.drivetrain or '' }}">
-          <input type="hidden" name="transmission"  value="{{ l.transmission or '' }}">
-          <input type="hidden" name="color_ext"     value="{{ l.color_ext or '' }}">
-          <input type="hidden" name="price_pln"     value="{{ l.price_pln or '' }}">
-          <input type="hidden" name="mileage_km"    value="{{ l.mileage_km or '' }}">
-          <input type="hidden" name="location_city" value="{{ l.location_city or '' }}">
-          <button class="btn btn-success btn-sm px-3">&#10003; Approve</button>
-        </form>
-        {% endif %}
-      </div>
-      {% elif status_filter == 'approved' %}
-      <div class="card-footer bg-transparent d-flex justify-content-end"
-           onclick="event.stopPropagation()">
-        <form method="post" action="/review/{{ l.id }}/reject" class="remove-approved-form"
-              data-title="{{ l.raw_title | replace('"', '&quot;') }}">
-          <input type="hidden" name="reason" value="removed from approved">
-          <button type="button" class="btn btn-outline-danger btn-sm px-3 remove-approved-btn">Remove</button>
-        </form>
-      </div>
+    <!-- Actions (Right edge) -->
+    <div class="d-flex flex-column gap-2 align-items-end flex-shrink-0 ms-2">
+      {% if l.source_url %}
+      <a href="{{ l.source_url }}" target="_blank" class="btn btn-sm btn-light border" title="Open original ad">&#8599;</a>
       {% endif %}
 
+      {% if status_filter == 'approved' %}
+      <form method="post" action="/review/{{ l.id }}/reject" class="remove-approved-form"
+            data-title="{{ l.raw_title | replace('"', '&quot;') }}">
+        <input type="hidden" name="reason" value="removed from approved">
+        <button type="button" class="btn btn-outline-danger btn-sm remove-approved-btn" title="Remove">✖</button>
+      </form>
+      {% endif %}
     </div>
+
   </div>
   {% endfor %}
 </div>
@@ -192,13 +148,6 @@
 </form>
 
 <script>
-// Whole card navigates to detail page; controls stop propagation
-document.querySelectorAll('.review-card').forEach(card => {
-  card.addEventListener('click', () => {
-    window.location.href = card.dataset.href;
-  });
-});
-
 // Approved tab: confirm before removing
 document.querySelectorAll('.remove-approved-btn').forEach(btn => {
   btn.addEventListener('click', e => {

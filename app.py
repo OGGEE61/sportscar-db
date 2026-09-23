@@ -118,10 +118,32 @@ def _approve_listing(conn, listing, overrides=None):
     return vin
 
 
-def save_photo(url: str, filename: str, max_width: int = 800, quality: int = 75):
-    """Download url, compress to JPEG, save to static/photos/. Returns relative path or None."""
+def check_storage_limit(conn) -> bool:
+    """Returns True if we're under the estimated 7.5GB limit."""
+    try:
+        c1 = conn.execute("SELECT COUNT(local_photo) FROM pending_listings WHERE local_photo IS NOT NULL").fetchone()[0]
+        c2 = conn.execute("SELECT COUNT(photo) FROM vehicles WHERE photo IS NOT NULL AND photo != ''").fetchone()[0]
+        total_photos = c1 + c2
+        # Estimate 20KB per photo (400px, 60% quality)
+        estimated_gb = (total_photos * 20.0) / 1024 / 1024
+        if estimated_gb > 5.0:
+            print("WARNING: Storage exceeded 5GB limit!")
+        return estimated_gb < 7.5
+    except Exception:
+        return True
+
+def save_photo(url: str, filename: str, max_width: int = 400, quality: int = 60):
+    """Download url, compress to JPEG, save to Cloudflare R2 (or local fallback)."""
     if not url:
         return None
+        
+    conn = get_db()
+    under_limit = check_storage_limit(conn)
+    conn.close()
+    if not under_limit:
+        print("Storage limit of 7.5GB exceeded, skipping photo upload.")
+        return None
+
     try:
         from PIL import Image
         from curl_cffi import requests as cffi_requests
@@ -132,11 +154,54 @@ def save_photo(url: str, filename: str, max_width: int = 800, quality: int = 75)
         w, h = img.size
         if w > max_width:
             img = img.resize((max_width, int(h * max_width / w)), Image.LANCZOS)
-        path = os.path.join(PHOTOS_DIR, filename)
-        img.save(path, "JPEG", quality=quality, optimize=True)
-        return f"photos/{filename}"
-    except Exception:
+            
+        endpoint = os.environ.get("R2_ENDPOINT_URL")
+        bucket = os.environ.get("R2_BUCKET_NAME")
+        
+        if endpoint and bucket:
+            import boto3
+            buffer = io.BytesIO()
+            img.save(buffer, "JPEG", quality=quality, optimize=True)
+            buffer.seek(0)
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=endpoint,
+                aws_access_key_id=os.environ.get("R2_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY"),
+                region_name="auto"
+            )
+            s3.upload_fileobj(buffer, bucket, f"photos/{filename}", ExtraArgs={'ContentType': 'image/jpeg'})
+            return f"photos/{filename}"
+        else:
+            path = os.path.join(PHOTOS_DIR, filename)
+            img.save(path, "JPEG", quality=quality, optimize=True)
+            return f"photos/{filename}"
+    except Exception as e:
+        print(f"Error saving photo: {e}")
         return None
+
+@app.route("/media/<path:filename>")
+def serve_media(filename):
+    """Serve photo from R2 presigned URL or local disk."""
+    endpoint = os.environ.get("R2_ENDPOINT_URL")
+    bucket = os.environ.get("R2_BUCKET_NAME")
+    if endpoint and bucket:
+        import boto3
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=os.environ.get("R2_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY"),
+            region_name="auto"
+        )
+        url = s3.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={'Bucket': bucket, 'Key': filename},
+            ExpiresIn=3600
+        )
+        return redirect(url)
+    return redirect(url_for('static', filename=filename))
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -488,6 +553,15 @@ def resolve_vin(vin):
         return f"VIN resolution failed: {e}", 400
     return redirect(url_for("vehicle_detail", vin=new_vin))
 
+@app.route("/vehicle/<path:vin>/update_status", methods=["POST"])
+def update_status(vin):
+    new_status = request.form.get("vin_status", "unverified")
+    conn = get_db()
+    conn.execute("UPDATE vehicles SET vin_status=? WHERE vin=?", (new_status, vin))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("vehicle_detail", vin=vin))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAGS — add / delete from vehicle detail page
@@ -555,12 +629,22 @@ def corrections():
 # REST API  (for future scrapers)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def check_api_token():
+    token = os.environ.get("API_TOKEN")
+    if token:
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer ") or auth.split(" ")[1] != token:
+            return jsonify({"error": "Unauthorized"}), 401
+    return None
+
 @app.route("/api/ingest", methods=["POST"])
 def api_ingest():
     """
     Scrapers POST here. One payload = one observation row.
     If VIN is missing/invalid, a placeholder is created automatically.
     """
+    if err := check_api_token(): return err
+    
     p = request.get_json(force=True)
     source    = p.get("source", "api")
     source_id = p.get("source_listing_id") or p.get("source_id")
@@ -643,6 +727,8 @@ def api_mark_removed():
     Any active observation for this source+make+model that is NOT in seen_ids
     gets removed_at stamped — meaning the listing disappeared (likely sold).
     """
+    if err := check_api_token(): return err
+    
     p        = request.get_json(force=True)
     source   = p.get("source")
     make     = p.get("make")
@@ -679,6 +765,8 @@ def api_vehicles():
 
 @app.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
+    if err := check_api_token(): return err
+    
     p      = request.get_json(force=True)
     source = p.get("source", "olx")
     sid    = p.get("source_listing_id")
