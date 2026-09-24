@@ -40,13 +40,19 @@
       <div class="card-body"><canvas id="chartPrices" height="200"></canvas></div>
     </div>
   </div>
-  <div class="col-md-8">
+  <div class="col-md-6">
     <div class="card h-100">
-      <div class="card-header">Weekly observations (last 12 weeks)</div>
-      <div class="card-body"><canvas id="chartWeekly" height="120"></canvas></div>
+      <div class="card-header">Map of Poland (Observations by State)</div>
+      <div class="card-body" id="chartMap" style="height: 250px;"></div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-header">Weekly observations</div>
+      <div class="card-body"><canvas id="chartWeekly" height="200"></canvas></div>
+    </div>
+  </div>
+  <div class="col-md-3">
     <div class="card h-100">
       <div class="card-header">Source methods</div>
       <div class="card-body"><canvas id="chartSources" height="200"></canvas></div>
@@ -120,5 +126,26 @@ barChart('chartMakes',  {{ makes_dist|safe }},  'make', 'cnt');
 barChart('chartPrices', {{ price_ranges|safe }}, 'rng',  'cnt');
 barChart('chartWeekly', {{ weekly|safe }},       'week', 'cnt');
 pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
+</script>
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script type="text/javascript">
+  google.charts.load('current', {
+    'packages':['geochart'],
+  });
+  google.charts.setOnLoadCallback(drawRegionsMap);
+
+  function drawRegionsMap() {
+    var data = google.visualization.arrayToDataTable({{ map_data|safe }});
+
+    var options = {
+      region: 'PL',
+      resolution: 'provinces',
+      colorAxis: {colors: ['#e0f3db', '#0868ac']},
+      legend: 'none'
+    };
+
+    var chart = new google.visualization.GeoChart(document.getElementById('chartMap'));
+    chart.draw(data, options);
+  }
 </script>
 {% endblock %}

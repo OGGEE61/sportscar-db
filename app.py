@@ -301,6 +301,32 @@ def dashboard():
         FROM listing_observations GROUP BY source_method
     """).fetchall()
 
+    CITY_TO_REGION = {
+        'Warszawa': 'PL-MZ', 'Kraków': 'PL-MA', 'Łódź': 'PL-LD', 'Wrocław': 'PL-DS',
+        'Poznań': 'PL-WP', 'Gdańsk': 'PL-PM', 'Szczecin': 'PL-ZP', 'Bydgoszcz': 'PL-KP',
+        'Lublin': 'PL-LU', 'Białystok': 'PL-PD', 'Katowice': 'PL-SL', 'Gdynia': 'PL-PM',
+        'Częstochowa': 'PL-SL', 'Radom': 'PL-MZ', 'Toruń': 'PL-KP', 'Sosnowiec': 'PL-SL',
+        'Kielce': 'PL-SK', 'Rzeszów': 'PL-PK', 'Gliwice': 'PL-SL', 'Zabrze': 'PL-SL',
+        'Olsztyn': 'PL-WN', 'Bielsko-Biała': 'PL-SL', 'Bytom': 'PL-SL', 'Zielona Góra': 'PL-LB',
+        'Rybnik': 'PL-SL', 'Ruda Śląska': 'PL-SL', 'Tychy': 'PL-SL', 'Gorzów Wielkopolski': 'PL-LB',
+        'Dąbrowa Górnicza': 'PL-SL', 'Płock': 'PL-MZ', 'Elbląg': 'PL-WN', 'Opole': 'PL-OP',
+        'Wałbrzych': 'PL-DS', 'Włocławek': 'PL-KP', 'Tarnów': 'PL-MA', 'Chorzów': 'PL-SL',
+        'Koszalin': 'PL-ZP', 'Kalisz': 'PL-WP', 'Legnica': 'PL-DS', 'Grudziądz': 'PL-KP',
+        'Jaworzno': 'PL-SL', 'Słupsk': 'PL-ZP', 'Jastrzębie-Zdrój': 'PL-SL', 'Nowy Sącz': 'PL-MA',
+        'Jelenia Góra': 'PL-DS', 'Siedlce': 'PL-MZ', 'Mysłowice': 'PL-SL', 'Konin': 'PL-WP',
+        'Piła': 'PL-WP', 'Piotrków Trybunalski': 'PL-LD', 'Łomianki': 'PL-MZ', 'Ociąż': 'PL-WP',
+        'Opalenica': 'PL-WP', 'Leszno': 'PL-WP', 'Ornontowice': 'PL-SL', 'Pabianice': 'PL-LD',
+        'Szamocin': 'PL-WP', 'Kazuń Polski': 'PL-MZ', 'Niepołomice': 'PL-MA', 'Nowy Dwór Gdański': 'PL-PM'
+    }
+
+    cities = conn.execute("SELECT location_city, COUNT(*) as cnt FROM listing_observations WHERE location_city IS NOT NULL GROUP BY location_city").fetchall()
+    region_counts = {}
+    for r in cities:
+        reg = CITY_TO_REGION.get(r["location_city"], "PL-MZ")
+        region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
+    
+    map_data = [["State", "Observations"]] + [[k, v] for k, v in region_counts.items()]
+
     conn.close()
     return render_template("dashboard.html",
         stats=stats, recent=recent,
@@ -308,6 +334,7 @@ def dashboard():
         price_ranges=json.dumps([dict(r) for r in price_ranges]),
         weekly=json.dumps([dict(r) for r in weekly]),
         sources=json.dumps([dict(r) for r in sources]),
+        map_data=json.dumps(map_data)
     )
 
 

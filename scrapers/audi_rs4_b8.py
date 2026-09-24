@@ -11,7 +11,7 @@ CONFIG = ScraperConfig(
     model   = "RS4",
     variant = "B8",
     source  = "otomoto",
-    list_url = "https://www.otomoto.pl/osobowe/audi/rs4?page={page}",
+    list_url = "https://www.otomoto.pl/osobowe/audi/rs4?search%5Bfilter_float_year%3Afrom%5D=2012&search%5Bfilter_float_year%3Ato%5D=2015&page={page}",
     pages = 5,
     defaults = {
         "power_hp":     450,

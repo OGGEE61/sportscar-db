@@ -23,13 +23,11 @@ from base_scraper import run
 
 from audi_rs3_8v        import CONFIG    as RS3
 from audi_rs4_b8        import CONFIG    as RS4
-from audi_rs5           import CONFIG    as RS5
 from bmw_m4_f82         import CONFIG_M4 as M4, CONFIG_M3 as M3
 from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
-from porsche_997        import CONFIG    as P997
 
-SCRAPERS = [C63] # [RS3, RS4, RS5, M4, M3, C63, E55, P997]
+SCRAPERS = [RS4] # [RS3, RS4, M4, M3, C63, E55]
 
 if __name__ == "__main__":
     totals = {"auto_approved": 0, "pending": 0, "duplicate": 0,
