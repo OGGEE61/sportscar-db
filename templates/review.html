@@ -240,7 +240,6 @@ document.querySelectorAll('.approve-btn').forEach(btn => {
   });
 });
 
-{% if status_filter == 'pending' %}
 const selectAll  = document.getElementById('select-all');
 const checks     = () => document.querySelectorAll('.card-check');
 const rejectBtn  = document.getElementById('bulk-reject-btn');
@@ -361,7 +360,6 @@ if (rejectAllBtn) {
     });
   };
 }
-{% endif %}
 </script>
 
 {% endif %}
