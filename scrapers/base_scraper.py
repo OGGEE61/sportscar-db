@@ -648,11 +648,13 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             location_city = card["location_city"]
             price_pln     = parse_price(price_raw)
 
-            # Title keyword guard
-            if cfg.title_must_contain and \
-               cfg.title_must_contain.lower() not in title.lower():
-                print(f"  [skip] {_safe(title[:60])}")
-                continue
+            # Title keyword guard (normalizes spaces so "C 63" matches "C63" and "E 55" matches "E55")
+            if cfg.title_must_contain:
+                needle = cfg.title_must_contain.lower().replace(" ", "")
+                haystack = title.lower().replace(" ", "")
+                if needle not in haystack:
+                    print(f"  [skip] {_safe(title[:60])}")
+                    continue
 
             print(f"  {_safe(title[:65])} | {_safe(price_raw)} | {_safe(location_city or '')}")
 

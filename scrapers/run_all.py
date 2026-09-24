@@ -1,11 +1,13 @@
-"""Run all scrapers in sequence.
+"""Run scrapers in sequence or selectively.
 
 Usage:
-    python scrapers/run_all.py
-
-The Flask app must be running first (python app.py).
-Results are auto-approved when the VIN decrypts cleanly — no manual review
-needed for those. Listings without a valid VIN land in /review as before.
+    python scrapers/run_all.py              # runs all active fleet scrapers
+    python scrapers/run_all.py c63          # runs only C63 W204
+    python scrapers/run_all.py e55          # runs only E55 W211
+    python scrapers/run_all.py rs4_b85      # runs only RS4 B8.5 Avant
+    python scrapers/run_all.py rs4_b9       # runs only RS4 B9 Avant
+    python scrapers/run_all.py rs4          # runs both RS4 scrapers
+    python scrapers/run_all.py all          # runs all active fleet scrapers
 """
 import sys
 import os
@@ -28,21 +30,48 @@ from bmw_m4_f82         import CONFIG_M4 as M4, CONFIG_M3 as M3
 from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
 
-SCRAPERS = [RS4_B85, RS4_B9] # [RS3, RS4_B85, RS4_B9, M4, M3, C63, E55]
+# Active target fleet
+DEFAULT_FLEET = [C63, E55, RS4_B85, RS4_B9]
+
+SCRAPER_MAP = {
+    "c63": [C63],
+    "e55": [E55],
+    "rs4_b85": [RS4_B85],
+    "rs4_b9": [RS4_B9],
+    "rs4": [RS4_B85, RS4_B9],
+    "rs3": [RS3],
+    "m3": [M3],
+    "m4": [M4],
+    "fleet": DEFAULT_FLEET,
+    "all": DEFAULT_FLEET,
+}
 
 if __name__ == "__main__":
-    totals = {"auto_approved": 0, "pending": 0, "duplicate": 0,
-              "price_updated": 0, "total": 0}
+    target = os.environ.get("SCRAPER_TARGET", "").lower().strip()
+    if len(sys.argv) > 1:
+        target = sys.argv[1].lower().strip()
 
-    for cfg in SCRAPERS:
+    if target and target in SCRAPER_MAP:
+        scrapers_to_run = SCRAPER_MAP[target]
+        print(f"Target selected: {target} ({len(scrapers_to_run)} scraper(s))")
+    else:
+        scrapers_to_run = DEFAULT_FLEET
+        print(f"Running default fleet ({len(scrapers_to_run)} scrapers: C63, E55, RS4 B8.5, RS4 B9)")
+
+    totals = {"total": 0}
+
+    for cfg in scrapers_to_run:
         label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
         print(f"\n{'='*60}")
         print(f"  {label}")
         print(f"{'='*60}")
-        results = run(cfg)
-        totals["total"] += len(results)
+        try:
+            results = run(cfg)
+            totals["total"] += len(results)
+        except Exception as e:
+            print(f"  [ERROR running scraper {label}]: {e}")
         time.sleep(2)   # brief pause between scrapers
 
     print(f"\n{'='*60}")
-    print(f"  ALL DONE — {totals['total']} listings processed across {len(SCRAPERS)} scrapers")
+    print(f"  ALL DONE — {totals['total']} listings processed across {len(scrapers_to_run)} scrapers")
     print(f"{'='*60}")

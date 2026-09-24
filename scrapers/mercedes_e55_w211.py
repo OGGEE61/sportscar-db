@@ -20,7 +20,7 @@ CONFIG = ScraperConfig(
         "&search%5Bfilter_float_engine_power%3Afrom%5D=460"
         "&page={page}"
     ),
-    title_must_contain = "Klasa E 55",
+    title_must_contain = "E 55",
     pages = 5,
     defaults = {
         "power_hp":     476,
