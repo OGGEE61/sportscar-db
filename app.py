@@ -147,12 +147,16 @@ def infer_vehicle_specs(make, model, variant="", raw_title=""):
         specs = {"engine_cc": 5439, "engine_cyl": 8, "power_hp": 476, "body_type": bt, "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
     elif "m4" in text:
         bt = "Kabriolet" if any(k in text for k in ["cabrio", "kabriolet", "convertible"]) else "Coupe"
-        specs = {"engine_cc": 2979, "engine_cyl": 6, "power_hp": 431, "body_type": bt, "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
+        tm = "manual" if ("manual" in text or "manualna" in text) else "automatic"
+        specs = {"engine_cc": 2979, "engine_cyl": 6, "power_hp": 431, "body_type": bt, "drivetrain": "RWD", "transmission": tm, "fuel_type": "petrol"}
     elif "m3" in text:
-        specs = {"engine_cc": 2979, "engine_cyl": 6, "power_hp": 431, "body_type": "Sedan", "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
+        tm = "manual" if ("manual" in text or "manualna" in text) else "automatic"
+        specs = {"engine_cc": 2979, "engine_cyl": 6, "power_hp": 431, "body_type": "Sedan", "drivetrain": "RWD", "transmission": tm, "fuel_type": "petrol"}
     elif "rs3" in text:
         bt = "Sedan" if ("limousine" in text or "sedan" in text) else "Hatchback"
         specs = {"engine_cc": 2480, "engine_cyl": 5, "power_hp": 400, "body_type": bt, "drivetrain": "AWD", "transmission": "automatic", "fuel_type": "petrol"}
+    elif "x3 m" in text or "x3m" in text:
+        specs = {"engine_cc": 2993, "engine_cyl": 6, "power_hp": 510, "body_type": "SUV", "drivetrain": "AWD", "transmission": "automatic", "fuel_type": "petrol"}
 
     return specs
 
@@ -583,6 +587,16 @@ def model_analytics():
             "years": "2014–2020",
             "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD",
             "where": "v.make = 'BMW' AND (v.model = 'M4' OR v.variant LIKE '%F82%') AND (v.year >= 2014 AND v.year <= 2020)"
+        },
+        {
+            "id": "x3_m_f97",
+            "name": "BMW X3 M (F97)",
+            "make": "BMW",
+            "model": "X3 M",
+            "variant": "F97",
+            "years": "2019–2024",
+            "engine": "3.0L Twin-Turbo S58 · 510 HP · AWD",
+            "where": "v.make = 'BMW' AND (v.model = 'X3 M' OR v.model = 'X3M' OR (v.model = 'X3' AND (v.variant LIKE '%M%' OR v.variant LIKE '%F97%'))) AND (v.year >= 2019 AND v.year <= 2024)"
         },
     ]
 

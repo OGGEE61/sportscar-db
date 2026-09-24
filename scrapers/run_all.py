@@ -31,22 +31,23 @@ from audi_rs3_8v        import CONFIG    as RS3
 from audi_rs4_b85       import CONFIG    as RS4_B85
 from audi_rs4_b9        import CONFIG    as RS4_B9
 from bmw_m4_f82         import CONFIG_M4 as M4, CONFIG_M3 as M3
+from bmw_x3_m_f97       import CONFIG    as X3_M
 from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
 
 # Active target fleet
-ALL_FLEET = [C63, E55, RS4_B85, RS4_B9, M4]
+ALL_FLEET = [C63, E55, RS4_B85, RS4_B9, M4, X3_M]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
 # Guarantees each model runs 3 times per week, distributed evenly across days
 WEEKDAY_SCHEDULE = {
     0: [E55, RS4_B9],            # Monday
-    1: [C63, M4],                # Tuesday
+    1: [C63, M4, X3_M],          # Tuesday
     2: [RS4_B85, E55],           # Wednesday
-    3: [C63, RS4_B9],            # Thursday
+    3: [C63, RS4_B9, X3_M],      # Thursday
     4: [M4, RS4_B85],            # Friday
     5: [C63, E55, RS4_B9],       # Saturday
-    6: [RS4_B85, M4],            # Sunday
+    6: [RS4_B85, M4, X3_M],      # Sunday
 }
 
 SCRAPER_MAP = {
@@ -58,6 +59,7 @@ SCRAPER_MAP = {
     "m4": [M4],
     "m3": [M3],
     "rs3": [RS3],
+    "x3_m": [X3_M],
     "all": ALL_FLEET,
     "fleet": ALL_FLEET,
 }
