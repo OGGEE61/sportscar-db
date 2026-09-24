@@ -70,9 +70,10 @@ class D1Row:
 class D1Cursor:
     """Mimics the sqlite3.Cursor interface for D1 query results."""
 
-    def __init__(self, results: list, lastrowid=None):
+    def __init__(self, results: list, lastrowid=None, rowcount=-1):
         self._results = results or []
         self.lastrowid = lastrowid
+        self.rowcount = rowcount
 
     def fetchone(self):
         if self._results:
@@ -140,6 +141,8 @@ class D1Backend:
                     },
                     timeout=30,
                 )
+                if not resp.ok:
+                    raise RuntimeError(f"D1 API returned {resp.status_code}: {resp.text}")
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -153,10 +156,11 @@ class D1Backend:
                 results = stmt_result.get("results") or []
                 meta = stmt_result.get("meta", {})
                 last_row_id = meta.get("last_row_id")
+                changes = meta.get("changes", -1)
                 if last_row_id:
                     self._last_row_id = last_row_id
 
-                return D1Cursor(results, lastrowid=last_row_id)
+                return D1Cursor(results, lastrowid=last_row_id, rowcount=changes)
 
             except Exception as exc:
                 last_exc = exc

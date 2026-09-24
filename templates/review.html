@@ -71,7 +71,7 @@
     <!-- Thumbnail -->
     <a href="/review/{{ l.id }}" class="flex-shrink-0" title="Review details">
       {% if l.local_photo %}
-      <img src="/static/{{ l.local_photo }}" class="rounded shadow-sm"
+      <img src="/media/{{ l.local_photo }}" class="rounded shadow-sm"
            style="width: 100px; height: 75px; object-fit: cover;">
       {% elif photos %}
       <img src="{{ photos[0] }}" class="rounded shadow-sm"

@@ -29,9 +29,14 @@ jobs:
         # Secret token for authentication with Vercel API
         API_TOKEN: ${{ secrets.API_TOKEN }}
         # The URL where the Vercel app is hosted
-        VERCEL_URL: ${{ secrets.VERCEL_URL }} 
+        BASE_URL: ${{ secrets.API_BASE }}
+        # Otomoto session cookies to decrypt VINs (JSON string)
+        OTOMOTO_COOKIES: ${{ secrets.OTOMOTO_COOKIES }}
       run: |
-        # Override the base_scraper POST URLs to point to Vercel
-        # We assume the scraper uses VERCEL_URL if provided
-        export BASE_URL=$VERCEL_URL
-        python run_all.py || echo "Some scrapers failed, but continuing"
+        # Write cookies file if secret is provided
+        if [ -n "$OTOMOTO_COOKIES" ]; then
+          echo "$OTOMOTO_COOKIES" > scrapers/otomoto_cookies.json
+        fi
+        
+        # Run all scrapers from the scrapers directory
+        python scrapers/run_all.py || echo "Some scrapers failed, but continuing"

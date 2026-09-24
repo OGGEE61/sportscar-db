@@ -21,6 +21,7 @@ import os
 import re
 import json
 import time
+import random
 import hashlib
 import base64
 from dataclasses import dataclass, field
@@ -35,8 +36,10 @@ try:
 except ImportError:
     _CRYPTO_OK = False
 
-API_BASE     = "http://127.0.0.1:5555"
+API_BASE     = os.environ.get("BASE_URL") or os.environ.get("VERCEL_URL") or "http://127.0.0.1:5555"
 API_URL      = f"{API_BASE}/api/ingest_pending"
+API_TOKEN    = os.environ.get("API_TOKEN")
+API_HEADERS  = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 BROWSER_UA   = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -653,7 +656,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
 
             detail = {}
             if source_url:
-                time.sleep(cfg.detail_delay)
+                jitter = random.uniform(0.5, 2.5)
+                time.sleep(cfg.detail_delay + jitter)
                 detail = fetch_detail(source_url, cookies=cookies)
                 vc = detail.get("vin_confidence", "none")
                 if detail.get("vin") and vc == "found_in_description":
@@ -711,7 +715,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             if post_to_api:
                 try:
                     resp = requests.post(API_URL, json=payload, timeout=5,
-                                         impersonate="chrome")
+                                         headers=API_HEADERS, impersonate="chrome")
                     rj   = resp.json()
                     tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
                     print(f"    > API {resp.status_code} [{tag}]")
@@ -725,7 +729,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 f"{API_BASE}/api/mark_removed",
                 json={"source": cfg.source, "make": cfg.make,
                       "model": cfg.model, "seen_ids": list(seen_ids)},
-                timeout=5, impersonate="chrome",
+                timeout=5, headers=API_HEADERS, impersonate="chrome",
             )
             marked = r.json().get("marked", 0)
             if marked:

@@ -13,6 +13,12 @@ import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+except ImportError:
+    pass
+
 from base_scraper import run
 
 from audi_rs3_8v        import CONFIG    as RS3
@@ -23,7 +29,7 @@ from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
 from porsche_997        import CONFIG    as P997
 
-SCRAPERS = [RS3, RS4, RS5, M4, M3, C63, E55, P997]
+SCRAPERS = [C63] # [RS3, RS4, RS5, M4, M3, C63, E55, P997]
 
 if __name__ == "__main__":
     totals = {"auto_approved": 0, "pending": 0, "duplicate": 0,

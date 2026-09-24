@@ -763,18 +763,36 @@ def api_mark_removed():
     if not source or not seen_ids:
         return jsonify({"marked": 0})
     conn = get_db()
-    placeholders = ",".join("?" * len(seen_ids))
-    cur = conn.execute(f"""
-        UPDATE listing_observations
-        SET removed_at = datetime('now'), last_seen_at = datetime('now')
-        WHERE source = ?
+    
+    # 1. Fetch active observations for this source/make/model
+    active_rows = conn.execute("""
+        SELECT source_listing_id 
+        FROM listing_observations 
+        WHERE source = ? 
           AND removed_at IS NULL
-          AND source_listing_id NOT IN ({placeholders})
           AND vin IN (SELECT vin FROM vehicles WHERE make = ? AND model = ?)
-    """, [source] + list(seen_ids) + [make, model])
+    """, (source, make, model)).fetchall()
+    
+    seen_set = set(seen_ids)
+    missing_ids = [r["source_listing_id"] for r in active_rows if r["source_listing_id"] not in seen_set]
+    
+    marked = 0
+    if missing_ids:
+        chunk_size = 50
+        for i in range(0, len(missing_ids), chunk_size):
+            chunk = missing_ids[i:i+chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            cur = conn.execute(f"""
+                UPDATE listing_observations
+                SET removed_at = datetime('now'), last_seen_at = datetime('now')
+                WHERE source = ?
+                  AND source_listing_id IN ({placeholders})
+            """, [source] + chunk)
+            marked += cur.rowcount
+
     conn.commit()
     conn.close()
-    return jsonify({"marked": cur.rowcount})
+    return jsonify({"marked": marked})
 
 
 @app.route("/api/vehicles")
