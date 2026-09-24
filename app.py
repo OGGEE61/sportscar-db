@@ -1029,6 +1029,8 @@ def review_reject_all_pending():
     )
     conn.commit()
     conn.close()
+    if request.args.get("ajax") == "1":
+        return {"status": "success"}
     return redirect(url_for("review_queue"))
 
 
@@ -1084,6 +1086,7 @@ def review_reject(pid):
     conn.commit()
     
     if request.args.get("ajax") == "1":
+        conn.close()
         return {"status": "success", "id": pid}
 
     # Auto-advance to next pending
