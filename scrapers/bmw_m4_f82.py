@@ -18,9 +18,12 @@ CONFIG_M4 = ScraperConfig(
         "&search%5Bfilter_float_year%3Ato%5D=2020"
         "&page={page}"
     ),
+    min_year = 2014,
+    max_year = 2020,
     pages = 5,
     defaults = {
         "power_hp":     431,
+        "engine_cc":    2979,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "RWD",
@@ -38,9 +41,12 @@ CONFIG_M3 = ScraperConfig(
         "&search%5Bfilter_float_year%3Ato%5D=2020"
         "&page={page}"
     ),
+    min_year = 2014,
+    max_year = 2020,
     pages = 5,
     defaults = {
         "power_hp":     431,
+        "engine_cc":    2979,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "RWD",

@@ -2,22 +2,24 @@ name: Run Scrapers
 
 on:
   schedule:
-    # Run every day at 02:00 UTC (04:00 AM CEST / 03:00 AM CET)
-    - cron: '0 2 * * *'
+    # Run every day at 06:15 UTC (08:15 AM CEST Polish Summer Time / 07:15 AM CET Polish Winter Time)
+    - cron: '15 6 * * *'
   workflow_dispatch:
     inputs:
       target:
         description: 'Cars to scrape'
         required: true
-        default: 'all'
+        default: 'rotation'
         type: choice
         options:
+          - rotation
           - all
           - c63
           - e55
           - rs4_b85
           - rs4_b9
           - rs4
+          - m4
 
 jobs:
   scrape:
@@ -46,8 +48,8 @@ jobs:
         BASE_URL: ${{ secrets.API_BASE }}
         # Otomoto session cookies to decrypt VINs (optional JSON string)
         OTOMOTO_COOKIES: ${{ secrets.OTOMOTO_COOKIES }}
-        # Selected target scraper from manual dispatch or 'all' for cron
-        SCRAPER_TARGET: ${{ github.event.inputs.target || 'all' }}
+        # Target selector: 'rotation' by default, or specific model / all
+        SCRAPER_TARGET: ${{ github.event.inputs.target || 'rotation' }}
       run: |
         # Write cookies file if secret is provided
         if [ -n "$OTOMOTO_COOKIES" ]; then
