@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block title %}{{ selected_model.name }} – Market Analytics – SportsCar DB{% endblock %}
+
+{% block head %}
+<style>
+  .model-pill {
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    border: 1px solid #dee2e6;
+    color: #495057;
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .model-pill:hover {
+    background: #f1f3f5;
+    color: #212529;
+    border-color: #ced4da;
+  }
+  .model-pill.active {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+    box-shadow: 0 2px 4px rgba(13, 110, 253, 0.25);
+  }
+  .kpi-card {
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    transition: transform 0.15s ease;
+  }
+  .kpi-card:hover {
+    transform: translateY(-2px);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Page title & selector tabs -->
+<div class="mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Model Analytics</h2>
+    <span class="badge bg-secondary">Market Observations</span>
+  </div>
+
+  <!-- Model selector pills -->
+  <div class="d-flex flex-wrap gap-2 pb-2">
+    {% for m in models %}
+    <a href="/models?model={{ m.id }}" class="model-pill {% if m.id == selected_model.id %}active{% endif %}">
+      <span>{{ m.name }}</span>
+      <small class="opacity-75">({{ m.years }})</small>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Model Header Banner -->
+<div class="card mb-4 border-0 shadow-sm bg-white">
+  <div class="card-body p-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <div class="text-uppercase small text-primary fw-bold tracking-wide">{{ selected_model.make }}</div>
+        <h3 class="mb-1 fw-bold">{{ selected_model.name }}</h3>
+        <p class="text-muted mb-0">
+          <span class="badge bg-light text-dark border me-2">Years: {{ selected_model.years }}</span>
+          <span>{{ selected_model.engine }}</span>
+        </p>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="/vehicles?q={{ selected_model.model }}" class="btn btn-outline-primary btn-sm">
+          Browse All {{ selected_model.name }} →
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Cards Row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="kpi-card p-3 h-100 border-start border-primary border-4">
+      <div class="small text-muted mb-1">Active Listings</div>
+      <div class="fs-4 fw-bold text-dark">{{ stats.count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="kpi-card p-3 h-100 border-start border-success border-4">
+      <div class="small text-muted mb-1">Average Price</div>
+      <div class="fs-4 fw-bold text-success">{{ "{:,.0f} zł".format(stats.avg_price) if stats.avg_price else "—" }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="kpi-card p-3 h-100 border-start border-info border-4">
+      <div class="small text-muted mb-1">Median Price</div>
+      <div class="fs-4 fw-bold text-info">{{ "{:,.0f} zł".format(stats.median_price) if stats.median_price else "—" }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="kpi-card p-3 h-100 border-start border-warning border-4">
+      <div class="small text-muted mb-1">Price Range</div>
+      <div class="fs-5 fw-bold text-dark">
+        {% if stats.min_price and stats.max_price %}
+        {{ "{:,.0f}k".format(stats.min_price/1000) }} – {{ "{:,.0f}k zł".format(stats.max_price/1000) }}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="kpi-card p-3 h-100 border-start border-secondary border-4">
+      <div class="small text-muted mb-1">Avg Mileage</div>
+      <div class="fs-4 fw-bold text-dark">{{ "{:,.0f} km".format(stats.avg_mileage) if stats.avg_mileage else "—" }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="kpi-card p-3 h-100 border-start border-dark border-4">
+      <div class="small text-muted mb-1">Median Mileage</div>
+      <div class="fs-4 fw-bold text-dark">{{ "{:,.0f} km".format(stats.median_mileage) if stats.median_mileage else "—" }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row 1: Price vs Mileage & Price Distribution -->
+<div class="row g-3 mb-4">
+  <!-- Scatter Plot: Price vs Mileage -->
+  <div class="col-lg-7">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <div>
+          <span class="fw-bold text-dark">Price vs. Mileage Curve</span>
+          <span class="text-muted small ms-2 d-none d-sm-inline">Click any point to view vehicle</span>
+        </div>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Depreciation Trend</span>
+      </div>
+      <div class="card-body" style="height: 320px; position: relative;">
+        {% if scatter_data != '[]' %}
+        <canvas id="chartScatter"></canvas>
+        {% else %}
+        <div class="d-flex h-100 align-items-center justify-content-center text-muted">
+          No mileage vs. price points observed yet for this model.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Price Distribution Histogram -->
+  <div class="col-lg-5">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3">
+        <span class="fw-bold text-dark">Price Brackets (PLN)</span>
+      </div>
+      <div class="card-body" style="height: 320px; position: relative;">
+        {% if hist_labels != '[]' and hist_counts != '[]' %}
+        <canvas id="chartHist"></canvas>
+        {% else %}
+        <div class="d-flex h-100 align-items-center justify-content-center text-muted">
+          Insufficient price data for histogram.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row 2: Poland Map & Year of Production -->
+<div class="row g-3 mb-4">
+  <!-- Poland Map by Voivodeship -->
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3">
+        <span class="fw-bold text-dark">Geographic Location in Poland</span>
+      </div>
+      <div class="card-body" style="height: 300px;" id="chartModelMap"></div>
+    </div>
+  </div>
+
+  <!-- Production Year Distribution -->
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3">
+        <span class="fw-bold text-dark">Listings by Manufacturing Year</span>
+      </div>
+      <div class="card-body" style="height: 300px; position: relative;">
+        {% if year_data != '[]' %}
+        <canvas id="chartYears"></canvas>
+        {% else %}
+        <div class="d-flex h-100 align-items-center justify-content-center text-muted">
+          No year data available.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Active Listings for this Model -->
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+    <span class="fw-bold text-dark">Tracked {{ selected_model.name }} Vehicles ({{ vehicles|length }})</span>
+    <span class="text-muted small">Updated live from market observations</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Vehicle</th>
+          <th>Year</th>
+          <th>Specs</th>
+          <th>Mileage</th>
+          <th>Current Price</th>
+          <th>Location</th>
+          <th>Observed</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vehicles %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              {% if v.photo %}
+              <img src="/media/{{ v.photo }}" class="rounded" style="width: 50px; height: 35px; object-fit: cover;">
+              {% else %}
+              <div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: 50px; height: 35px; font-size: 0.65rem; color: #888;">
+                No pic
+              </div>
+              {% endif %}
+              <div>
+                <a href="/vehicle/{{ v.vin }}" class="fw-semibold text-decoration-none text-dark d-block text-truncate" style="max-width: 220px;" title="{{ v.title or v.vin }}">
+                  {{ v.title or (v.make ~ ' ' ~ v.model) }}
+                </a>
+                <code class="small text-muted">{{ v.vin }}</code>
+              </div>
+            </div>
+          </td>
+          <td>{{ v.year or '—' }}</td>
+          <td>
+            <div class="small">
+              <span class="badge bg-light text-dark border">{{ v.body_type or '—' }}</span>
+              {% if v.engine_cc %}<span class="badge bg-light text-dark border">{{ v.engine_cc }} cc</span>{% endif %}
+              {% if v.power_hp %}<span class="badge bg-light text-dark border">{{ v.power_hp }} HP</span>{% endif %}
+            </div>
+          </td>
+          <td>{{ "{:,} km".format(v.mileage_km) if v.mileage_km else '—' }}</td>
+          <td>
+            <span class="fw-bold text-success">
+              {{ "{:,.0f} PLN".format(v.price_pln) if v.price_pln else '—' }}
+            </span>
+          </td>
+          <td>{{ v.location_city or '—' }}</td>
+          <td class="small text-muted">{{ v.observed_at[:10] if v.observed_at else '—' }}</td>
+          <td class="text-end">
+            <a href="/vehicle/{{ v.vin }}" class="btn btn-outline-primary btn-sm">Details →</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center py-5 text-muted">
+            No approved vehicles in the database for {{ selected_model.name }} yet.
+            <div class="mt-2">
+              <a href="/review" class="btn btn-sm btn-outline-secondary">Check Review Queue</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── 1. Scatter Plot: Price vs Mileage ──────────────────────────────────────────
+const scatterData = {{ scatter_data|safe }};
+if (scatterData.length && document.getElementById('chartScatter')) {
+  const chartPoints = scatterData.map(d => ({
+    x: d.x,
+    y: d.y,
+    meta: d
+  }));
+
+  const chart = new Chart(document.getElementById('chartScatter'), {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Listings',
+        data: chartPoints,
+        backgroundColor: 'rgba(13, 110, 253, 0.75)',
+        borderColor: '#0d6efd',
+        pointRadius: 6,
+        pointHoverRadius: 9,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Mileage (km)', font: { weight: 'bold' } },
+          ticks: { callback: v => Number(v).toLocaleString() + ' km' },
+          grid: { color: 'rgba(0,0,0,0.04)' }
+        },
+        y: {
+          title: { display: true, text: 'Price (PLN)', font: { weight: 'bold' } },
+          ticks: { callback: v => Number(v).toLocaleString() + ' zł' },
+          grid: { color: 'rgba(0,0,0,0.04)' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const m = ctx.raw.meta;
+              return [
+                `${m.title} (${m.year})`,
+                `Price: ${Number(m.y).toLocaleString()} PLN`,
+                `Mileage: ${Number(m.x).toLocaleString()} km`
+              ];
+            }
+          }
+        }
+      },
+      onClick: (e, items) => {
+        if (items.length) {
+          const idx = items[0].index;
+          const url = scatterData[idx].url;
+          if (url) window.location.href = url;
+        }
+      }
+    }
+  });
+}
+
+// ── 2. Price Histogram ────────────────────────────────────────────────────────
+const histLabels = {{ hist_labels|safe }};
+const histCounts = {{ hist_counts|safe }};
+if (histLabels.length && document.getElementById('chartHist')) {
+  new Chart(document.getElementById('chartHist'), {
+    type: 'bar',
+    data: {
+      labels: histLabels,
+      datasets: [{
+        data: histCounts,
+        backgroundColor: '#198754',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,0.04)' } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.parsed.y} vehicle(s)`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── 3. Manufacturing Year Bar Chart ──────────────────────────────────────────
+const yearData = {{ year_data|safe }};
+if (yearData.length && document.getElementById('chartYears')) {
+  new Chart(document.getElementById('chartYears'), {
+    type: 'bar',
+    data: {
+      labels: yearData.map(d => d.year),
+      datasets: [{
+        data: yearData.map(d => d.cnt),
+        backgroundColor: '#6f42c1',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(0,0,0,0.04)' } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.parsed.y} listing(s)`
+          }
+        }
+      }
+    }
+  });
+}
+</script>
+
+<!-- Google GeoChart for Poland Map -->
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script type="text/javascript">
+  google.charts.load('current', { 'packages':['geochart'] });
+  google.charts.setOnLoadCallback(drawModelMap);
+
+  function drawModelMap() {
+    const rawData = {{ map_data|safe }};
+    const mapContainer = document.getElementById('chartModelMap');
+    if (!mapContainer) return;
+    
+    if (rawData.length <= 1) {
+      mapContainer.innerHTML = '<div class="d-flex h-100 align-items-center justify-content-center text-muted">No location data for this model yet.</div>';
+      return;
+    }
+
+    const data = google.visualization.arrayToDataTable(rawData);
+    const options = {
+      region: 'PL',
+      resolution: 'provinces',
+      colorAxis: { colors: ['#e1edff', '#0d6efd'] },
+      backgroundColor: 'transparent',
+      datalessRegionColor: '#f1f3f5',
+      defaultColor: '#f5f5f5',
+    };
+
+    const chart = new google.visualization.GeoChart(mapContainer);
+    chart.draw(data, options);
+  }
+  window.addEventListener('resize', drawModelMap);
+</script>
+{% endblock %}

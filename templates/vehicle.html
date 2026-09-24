@@ -103,9 +103,14 @@
 
 <!-- Price timeline chart -->
 {% if price_timeline != '[]' %}
-<div class="card mb-4">
-  <div class="card-header">Price history</div>
-  <div class="card-body"><canvas id="chartPrice" height="100"></canvas></div>
+<div class="card mb-4 shadow-sm">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small text-uppercase text-secondary">Price History</span>
+    <span class="badge bg-light text-dark border small">{{ ad_groups|length }} source(s)</span>
+  </div>
+  <div class="card-body py-2 px-3" style="height: 140px; position: relative;">
+    <canvas id="chartPrice"></canvas>
+  </div>
 </div>
 {% endif %}
 
@@ -312,13 +317,38 @@ new Chart(document.getElementById('chartPrice'), {
       label: 'Price PLN',
       data: pt.map(d => d.price_pln),
       borderColor: '#0d6efd',
-      backgroundColor: 'rgba(13,110,253,.1)',
+      backgroundColor: 'rgba(13,110,253,.08)',
       fill: true,
-      tension: 0.3,
-      pointRadius: 4,
+      tension: 0.2,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      borderWidth: 2,
     }]
   },
-  options: { scales: { y: { beginAtZero: false } }, plugins: { legend: { display: false } } }
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    layout: { padding: { top: 6, bottom: 6, left: 6, right: 6 } },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+      y: {
+        beginAtZero: false,
+        grid: { color: 'rgba(0,0,0,0.04)' },
+        ticks: {
+          font: { size: 10 },
+          callback: val => Number(val).toLocaleString() + ' zł'
+        }
+      }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => Number(ctx.parsed.y).toLocaleString() + ' PLN'
+        }
+      }
+    }
+  }
 });
 </script>
 {% endif %}

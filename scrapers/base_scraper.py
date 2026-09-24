@@ -348,9 +348,31 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         year         = int(params["year"])                               if "year"         in params else None
         mileage_km   = int(re.sub(r"[^\d]", "", params["mileage"]))     if params.get("mileage")      else None
         power_hp     = int(re.sub(r"[^\d]", "", params["engine_power"])) if params.get("engine_power") else None
+        engine_cc    = int(re.sub(r"[^\d]", "", params["engine_capacity"])) if params.get("engine_capacity") else None
         fuel_type    = params.get("fuel_type")
         transmission = params.get("gearbox")
         color_ext    = params.get("color")
+        doors        = int(re.sub(r"[^\d]", "", params["doors_count"])) if params.get("doors_count") else None
+
+        body_type_raw= params.get("body_type")
+        body_type    = None
+        if body_type_raw:
+            bt_l = str(body_type_raw).lower()
+            if "kombi" in bt_l or "estate" in bt_l or "wagon" in bt_l: body_type = "Kombi"
+            elif "sedan" in bt_l or "limuzyna" in bt_l or "saloon" in bt_l: body_type = "Sedan"
+            elif "coupe" in bt_l or "coupé" in bt_l: body_type = "Coupe"
+            elif "kabriolet" in bt_l or "cabrio" in bt_l: body_type = "Kabriolet"
+            elif "hatchback" in bt_l: body_type = "Hatchback"
+            elif "suv" in bt_l: body_type = "SUV"
+            else: body_type = str(body_type_raw).capitalize()
+
+        drive_raw    = params.get("drive")
+        drivetrain   = None
+        if drive_raw:
+            dr_l = str(drive_raw).lower()
+            if "4x4" in dr_l or "awd" in dr_l or "quattro" in dr_l or "4matic" in dr_l or "stały" in dr_l: drivetrain = "AWD"
+            elif "tyl" in dr_l or "rwd" in dr_l: drivetrain = "RWD"
+            elif "przód" in dr_l or "przed" in dr_l or "fwd" in dr_l: drivetrain = "FWD"
 
         # Description text — search for plain VIN
         description_text = advert.get("description", "")
@@ -415,6 +437,10 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "year":                 year,
             "mileage_km":           mileage_km,
             "power_hp":             power_hp,
+            "engine_cc":            engine_cc,
+            "body_type":            body_type,
+            "drivetrain":           drivetrain,
+            "doors":                doors,
             "fuel_type":            fuel_type,
             "transmission":         transmission,
             "color_ext":            color_ext,
@@ -704,7 +730,11 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 "model":             cfg.model,
                 "variant":           cfg.variant,
                 "year":              detail.get("year"),
+                "body_type":         detail.get("body_type"),
+                "engine_cc":         detail.get("engine_cc"),
                 "power_hp":          detail.get("power_hp"),
+                "drivetrain":        detail.get("drivetrain"),
+                "doors":             detail.get("doors"),
                 "fuel_type":         detail.get("fuel_type"),
                 "transmission":      detail.get("transmission"),
                 "color_ext":         detail.get("color_ext"),
@@ -716,10 +746,22 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 "vin_confidence":    detail.get("vin_confidence", "none"),
             }
 
-            # Fill gaps with known model defaults (e.g. RS3 8V is always 400 HP petrol)
+            # Fill gaps with known model defaults
             for key, value in cfg.defaults.items():
                 if not payload.get(key):
                     payload[key] = value
+
+            # Secondary fallback for body_type from title if still missing
+            if not payload.get("body_type"):
+                tl = title.lower()
+                if "kombi" in tl or "avant" in tl or "t-modell" in tl or "touring" in tl or "estate" in tl:
+                    payload["body_type"] = "Kombi"
+                elif "coupe" in tl or "coupé" in tl:
+                    payload["body_type"] = "Coupe"
+                elif "sedan" in tl or "limuzyna" in tl or "saloon" in tl:
+                    payload["body_type"] = "Sedan"
+                elif "cabrio" in tl or "kabriolet" in tl:
+                    payload["body_type"] = "Kabriolet"
 
             results.append(payload)
 

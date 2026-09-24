@@ -20,8 +20,20 @@ try:
 except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
 
+_BACKFILLED = False
+
 @app.before_request
 def require_login():
+    global _BACKFILLED
+    if not _BACKFILLED:
+        try:
+            conn = get_db()
+            backfill_vehicle_specs(conn)
+            conn.close()
+            _BACKFILLED = True
+        except Exception as e:
+            print(f"Backfill startup notice: {e}")
+
     if request.path.startswith("/api/") or request.path.startswith("/static/") or request.path == "/login":
         return
     admin_password = os.environ.get("ADMIN_PASSWORD")
@@ -57,6 +69,94 @@ def is_plausible_vin(vin: str) -> bool:
     return True
 
 
+CITY_TO_REGION = {
+    'Warszawa': 'PL-MZ', 'Kraków': 'PL-MA', 'Łódź': 'PL-LD', 'Wrocław': 'PL-DS',
+    'Poznań': 'PL-WP', 'Gdańsk': 'PL-PM', 'Szczecin': 'PL-ZP', 'Bydgoszcz': 'PL-KP',
+    'Lublin': 'PL-LU', 'Białystok': 'PL-PD', 'Katowice': 'PL-SL', 'Gdynia': 'PL-PM',
+    'Częstochowa': 'PL-SL', 'Radom': 'PL-MZ', 'Toruń': 'PL-KP', 'Sosnowiec': 'PL-SL',
+    'Kielce': 'PL-SK', 'Rzeszów': 'PL-PK', 'Gliwice': 'PL-SL', 'Zabrze': 'PL-SL',
+    'Olsztyn': 'PL-WN', 'Bielsko-Biała': 'PL-SL', 'Bytom': 'PL-SL', 'Zielona Góra': 'PL-LB',
+    'Rybnik': 'PL-SL', 'Ruda Śląska': 'PL-SL', 'Tychy': 'PL-SL', 'Gorzów Wielkopolski': 'PL-LB',
+    'Dąbrowa Górnicza': 'PL-SL', 'Płock': 'PL-MZ', 'Elbląg': 'PL-WN', 'Opole': 'PL-OP',
+    'Wałbrzych': 'PL-DS', 'Włocławek': 'PL-KP', 'Tarnów': 'PL-MA', 'Chorzów': 'PL-SL',
+    'Koszalin': 'PL-ZP', 'Kalisz': 'PL-WP', 'Legnica': 'PL-DS', 'Grudziądz': 'PL-KP',
+    'Jaworzno': 'PL-SL', 'Słupsk': 'PL-ZP', 'Jastrzębie-Zdrój': 'PL-SL', 'Nowy Sącz': 'PL-MA',
+    'Jelenia Góra': 'PL-DS', 'Siedlce': 'PL-MZ', 'Mysłowice': 'PL-SL', 'Konin': 'PL-WP',
+    'Piła': 'PL-WP', 'Piotrków Trybunalski': 'PL-LD', 'Łomianki': 'PL-MZ', 'Ociąż': 'PL-WP',
+    'Opalenica': 'PL-WP', 'Leszno': 'PL-WP', 'Ornontowice': 'PL-SL', 'Pabianice': 'PL-LD',
+    'Szamocin': 'PL-WP', 'Kazuń Polski': 'PL-MZ', 'Niepołomice': 'PL-MA', 'Nowy Dwór Gdański': 'PL-PM',
+    'Piaseczno': 'PL-MZ', 'Pruszków': 'PL-MZ', 'Marki': 'PL-MZ', 'Ząbki': 'PL-MZ',
+    'Otwock': 'PL-MZ', 'Legionowo': 'PL-MZ', 'Wołomin': 'PL-MZ', 'Sopot': 'PL-PM',
+    'Wejherowo': 'PL-PM', 'Rumia': 'PL-PM', 'Starogard Gdański': 'PL-PM', 'Tczew': 'PL-PM',
+    'Lubin': 'PL-DS', 'Głogów': 'PL-DS', 'Świdnica': 'PL-DS', 'Bolesławiec': 'PL-DS',
+    'Inowrocław': 'PL-KP', 'Świecie': 'PL-KP', 'Brodnica': 'PL-KP', 'Chełm': 'PL-LU',
+    'Zamość': 'PL-LU', 'Biała Podlaska': 'PL-LU', 'Puławy': 'PL-LU', 'Nowa Sól': 'PL-LB',
+    'Żary': 'PL-LB', 'Zgierz': 'PL-LD', 'Skierniewice': 'PL-LD', 'Radomsko': 'PL-LD',
+    'Kutno': 'PL-LD', 'Bełchatów': 'PL-LD', 'Oświęcim': 'PL-MA', 'Chrzanów': 'PL-MA',
+    'Olkusz': 'PL-MA', 'Zakopane': 'PL-MA', 'Kędzierzyn-Koźle': 'PL-OP', 'Nysa': 'PL-OP',
+    'Brzeg': 'PL-OP', 'Mielec': 'PL-PK', 'Przemyśl': 'PL-PK', 'Stalowa Wola': 'PL-PK',
+    'Krosno': 'PL-PK', 'Jasło': 'PL-PK', 'Suwałki': 'PL-PD', 'Łomża': 'PL-PD',
+    'Augustów': 'PL-PD', 'Siemianowice Śląskie': 'PL-SL', 'Tarnowskie Góry': 'PL-SL',
+    'Piekary Śląskie': 'PL-SL', 'Racibórz': 'PL-SL', 'Zawiercie': 'PL-SL', 'Wodzisław Śląski': 'PL-SL',
+    'Mikołów': 'PL-SL', 'Cieszyn': 'PL-SL', 'Żywiec': 'PL-SL', 'Ostrowiec Świętokrzyski': 'PL-SK',
+    'Starachowice': 'PL-SK', 'Skarżysko-Kamienna': 'PL-SK', 'Sandomierz': 'PL-SK',
+    'Ełk': 'PL-WN', 'Iława': 'PL-WN', 'Giżycko': 'PL-WN', 'Ostróda': 'PL-WN',
+    'Ostrów Wielkopolski': 'PL-WP', 'Gniezno': 'PL-WP', 'Września': 'PL-WP', 'Swarzędz': 'PL-WP',
+    'Stargard': 'PL-ZP', 'Kołobrzeg': 'PL-ZP', 'Świnoujście': 'PL-ZP', 'Szczecinek': 'PL-ZP'
+}
+
+
+def infer_vehicle_specs(make, model, variant="", raw_title=""):
+    """Infer known model specs for performance cars if fields are empty."""
+    text = f"{make or ''} {model or ''} {variant or ''} {raw_title or ''}".lower()
+    specs = {}
+
+    if "rs4" in text:
+        if "b9" in text or any(y in text for y in ["2017", "2018", "2019", "2020"]):
+            specs = {"engine_cc": 2894, "engine_cyl": 6, "power_hp": 450, "body_type": "Kombi", "drivetrain": "AWD", "transmission": "automatic", "fuel_type": "petrol"}
+        else: # B8 / B8.5
+            specs = {"engine_cc": 4163, "engine_cyl": 8, "power_hp": 450, "body_type": "Kombi", "drivetrain": "AWD", "transmission": "automatic", "fuel_type": "petrol"}
+    elif "c63" in text or ("c 63" in text and ("w204" in text or "amg" in text or "mercedes" in text)):
+        bt = "Kombi" if any(k in text for k in ["kombi", "t-modell", "estate", "wagon"]) else ("Coupe" if "coupe" in text else "Sedan")
+        specs = {"engine_cc": 6208, "engine_cyl": 8, "power_hp": 457, "body_type": bt, "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
+    elif "e55" in text or ("e 55" in text and ("w211" in text or "amg" in text or "mercedes" in text)):
+        bt = "Kombi" if any(k in text for k in ["kombi", "t-modell", "estate", "wagon"]) else "Sedan"
+        specs = {"engine_cc": 5439, "engine_cyl": 8, "power_hp": 476, "body_type": bt, "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
+    elif "m4" in text:
+        bt = "Kabriolet" if any(k in text for k in ["cabrio", "kabriolet", "convertible"]) else "Coupe"
+        specs = {"engine_cc": 2979, "engine_cyl": 6, "power_hp": 431, "body_type": bt, "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
+    elif "m3" in text:
+        specs = {"engine_cc": 2979, "engine_cyl": 6, "power_hp": 431, "body_type": "Sedan", "drivetrain": "RWD", "transmission": "automatic", "fuel_type": "petrol"}
+    elif "rs3" in text:
+        bt = "Sedan" if ("limousine" in text or "sedan" in text) else "Hatchback"
+        specs = {"engine_cc": 2480, "engine_cyl": 5, "power_hp": 400, "body_type": bt, "drivetrain": "AWD", "transmission": "automatic", "fuel_type": "petrol"}
+
+    return specs
+
+
+def backfill_vehicle_specs(conn):
+    """Backfills missing body_type, engine_cc, engine_cyl, drivetrain for existing vehicles."""
+    try:
+        rows = conn.execute("SELECT vin, make, model, variant, body_type, engine_cc, engine_cyl, power_hp, drivetrain, transmission FROM vehicles").fetchall()
+        for r in rows:
+            specs = infer_vehicle_specs(r["make"], r["model"], r["variant"])
+            if not specs:
+                continue
+            updates = []
+            vals = []
+            for col in ["engine_cc", "engine_cyl", "body_type", "drivetrain", "power_hp", "transmission"]:
+                val = r[col] if col in r.keys() else None
+                if specs.get(col) and (val is None or val == "" or val == 0):
+                    updates.append(f"{col} = ?")
+                    vals.append(specs[col])
+            if updates:
+                vals.append(r["vin"])
+                conn.execute(f"UPDATE vehicles SET {', '.join(updates)}, updated_at = datetime('now') WHERE vin = ?", vals)
+        conn.commit()
+    except Exception as e:
+        print(f"Backfill error: {e}")
+
+
 def _approve_listing(conn, listing, overrides=None):
     """Upsert vehicle + insert observation + mark pending row approved.
 
@@ -79,16 +179,33 @@ def _approve_listing(conn, listing, overrides=None):
             return None
         return cast(val) if cast else val
 
+    raw_title = listing["raw_title"] if "raw_title" in listing.keys() else ""
+    inferred = infer_vehicle_specs(
+        _get("make"), _get("model"), _get("variant"), raw_title
+    )
+    final_body_type    = _get("body_type") or inferred.get("body_type")
+    final_engine_cc    = _get("engine_cc", int) or inferred.get("engine_cc")
+    final_engine_cyl   = _get("engine_cyl", int) or inferred.get("engine_cyl")
+    final_power_hp     = _get("power_hp", int) or inferred.get("power_hp")
+    final_drivetrain   = _get("drivetrain") or inferred.get("drivetrain")
+    final_transmission = _get("transmission") or inferred.get("transmission")
+
     conn.execute("""
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
-           engine_cc, power_hp, drivetrain, transmission,
+           engine_cc, engine_cyl, power_hp, drivetrain, transmission,
            color_ext, vin_status, source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
           make        = COALESCE(excluded.make, make),
           model       = COALESCE(excluded.model, model),
+          variant     = COALESCE(excluded.variant, variant),
           power_hp    = COALESCE(excluded.power_hp, power_hp),
+          engine_cc   = COALESCE(excluded.engine_cc, engine_cc),
+          engine_cyl  = COALESCE(excluded.engine_cyl, engine_cyl),
+          body_type   = COALESCE(excluded.body_type, body_type),
+          drivetrain  = COALESCE(excluded.drivetrain, drivetrain),
+          transmission= COALESCE(excluded.transmission, transmission),
           updated_at  = datetime('now')
     """, (
         vin,
@@ -96,11 +213,12 @@ def _approve_listing(conn, listing, overrides=None):
         _get("model") or "Unknown",
         _get("variant"),
         int(overrides["year"])      if overrides.get("year")      else (listing["year"] or 0),
-        _get("body_type"),
-        int(overrides["engine_cc"]) if overrides.get("engine_cc") else listing["engine_cc"],
-        int(overrides["power_hp"])  if overrides.get("power_hp")  else listing["power_hp"],
-        _get("drivetrain"),
-        _get("transmission"),
+        final_body_type,
+        final_engine_cc,
+        final_engine_cyl,
+        final_power_hp,
+        final_drivetrain,
+        final_transmission,
         _get("color_ext"),
         "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
         f"scraper-{listing['source']}",
@@ -301,24 +419,6 @@ def dashboard():
         FROM listing_observations GROUP BY source_method
     """).fetchall()
 
-    CITY_TO_REGION = {
-        'Warszawa': 'PL-MZ', 'Kraków': 'PL-MA', 'Łódź': 'PL-LD', 'Wrocław': 'PL-DS',
-        'Poznań': 'PL-WP', 'Gdańsk': 'PL-PM', 'Szczecin': 'PL-ZP', 'Bydgoszcz': 'PL-KP',
-        'Lublin': 'PL-LU', 'Białystok': 'PL-PD', 'Katowice': 'PL-SL', 'Gdynia': 'PL-PM',
-        'Częstochowa': 'PL-SL', 'Radom': 'PL-MZ', 'Toruń': 'PL-KP', 'Sosnowiec': 'PL-SL',
-        'Kielce': 'PL-SK', 'Rzeszów': 'PL-PK', 'Gliwice': 'PL-SL', 'Zabrze': 'PL-SL',
-        'Olsztyn': 'PL-WN', 'Bielsko-Biała': 'PL-SL', 'Bytom': 'PL-SL', 'Zielona Góra': 'PL-LB',
-        'Rybnik': 'PL-SL', 'Ruda Śląska': 'PL-SL', 'Tychy': 'PL-SL', 'Gorzów Wielkopolski': 'PL-LB',
-        'Dąbrowa Górnicza': 'PL-SL', 'Płock': 'PL-MZ', 'Elbląg': 'PL-WN', 'Opole': 'PL-OP',
-        'Wałbrzych': 'PL-DS', 'Włocławek': 'PL-KP', 'Tarnów': 'PL-MA', 'Chorzów': 'PL-SL',
-        'Koszalin': 'PL-ZP', 'Kalisz': 'PL-WP', 'Legnica': 'PL-DS', 'Grudziądz': 'PL-KP',
-        'Jaworzno': 'PL-SL', 'Słupsk': 'PL-ZP', 'Jastrzębie-Zdrój': 'PL-SL', 'Nowy Sącz': 'PL-MA',
-        'Jelenia Góra': 'PL-DS', 'Siedlce': 'PL-MZ', 'Mysłowice': 'PL-SL', 'Konin': 'PL-WP',
-        'Piła': 'PL-WP', 'Piotrków Trybunalski': 'PL-LD', 'Łomianki': 'PL-MZ', 'Ociąż': 'PL-WP',
-        'Opalenica': 'PL-WP', 'Leszno': 'PL-WP', 'Ornontowice': 'PL-SL', 'Pabianice': 'PL-LD',
-        'Szamocin': 'PL-WP', 'Kazuń Polski': 'PL-MZ', 'Niepołomice': 'PL-MA', 'Nowy Dwór Gdański': 'PL-PM'
-    }
-
     cities = conn.execute("SELECT location_city, COUNT(*) as cnt FROM listing_observations WHERE location_city IS NOT NULL GROUP BY location_city").fetchall()
     region_counts = {}
     for r in cities:
@@ -335,6 +435,138 @@ def dashboard():
         weekly=json.dumps([dict(r) for r in weekly]),
         sources=json.dumps([dict(r) for r in sources]),
         map_data=json.dumps(map_data)
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MODEL ANALYTICS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/models")
+def model_analytics():
+    conn = get_db()
+
+    STANDARD_MODELS = [
+        {"id": "rs4_b85", "name": "Audi RS4 B8.5 Avant", "make": "Audi", "model": "RS4", "variant": "B8.5 Avant", "years": "2013–2015", "engine": "4.2L V8 FSI · 450 HP · Quattro"},
+        {"id": "rs4_b9",  "name": "Audi RS4 B9 Avant",   "make": "Audi", "model": "RS4", "variant": "B9 Avant",   "years": "2017–2019", "engine": "2.9L V6 Biturbo · 450 HP · Quattro"},
+        {"id": "c63_w204","name": "Mercedes C63 AMG",    "make": "Mercedes-Benz", "model": "Klasa C", "variant": "W204 C63 AMG", "years": "2008–2015", "engine": "6.2L V8 M156 · 457 HP · RWD"},
+        {"id": "e55_w211","name": "Mercedes E55 AMG",    "make": "Mercedes-Benz", "model": "Klasa E", "variant": "W211 E55 AMG", "years": "2003–2006", "engine": "5.4L V8 Kompressor · 476 HP · RWD"},
+        {"id": "m4_f82",  "name": "BMW M4 (F82)",         "make": "BMW", "model": "M4", "variant": "F82",           "years": "2014–2020", "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD"},
+    ]
+
+    selected_id = request.args.get("model", "rs4_b85")
+    current_model = next((m for m in STANDARD_MODELS if m["id"] == selected_id), STANDARD_MODELS[0])
+
+    # Query vehicles with latest observation matching model
+    sql = """
+        SELECT v.*, 
+               o.price_pln, o.mileage_km, o.location_city, o.observed_at, o.source_url, o.title
+        FROM vehicles v
+        LEFT JOIN (
+            SELECT vin, price_pln, mileage_km, location_city, observed_at, source_url, title,
+                   ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
+            FROM listing_observations
+            WHERE price_pln IS NOT NULL AND price_pln > 0
+        ) o ON v.vin = o.vin AND o.rn = 1
+        WHERE v.make = ? AND (v.model = ? OR v.variant LIKE ?)
+    """
+    variant_like = f"%{current_model['variant']}%" if current_model.get("variant") else "%"
+    rows = conn.execute(sql, (current_model["make"], current_model["model"], variant_like)).fetchall()
+
+    if not rows and current_model.get("variant"):
+        sql_fallback = """
+            SELECT v.*, 
+                   o.price_pln, o.mileage_km, o.location_city, o.observed_at, o.source_url, o.title
+            FROM vehicles v
+            LEFT JOIN (
+                SELECT vin, price_pln, mileage_km, location_city, observed_at, source_url, title,
+                       ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
+                FROM listing_observations
+                WHERE price_pln IS NOT NULL AND price_pln > 0
+            ) o ON v.vin = o.vin AND o.rn = 1
+            WHERE (v.model LIKE ? OR v.variant LIKE ? OR v.make LIKE ?)
+        """
+        keyword = f"%{current_model['model']}%"
+        rows = conn.execute(sql_fallback, (keyword, variant_like, f"%{current_model['make']}%")).fetchall()
+
+    vehicles = [dict(r) for r in rows]
+
+    prices = [v["price_pln"] for v in vehicles if v.get("price_pln")]
+    mileages = [v["mileage_km"] for v in vehicles if v.get("mileage_km")]
+
+    import statistics
+    stats = {
+        "count": len(vehicles),
+        "avg_price": round(statistics.mean(prices)) if prices else 0,
+        "median_price": round(statistics.median(prices)) if prices else 0,
+        "min_price": round(min(prices)) if prices else 0,
+        "max_price": round(max(prices)) if prices else 0,
+        "avg_mileage": round(statistics.mean(mileages)) if mileages else 0,
+        "median_mileage": round(statistics.median(mileages)) if mileages else 0,
+    }
+
+    # Price vs Mileage scatter data
+    scatter_data = []
+    for v in vehicles:
+        if v.get("price_pln") and v.get("mileage_km"):
+            scatter_data.append({
+                "x": v["mileage_km"],
+                "y": v["price_pln"],
+                "vin": v["vin"],
+                "year": v.get("year", ""),
+                "title": v.get("title") or (f"{v['make']} {v['model']}"),
+                "url": f"/vehicle/{v['vin']}",
+            })
+
+    # Price brackets (5 bins)
+    hist_labels = []
+    hist_counts = []
+    if prices and len(prices) >= 2 and max(prices) > min(prices):
+        min_p, max_p = min(prices), max(prices)
+        step = (max_p - min_p) / 5
+        bins = [min_p + step * i for i in range(6)]
+        for i in range(5):
+            b_start = round(bins[i] / 1000) * 1000
+            b_end = round(bins[i+1] / 1000) * 1000
+            label = f"{b_start//1000}k–{b_end//1000}k"
+            cnt = sum(1 for p in prices if bins[i] <= p < bins[i+1] or (i == 4 and p == max_p))
+            hist_labels.append(label)
+            hist_counts.append(cnt)
+    elif prices:
+        hist_labels = [f"{round(prices[0]/1000)}k"]
+        hist_counts = [len(prices)]
+
+    # Regional Poland map data for this model
+    region_counts = {}
+    for v in vehicles:
+        city = v.get("location_city")
+        if city:
+            reg = CITY_TO_REGION.get(city, "PL-MZ")
+            region_counts[reg] = region_counts.get(reg, 0) + 1
+    map_data = [["State", "Listings"]] + [[k, v] for k, v in region_counts.items()]
+
+    # Year breakdown
+    year_counts = {}
+    for v in vehicles:
+        y = v.get("year")
+        if y:
+            year_counts[y] = year_counts.get(y, 0) + 1
+    sorted_years = sorted(year_counts.keys())
+    year_data = [{"year": str(y), "cnt": year_counts[y]} for y in sorted_years]
+
+    conn.close()
+
+    return render_template(
+        "model_analytics.html",
+        models=STANDARD_MODELS,
+        selected_model=current_model,
+        stats=stats,
+        vehicles=vehicles,
+        scatter_data=json.dumps(scatter_data),
+        hist_labels=json.dumps(hist_labels),
+        hist_counts=json.dumps(hist_counts),
+        map_data=json.dumps(map_data),
+        year_data=json.dumps(year_data),
     )
 
 

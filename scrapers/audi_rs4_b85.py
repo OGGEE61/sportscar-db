@@ -17,6 +17,8 @@ CONFIG = ScraperConfig(
     pages = 5,
     defaults = {
         "power_hp":     450,
+        "engine_cc":    4163,
+        "engine_cyl":   8,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "AWD",

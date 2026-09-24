@@ -24,9 +24,12 @@ CONFIG = ScraperConfig(
     pages = 5,
     defaults = {
         "power_hp":     476,
+        "engine_cc":    5439,
+        "engine_cyl":   8,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "RWD",
+        "body_type":    "Sedan",
     },
 )
 

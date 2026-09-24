@@ -24,9 +24,11 @@ CONFIG_M4 = ScraperConfig(
     defaults = {
         "power_hp":     431,
         "engine_cc":    2979,
+        "engine_cyl":   6,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "RWD",
+        "body_type":    "Coupe",
     },
 )
 
@@ -47,9 +49,11 @@ CONFIG_M3 = ScraperConfig(
     defaults = {
         "power_hp":     431,
         "engine_cc":    2979,
+        "engine_cyl":   6,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "RWD",
+        "body_type":    "Sedan",
     },
 )
 
