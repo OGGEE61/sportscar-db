@@ -1046,7 +1046,7 @@ def review_bulk_approve():
 def review_bulk_reject():
     ids = request.form.getlist("ids")
     if ids:
-        conn = get_conn()
+        conn = get_db()
         conn.execute(
             f"UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') "
             f"WHERE id IN ({','.join('?' * len(ids))})",
@@ -1067,7 +1067,14 @@ def review_reject(pid):
         WHERE id=?
     """, (reason, pid))
     conn.commit()
+    
+    # Auto-advance to next pending
+    next_p = conn.execute(
+        "SELECT id FROM pending_listings WHERE status='pending' ORDER BY scraped_at DESC LIMIT 1"
+    ).fetchone()
     conn.close()
+    if next_p:
+        return redirect(url_for("review_detail", pid=next_p["id"]))
     return redirect(url_for("review_queue"))
 
 

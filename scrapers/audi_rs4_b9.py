@@ -9,15 +9,18 @@ from base_scraper import ScraperConfig, run
 CONFIG = ScraperConfig(
     make    = "Audi",
     model   = "RS4",
-    variant = "B8",
+    variant = "B9 Avant",
     source  = "otomoto",
-    list_url = "https://www.otomoto.pl/osobowe/audi/rs4?search%5Bfilter_float_year%3Afrom%5D=2012&search%5Bfilter_float_year%3Ato%5D=2015&page={page}",
+    list_url = "https://www.otomoto.pl/osobowe/audi/rs4-avant?search%5Bfilter_float_year%3Afrom%5D=2017&search%5Bfilter_float_year%3Ato%5D=2019&page={page}",
+    min_year=2017,
+    max_year=2019,
     pages = 5,
     defaults = {
         "power_hp":     450,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "AWD",
+        "body_type":    "Kombi",
     },
 )
 

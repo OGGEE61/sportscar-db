@@ -132,11 +132,18 @@
       <a href="{{ l.source_url }}" target="_blank" class="btn btn-sm btn-light border" title="Open original ad">&#8599;</a>
       {% endif %}
 
-      {% if status_filter == 'approved' %}
-      <form method="post" action="/review/{{ l.id }}/reject" class="remove-approved-form"
-            data-title="{{ l.raw_title | replace('"', '&quot;') }}">
-        <input type="hidden" name="reason" value="removed from approved">
-        <button type="button" class="btn btn-outline-danger btn-sm remove-approved-btn" title="Remove">✖</button>
+      {% if status_filter == 'approved' or status_filter == 'pending' %}
+      <form method="post" action="/review/{{ l.id }}/reject" class="remove-form"
+            data-title="{{ l.raw_title | replace('"', '&quot;') }}"
+            data-status="{{ status_filter }}">
+        <input type="hidden" name="reason" value="{% if status_filter == 'approved' %}removed from approved{% else %}quick reject{% endif %}">
+        <button type="button" class="btn btn-outline-danger btn-sm remove-btn" title="Reject">✖</button>
+      </form>
+      {% endif %}
+      
+      {% if status_filter == 'pending' %}
+      <form method="post" action="/review/{{ l.id }}/approve" class="d-inline">
+        <button type="submit" class="btn btn-outline-success btn-sm" title="Quick Approve">✓</button>
       </form>
       {% endif %}
     </div>
@@ -148,13 +155,18 @@
 </form>
 
 <script>
-// Approved tab: confirm before removing
-document.querySelectorAll('.remove-approved-btn').forEach(btn => {
+// Quick reject / remove confirmation
+document.querySelectorAll('.remove-btn').forEach(btn => {
   btn.addEventListener('click', e => {
     e.stopPropagation();
     const form = btn.closest('form');
     const title = form.dataset.title;
-    if (confirm('Remove this approved listing?\n\n' + title + '\n\nThis will move it to Rejected.')) {
+    const status = form.dataset.status;
+    const msg = status === 'approved' 
+      ? 'Remove this approved listing?\n\n' + title + '\n\nThis will move it to Rejected.'
+      : 'Reject this pending listing?\n\n' + title;
+      
+    if (confirm(msg)) {
       form.submit();
     }
   });

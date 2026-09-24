@@ -22,12 +22,13 @@ except ImportError:
 from base_scraper import run
 
 from audi_rs3_8v        import CONFIG    as RS3
-from audi_rs4_b8        import CONFIG    as RS4
+from audi_rs4_b85       import CONFIG    as RS4_B85
+from audi_rs4_b9        import CONFIG    as RS4_B9
 from bmw_m4_f82         import CONFIG_M4 as M4, CONFIG_M3 as M3
 from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
 
-SCRAPERS = [RS4] # [RS3, RS4, M4, M3, C63, E55]
+SCRAPERS = [RS4_B85, RS4_B9] # [RS3, RS4_B85, RS4_B9, M4, M3, C63, E55]
 
 if __name__ == "__main__":
     totals = {"auto_approved": 0, "pending": 0, "duplicate": 0,

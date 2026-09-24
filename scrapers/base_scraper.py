@@ -91,6 +91,8 @@ class ScraperConfig:
     # Keyword that must appear in the card title (case-insensitive).
     # Use when no model-specific URL filter exists (e.g. Mercedes C63).
     title_must_contain: Optional[str] = None
+    min_year: Optional[int] = None
+    max_year: Optional[int] = None
 
     pages:        int   = 5
     detail_delay: float = 1.0
@@ -678,6 +680,13 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 if detail.get("year"):
                     print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
                           f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
+                    
+                    if cfg.min_year and detail['year'] < cfg.min_year:
+                        print(f"  [skip] Year {detail['year']} < min {cfg.min_year}")
+                        continue
+                    if cfg.max_year and detail['year'] > cfg.max_year:
+                        print(f"  [skip] Year {detail['year']} > max {cfg.max_year}")
+                        continue
 
             photo         = detail.get("photo_url") or thumbnail
             final_price   = detail.get("price_from_detail") or price_pln
