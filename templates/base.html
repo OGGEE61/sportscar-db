@@ -14,9 +14,10 @@
     .badge-unverified  { background: #6c757d; }
     .badge-verified    { background: #198754; }
   </style>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   {% block head %}{% endblock %}
 </head>
-<body>
+<body hx-boost="true" style="transition: opacity 0.2s ease-in-out;">
 <nav class="navbar navbar-expand-md navbar-dark bg-dark mb-4">
   <div class="container">
     <a class="navbar-brand" href="/">SportsCar DB</a>

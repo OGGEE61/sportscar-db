@@ -54,7 +54,12 @@
 </div>
 {% endif %}
 
-<div class="list-group">
+<div class="list-group" 
+     id="review-list-group"
+     hx-get="/review?status={{ status_filter }}" 
+     hx-trigger="every 30s [!document.querySelector('.card-check:checked')]" 
+     hx-select="#review-list-group" 
+     hx-swap="outerHTML">
   {% for l in listings %}
   {% set photos = l.photos | fromjson if l.photos else [] %}
   <div class="list-group-item d-flex gap-3 align-items-center py-3">
@@ -130,19 +135,21 @@
       {% endif %}
 
       {% if status_filter == 'approved' or status_filter == 'pending' %}
-      <form method="post" action="/review/{{ l.id }}/reject" class="remove-form"
+      <div class="d-inline remove-action"
+            data-action="/review/{{ l.id }}/reject"
             data-title="{{ l.raw_title | replace('"', '&quot;') }}"
-            data-status="{{ status_filter }}">
-        <input type="hidden" name="reason" value="{% if status_filter == 'approved' %}removed from approved{% else %}quick reject{% endif %}">
+            data-status="{{ status_filter }}"
+            data-reason="{% if status_filter == 'approved' %}removed from approved{% else %}quick reject{% endif %}">
         <button type="button" class="btn btn-outline-danger btn-sm remove-btn" title="Reject">✖</button>
-      </form>
+      </div>
       {% endif %}
       
       {% if status_filter == 'pending' %}
-      <form method="post" action="/review/{{ l.id }}/approve" class="d-inline approve-form"
+      <div class="d-inline approve-action"
+            data-action="/review/{{ l.id }}/approve"
             data-title="{{ l.raw_title | replace('"', '&quot;') }}">
         <button type="button" class="btn btn-outline-success btn-sm approve-btn" title="Quick Approve">✓</button>
-      </form>
+      </div>
       {% endif %}
     </div>
 
@@ -178,9 +185,10 @@ function showToast(title, msg, type='success') {
 }
 
 function handleQuickAction(btn, actionName, confirmMsg) {
-  const form = btn.closest('form');
-  const title = form.dataset.title || 'Listing';
-  const row = form.closest('.list-group-item');
+  const container = btn.closest('div[data-action]');
+  const title = container.dataset.title || 'Listing';
+  const row = container.closest('.list-group-item');
+  const actionUrl = container.dataset.action;
   
   if (confirmMsg && !confirm(confirmMsg + '\n\n' + title)) {
     return;
@@ -189,9 +197,14 @@ function handleQuickAction(btn, actionName, confirmMsg) {
   row.style.opacity = '0.3';
   row.style.pointerEvents = 'none';
   
-  fetch(form.action + '?ajax=1', {
+  const formData = new FormData();
+  if (container.dataset.reason) {
+    formData.append('reason', container.dataset.reason);
+  }
+  
+  fetch(actionUrl + '?ajax=1', {
     method: 'POST',
-    body: new FormData(form)
+    body: formData
   })
   .then(res => {
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -212,8 +225,8 @@ function handleQuickAction(btn, actionName, confirmMsg) {
 document.querySelectorAll('.remove-btn').forEach(btn => {
   btn.addEventListener('click', e => {
     e.stopPropagation();
-    const form = btn.closest('form');
-    const msg = form.dataset.status === 'approved' 
+    const container = btn.closest('div[data-action]');
+    const msg = container.dataset.status === 'approved' 
       ? 'Remove this approved listing?\nIt will be moved to Rejected.'
       : null;
     handleQuickAction(btn, 'Rejected', msg);
