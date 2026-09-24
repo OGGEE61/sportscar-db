@@ -173,18 +173,20 @@
   <!-- Poland Map by Voivodeship -->
   <div class="col-lg-6">
     <div class="card h-100 shadow-sm border-0">
-      <div class="card-header bg-white py-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
         <span class="fw-bold text-dark">Geographic Location in Poland</span>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Click province to filter</span>
       </div>
-      <div class="card-body" style="height: 300px;" id="chartModelMap"></div>
+      <div class="card-body" style="height: 300px; cursor: pointer;" id="chartModelMap"></div>
     </div>
   </div>
 
   <!-- Production Year Distribution -->
   <div class="col-lg-6">
     <div class="card h-100 shadow-sm border-0">
-      <div class="card-header bg-white py-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
         <span class="fw-bold text-dark">Listings by Manufacturing Year</span>
+        <span class="badge bg-light text-muted border">Click year to filter</span>
       </div>
       <div class="card-body" style="height: 300px; position: relative;">
         {% if year_data != '[]' %}
@@ -200,10 +202,25 @@
 </div>
 
 <!-- Active Listings for this Model -->
-<div class="card shadow-sm border-0">
+<div class="card shadow-sm border-0" id="trackedVehiclesCard">
   <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-    <span class="fw-bold text-dark">Tracked {{ selected_model.name }} Vehicles ({{ vehicles|length }})</span>
+    <span class="fw-bold text-dark">
+      Tracked {{ selected_model.name }} Vehicles <span id="tableHeaderCount">({{ vehicles|length }})</span>
+    </span>
     <span class="text-muted small">Updated live from market observations</span>
+  </div>
+  <div class="card-body pb-0 pt-3" id="activeFilterBannerWrapper">
+    <div id="activeFilterBanner" class="alert alert-info py-2 px-3 mb-0 d-none align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-funnel-fill text-primary"></i>
+        <span>Filtered by: <strong id="activeFilterLabel"></strong></span>
+        <span class="badge bg-white text-dark border ms-2" id="activeFilterCount"></span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearModelFilter()">✕ Clear filter</button>
+        <a id="dashboardFilterLink" href="/" class="btn btn-sm btn-outline-primary">View in Dashboard →</a>
+      </div>
+    </div>
   </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
@@ -221,14 +238,14 @@
       </thead>
       <tbody>
         {% for v in vehicles %}
-        <tr>
+        <tr class="model-vehicle-row" data-region="{{ v.region }}" data-year="{{ v.year }}" data-price="{{ v.price_pln }}">
           <td>
             <div class="d-flex align-items-center gap-2">
               {% if v.photo %}
-              <img src="/media/{{ v.photo }}" class="rounded" style="width: 50px; height: 35px; object-fit: cover;">
+              <img src="/media/{{ v.photo }}" class="rounded" style="width: 48px; height: 32px; object-fit: cover; border: 1px solid #dee2e6;" loading="lazy">
               {% else %}
-              <div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: 50px; height: 35px; font-size: 0.65rem; color: #888;">
-                No pic
+              <div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: 48px; height: 32px; font-size: 11px; color: #adb5bd;">
+                <i class="bi bi-car-front"></i>
               </div>
               {% endif %}
               <div>
@@ -253,7 +270,12 @@
               {{ "{:,.0f} PLN".format(v.price_pln) if v.price_pln else '—' }}
             </span>
           </td>
-          <td>{{ v.location_city or '—' }}</td>
+          <td>
+            {{ v.location_city or '—' }}
+            {% if v.region %}
+            <br><span class="badge bg-light text-dark border" style="font-size: 9px;">{{ v.region_name or v.region }}</span>
+            {% endif %}
+          </td>
           <td class="small text-muted">{{ v.observed_at[:10] if v.observed_at else '—' }}</td>
           <td class="text-end">
             <a href="/vehicle/{{ v.vin }}" class="btn btn-outline-primary btn-sm">Details →</a>
@@ -269,6 +291,14 @@
           </td>
         </tr>
         {% endfor %}
+        <tr id="modelEmptyFilterRow" style="display: none;">
+          <td colspan="8" class="text-center py-4 text-muted">
+            No listings for this model match the selected filter.
+            <div class="mt-2">
+              <button class="btn btn-sm btn-outline-secondary" onclick="clearModelFilter()">Clear filter</button>
+            </div>
+          </td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -396,12 +426,100 @@ if (yearData.length && document.getElementById('chartYears')) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.parsed.y} listing(s)`
+            label: ctx => `${ctx.parsed.y} listing(s) (Click to filter)`
           }
         }
+      },
+      onClick: (e, elements) => {
+        if (elements && elements.length > 0) {
+          const idx = elements[0].index;
+          const year = yearData[idx].year;
+          filterModelTable('year', year);
+        }
+      },
+      onHover: (e, elements) => {
+        e.native.target.style.cursor = elements.length ? 'pointer' : 'default';
       }
     }
   });
+}
+
+// ── 4. Interactive Table Filtering Logic ──────────────────────────────────────
+const REGION_NAMES = {
+  'PL-DS': 'Dolnośląskie', 'PL-KP': 'Kujawsko-pomorskie', 'PL-LU': 'Lubelskie',
+  'PL-LB': 'Lubuskie', 'PL-LD': 'Łódzkie', 'PL-MA': 'Małopolskie',
+  'PL-MZ': 'Mazowieckie', 'PL-OP': 'Opolskie', 'PL-PK': 'Podkarpackie',
+  'PL-PD': 'Podlaskie', 'PL-PM': 'Pomorskie', 'PL-SL': 'Śląskie',
+  'PL-SK': 'Świętokrzyskie', 'PL-WN': 'Warmińsko-mazurskie',
+  'PL-WP': 'Wielkopolskie', 'PL-ZP': 'Zachodniopomorskie'
+};
+
+function filterModelTable(type, value) {
+  const banner = document.getElementById('activeFilterBanner');
+  const label = document.getElementById('activeFilterLabel');
+  const count = document.getElementById('activeFilterCount');
+  const dashLink = document.getElementById('dashboardFilterLink');
+  const rows = document.querySelectorAll('.model-vehicle-row');
+  const emptyRow = document.getElementById('modelEmptyFilterRow');
+
+  let visibleCount = 0;
+  rows.forEach(r => {
+    let match = false;
+    if (type === 'region') {
+      match = (r.getAttribute('data-region') === value);
+    } else if (type === 'year') {
+      match = (r.getAttribute('data-year') === String(value));
+    }
+    r.style.display = match ? '' : 'none';
+    if (match) visibleCount++;
+  });
+
+  if (banner) {
+    banner.classList.remove('d-none');
+    banner.classList.add('d-flex');
+    if (type === 'region') {
+      const rName = REGION_NAMES[value] || value;
+      label.textContent = `${rName} (${value})`;
+      dashLink.href = '/?region=' + encodeURIComponent(value) + '#obs-card';
+      dashLink.style.display = '';
+    } else if (type === 'year') {
+      label.textContent = `Year ${value}`;
+      dashLink.style.display = 'none';
+    }
+    count.textContent = `${visibleCount} listing(s)`;
+  }
+
+  if (emptyRow) {
+    emptyRow.style.display = (visibleCount === 0) ? '' : 'none';
+  }
+
+  const tableHeaderCount = document.getElementById('tableHeaderCount');
+  if (tableHeaderCount) {
+    tableHeaderCount.textContent = `(Showing ${visibleCount} of ${rows.length})`;
+  }
+
+  const tableEl = document.getElementById('trackedVehiclesCard');
+  if (tableEl) {
+    tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function clearModelFilter() {
+  const banner = document.getElementById('activeFilterBanner');
+  const rows = document.querySelectorAll('.model-vehicle-row');
+  const emptyRow = document.getElementById('modelEmptyFilterRow');
+  rows.forEach(r => r.style.display = '');
+  if (banner) {
+    banner.classList.add('d-none');
+    banner.classList.remove('d-flex');
+  }
+  if (emptyRow) {
+    emptyRow.style.display = 'none';
+  }
+  const tableHeaderCount = document.getElementById('tableHeaderCount');
+  if (tableHeaderCount) {
+    tableHeaderCount.textContent = `(${rows.length})`;
+  }
 }
 </script>
 
@@ -432,6 +550,19 @@ if (yearData.length && document.getElementById('chartYears')) {
     };
 
     const chart = new google.visualization.GeoChart(mapContainer);
+
+    // Interactive filter on province click
+    google.visualization.events.addListener(chart, 'select', function() {
+      const selection = chart.getSelection();
+      if (selection && selection.length > 0) {
+        const row = selection[0].row;
+        const regionCode = data.getValue(row, 0);
+        if (regionCode) {
+          filterModelTable('region', regionCode);
+        }
+      }
+    });
+
     chart.draw(data, options);
   }
   window.addEventListener('resize', drawModelMap);

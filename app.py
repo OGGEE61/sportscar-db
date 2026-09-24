@@ -102,7 +102,30 @@ CITY_TO_REGION = {
     'Starachowice': 'PL-SK', 'Skarżysko-Kamienna': 'PL-SK', 'Sandomierz': 'PL-SK',
     'Ełk': 'PL-WN', 'Iława': 'PL-WN', 'Giżycko': 'PL-WN', 'Ostróda': 'PL-WN',
     'Ostrów Wielkopolski': 'PL-WP', 'Gniezno': 'PL-WP', 'Września': 'PL-WP', 'Swarzędz': 'PL-WP',
-    'Stargard': 'PL-ZP', 'Kołobrzeg': 'PL-ZP', 'Świnoujście': 'PL-ZP', 'Szczecinek': 'PL-ZP'
+    'Stargard': 'PL-ZP', 'Kołobrzeg': 'PL-ZP', 'Świnoujście': 'PL-ZP', 'Szczecinek': 'PL-ZP',
+    'Balice': 'PL-MA', 'Dobrzań': 'PL-ZP', 'Góra': 'PL-DS', 'Halinów': 'PL-MZ',
+    'Golęczewo': 'PL-WP', 'Aleksandrów': 'PL-LD', 'Aleksandrów Łódzki': 'PL-LD',
+    'Czarna': 'PL-PK', 'Stanisławów Pierwszy': 'PL-MZ', 'Garwolin': 'PL-MZ',
+    'Węgrzce': 'PL-MA', 'Sochaczew': 'PL-MZ'
+}
+
+REGION_NAMES = {
+    'PL-DS': 'Dolnośląskie',
+    'PL-KP': 'Kujawsko-pomorskie',
+    'PL-LU': 'Lubelskie',
+    'PL-LB': 'Lubuskie',
+    'PL-LD': 'Łódzkie',
+    'PL-MA': 'Małopolskie',
+    'PL-MZ': 'Mazowieckie',
+    'PL-OP': 'Opolskie',
+    'PL-PK': 'Podkarpackie',
+    'PL-PD': 'Podlaskie',
+    'PL-PM': 'Pomorskie',
+    'PL-SL': 'Śląskie',
+    'PL-SK': 'Świętokrzyskie',
+    'PL-WN': 'Warmińsko-mazurskie',
+    'PL-WP': 'Wielkopolskie',
+    'PL-ZP': 'Zachodniopomorskie'
 }
 
 
@@ -349,6 +372,7 @@ def serve_media(filename):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 # DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -376,13 +400,65 @@ def dashboard():
         "avg_price":        round(s["avg_price"]) if s["avg_price"] else 0,
     }
 
-    recent = conn.execute("""
-        SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status,
-               o.price_pln, o.mileage_km, o.source, o.source_method, o.observed_at
+    # Filters from interactive charts / query params
+    filter_region = request.args.get("region", "").strip()
+    filter_make = request.args.get("make", "").strip()
+    filter_price = request.args.get("price", "").strip()
+
+    recent_sql = """
+        SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo,
+               o.price_pln, o.mileage_km, o.location_city, o.source, o.source_method, o.observed_at, o.source_url
         FROM listing_observations o
         JOIN vehicles v ON o.vin = v.vin
-        ORDER BY o.observed_at DESC LIMIT 10
-    """).fetchall()
+    """
+    wheres = []
+    params = []
+    active_filter = None
+
+    if filter_make:
+        wheres.append("v.make = ?")
+        params.append(filter_make)
+        active_filter = {"type": "make", "val": filter_make, "label": f"Make: {filter_make}"}
+    elif filter_price:
+        norm_p = filter_price.replace("–", "-")
+        if norm_p == "<100k":
+            wheres.append("o.price_pln < 100000")
+        elif "100" in norm_p and "200" in norm_p:
+            wheres.append("o.price_pln >= 100000 AND o.price_pln < 200000")
+        elif "200" in norm_p and "350" in norm_p:
+            wheres.append("o.price_pln >= 200000 AND o.price_pln < 350000")
+        elif "350" in norm_p and "500" in norm_p:
+            wheres.append("o.price_pln >= 350000 AND o.price_pln < 500000")
+        elif "500" in norm_p and "750" in norm_p:
+            wheres.append("o.price_pln >= 500000 AND o.price_pln < 750000")
+        elif ">750k" in norm_p or "750" in norm_p:
+            wheres.append("o.price_pln >= 750000")
+        active_filter = {"type": "price", "val": filter_price, "label": f"Price: {filter_price}"}
+    elif filter_region:
+        cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == filter_region]
+        if cities_in_region:
+            placeholders = ",".join("?" for _ in cities_in_region)
+            wheres.append(f"o.location_city IN ({placeholders})")
+            params.extend(cities_in_region)
+        else:
+            wheres.append("1=0")
+        reg_name = REGION_NAMES.get(filter_region, filter_region)
+        active_filter = {"type": "region", "val": filter_region, "label": f"Voivodeship: {reg_name} ({filter_region})"}
+
+    if wheres:
+        recent_sql += " WHERE " + " AND ".join(wheres)
+
+    limit = 50 if active_filter else 10
+    recent_sql += f" ORDER BY o.observed_at DESC LIMIT {limit}"
+
+    recent_rows = conn.execute(recent_sql, params).fetchall()
+    recent = []
+    for r in recent_rows:
+        d = dict(r)
+        reg = CITY_TO_REGION.get(d.get("location_city"), "")
+        d["region"] = reg
+        d["region_name"] = REGION_NAMES.get(reg, "")
+        recent.append(d)
 
     makes_dist = conn.execute("""
         SELECT make, COUNT(*) AS cnt FROM vehicles
@@ -434,7 +510,8 @@ def dashboard():
         price_ranges=json.dumps([dict(r) for r in price_ranges]),
         weekly=json.dumps([dict(r) for r in weekly]),
         sources=json.dumps([dict(r) for r in sources]),
-        map_data=json.dumps(map_data)
+        map_data=json.dumps(map_data),
+        active_filter=active_filter
     )
 
 
@@ -447,18 +524,73 @@ def model_analytics():
     conn = get_db()
 
     STANDARD_MODELS = [
-        {"id": "rs4_b85", "name": "Audi RS4 B8.5 Avant", "make": "Audi", "model": "RS4", "variant": "B8.5 Avant", "years": "2013–2015", "engine": "4.2L V8 FSI · 450 HP · Quattro"},
-        {"id": "rs4_b9",  "name": "Audi RS4 B9 Avant",   "make": "Audi", "model": "RS4", "variant": "B9 Avant",   "years": "2017–2019", "engine": "2.9L V6 Biturbo · 450 HP · Quattro"},
-        {"id": "c63_w204","name": "Mercedes C63 AMG",    "make": "Mercedes-Benz", "model": "Klasa C", "variant": "W204 C63 AMG", "years": "2008–2015", "engine": "6.2L V8 M156 · 457 HP · RWD"},
-        {"id": "e55_w211","name": "Mercedes E55 AMG",    "make": "Mercedes-Benz", "model": "Klasa E", "variant": "W211 E55 AMG", "years": "2003–2006", "engine": "5.4L V8 Kompressor · 476 HP · RWD"},
-        {"id": "m4_f82",  "name": "BMW M4 (F82)",         "make": "BMW", "model": "M4", "variant": "F82",           "years": "2014–2020", "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD"},
+        {
+            "id": "rs3_8v",
+            "name": "Audi RS3 (8V)",
+            "make": "Audi",
+            "model": "RS3",
+            "variant": "8V",
+            "years": "2015–2020",
+            "engine": "2.5L TFSI · 400 HP · Quattro",
+            "where": "v.make = 'Audi' AND (v.model = 'RS3' OR v.variant LIKE '%8V%')"
+        },
+        {
+            "id": "rs4_b85",
+            "name": "Audi RS4 B8.5 Avant",
+            "make": "Audi",
+            "model": "RS4",
+            "variant": "B8.5 Avant",
+            "years": "2013–2015",
+            "engine": "4.2L V8 FSI · 450 HP · Quattro",
+            "where": "v.make = 'Audi' AND v.model = 'RS4' AND (v.variant LIKE '%B8%' OR (v.year >= 2012 AND v.year <= 2016)) AND (v.variant NOT LIKE '%B9%' AND (v.year <= 2016 OR v.year IS NULL))"
+        },
+        {
+            "id": "rs4_b9",
+            "name": "Audi RS4 B9 Avant",
+            "make": "Audi",
+            "model": "RS4",
+            "variant": "B9 Avant",
+            "years": "2017–2019",
+            "engine": "2.9L V6 Biturbo · 450 HP · Quattro",
+            "where": "v.make = 'Audi' AND v.model = 'RS4' AND (v.variant LIKE '%B9%' OR (v.year >= 2017 AND v.year <= 2020)) AND (v.variant NOT LIKE '%B8%' AND (v.year >= 2017 OR v.year IS NULL))"
+        },
+        {
+            "id": "c63_w204",
+            "name": "Mercedes C63 AMG",
+            "make": "Mercedes-Benz",
+            "model": "Klasa C",
+            "variant": "W204 C63 AMG",
+            "years": "2008–2015",
+            "engine": "6.2L V8 M156 · 457 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W204%' OR v.variant LIKE '%C63%' OR v.variant LIKE '%C 63%' OR (v.model = 'Klasa C' AND (v.power_hp >= 450 OR v.engine_cc > 6000)))"
+        },
+        {
+            "id": "e55_w211",
+            "name": "Mercedes E55 AMG",
+            "make": "Mercedes-Benz",
+            "model": "Klasa E",
+            "variant": "W211 E55 AMG",
+            "years": "2003–2006",
+            "engine": "5.4L V8 Kompressor · 476 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W211%' OR v.variant LIKE '%E55%' OR v.variant LIKE '%E 55%' OR (v.model = 'Klasa E' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
+        },
+        {
+            "id": "m4_f82",
+            "name": "BMW M4 (F82)",
+            "make": "BMW",
+            "model": "M4",
+            "variant": "F82",
+            "years": "2014–2020",
+            "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M4' OR v.variant LIKE '%F82%') AND (v.year >= 2014 AND v.year <= 2020)"
+        },
     ]
 
     selected_id = request.args.get("model", "rs4_b85")
     current_model = next((m for m in STANDARD_MODELS if m["id"] == selected_id), STANDARD_MODELS[0])
 
-    # Query vehicles with latest observation matching model
-    sql = """
+    # Strict query matching this exact generation - NO loose cross-model fallback!
+    sql = f"""
         SELECT v.*, 
                o.price_pln, o.mileage_km, o.location_city, o.observed_at, o.source_url, o.title
         FROM vehicles v
@@ -468,28 +600,23 @@ def model_analytics():
             FROM listing_observations
             WHERE price_pln IS NOT NULL AND price_pln > 0
         ) o ON v.vin = o.vin AND o.rn = 1
-        WHERE v.make = ? AND (v.model = ? OR v.variant LIKE ?)
+        WHERE {current_model['where']}
     """
-    variant_like = f"%{current_model['variant']}%" if current_model.get("variant") else "%"
-    rows = conn.execute(sql, (current_model["make"], current_model["model"], variant_like)).fetchall()
-
-    if not rows and current_model.get("variant"):
-        sql_fallback = """
-            SELECT v.*, 
-                   o.price_pln, o.mileage_km, o.location_city, o.observed_at, o.source_url, o.title
-            FROM vehicles v
-            LEFT JOIN (
-                SELECT vin, price_pln, mileage_km, location_city, observed_at, source_url, title,
-                       ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
-                FROM listing_observations
-                WHERE price_pln IS NOT NULL AND price_pln > 0
-            ) o ON v.vin = o.vin AND o.rn = 1
-            WHERE (v.model LIKE ? OR v.variant LIKE ? OR v.make LIKE ?)
-        """
-        keyword = f"%{current_model['model']}%"
-        rows = conn.execute(sql_fallback, (keyword, variant_like, f"%{current_model['make']}%")).fetchall()
-
+    rows = conn.execute(sql).fetchall()
     vehicles = [dict(r) for r in rows]
+
+    # Annotate region codes and names for mapping & filtering
+    region_counts = {}
+    for v in vehicles:
+        city = v.get("location_city")
+        if city:
+            reg = CITY_TO_REGION.get(city, "PL-MZ")
+            region_counts[reg] = region_counts.get(reg, 0) + 1
+            v["region"] = reg
+            v["region_name"] = REGION_NAMES.get(reg, reg)
+        else:
+            v["region"] = ""
+            v["region_name"] = ""
 
     prices = [v["price_pln"] for v in vehicles if v.get("price_pln")]
     mileages = [v["mileage_km"] for v in vehicles if v.get("mileage_km")]
@@ -537,12 +664,6 @@ def model_analytics():
         hist_counts = [len(prices)]
 
     # Regional Poland map data for this model
-    region_counts = {}
-    for v in vehicles:
-        city = v.get("location_city")
-        if city:
-            reg = CITY_TO_REGION.get(city, "PL-MZ")
-            region_counts[reg] = region_counts.get(reg, 0) + 1
     map_data = [["State", "Listings"]] + [[k, v] for k, v in region_counts.items()]
 
     # Year breakdown
@@ -576,11 +697,12 @@ def model_analytics():
 
 @app.route("/vehicles")
 def vehicles_list():
-    conn  = get_db()
-    q     = request.args.get("q", "").strip()
-    make  = request.args.get("make", "")
+    conn   = get_db()
+    q      = request.args.get("q", "").strip()
+    make   = request.args.get("make", "")
     status = request.args.get("status", "")
-    sort  = request.args.get("sort", "updated_at")
+    region = request.args.get("region", "").strip()
+    sort   = request.args.get("sort", "updated_at")
 
     base = """
         SELECT v.*,
@@ -602,6 +724,14 @@ def vehicles_list():
         wheres.append("v.make = ?"); params.append(make)
     if status:
         wheres.append("v.vin_status = ?"); params.append(status)
+    if region:
+        cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == region]
+        if cities_in_region:
+            placeholders = ",".join("?" for _ in cities_in_region)
+            wheres.append(f"o.location_city IN ({placeholders})")
+            params.extend(cities_in_region)
+        else:
+            wheres.append("1=0")
 
     if wheres:
         base += " WHERE " + " AND ".join(wheres)
@@ -622,7 +752,8 @@ def vehicles_list():
     conn.close()
     return render_template("vehicles.html",
         vehicles=vehicles, makes=[m["make"] for m in makes],
-        q=q, selected_make=make, status=status, sort=sort)
+        q=q, selected_make=make, status=status, sort=sort,
+        selected_region=region, regions=REGION_NAMES)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

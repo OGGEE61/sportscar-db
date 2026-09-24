@@ -29,66 +29,119 @@
 <!-- Charts row -->
 <div class="row g-3 mb-4">
   <div class="col-md-6">
-    <div class="card h-100">
-      <div class="card-header">Makes distribution</div>
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <span class="fw-bold">Makes distribution</span>
+        <span class="badge bg-light text-muted border">Click bar to filter</span>
+      </div>
       <div class="card-body"><canvas id="chartMakes" height="200"></canvas></div>
     </div>
   </div>
   <div class="col-md-6">
-    <div class="card h-100">
-      <div class="card-header">Price ranges (active listings)</div>
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <span class="fw-bold">Price ranges (active listings)</span>
+        <span class="badge bg-light text-muted border">Click bar to filter</span>
+      </div>
       <div class="card-body"><canvas id="chartPrices" height="200"></canvas></div>
     </div>
   </div>
   <div class="col-md-6">
-    <div class="card h-100">
-      <div class="card-header">Map of Poland (Observations by State)</div>
-      <div class="card-body" id="chartMap" style="height: 250px;"></div>
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <span class="fw-bold">Map of Poland (Observations by Voivodeship)</span>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Click province to filter</span>
+      </div>
+      <div class="card-body" id="chartMap" style="height: 250px; cursor: pointer;"></div>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card h-100">
-      <div class="card-header">Weekly observations</div>
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3">
+        <span class="fw-bold">Weekly observations</span>
+      </div>
       <div class="card-body"><canvas id="chartWeekly" height="200"></canvas></div>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card h-100">
-      <div class="card-header">Source methods</div>
+    <div class="card h-100 shadow-sm border-0">
+      <div class="card-header bg-white py-3">
+        <span class="fw-bold">Source methods</span>
+      </div>
       <div class="card-body"><canvas id="chartSources" height="200"></canvas></div>
     </div>
   </div>
 </div>
 
-<!-- Recent observations -->
-<div class="card">
-  <div class="card-header">Recent observations (last 10)</div>
+<!-- Observations -->
+<div class="card shadow-sm border-0" id="obs-card">
+  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+    <div>
+      <span class="fw-bold fs-6">
+        {% if active_filter %}
+        Filtered Observations ({{ recent|length }})
+        {% else %}
+        Recent observations (last 10)
+        {% endif %}
+      </span>
+      {% if active_filter %}
+      <span class="badge bg-primary ms-2">{{ active_filter.label }}</span>
+      {% else %}
+      <span class="text-muted small ms-2 d-none d-sm-inline">💡 Click any graph or state on the map to filter this list</span>
+      {% endif %}
+    </div>
+    <div>
+      {% if active_filter %}
+      <a href="/#obs-card" class="btn btn-sm btn-outline-danger">✕ Clear Filter</a>
+      {% endif %}
+    </div>
+  </div>
   <div class="table-responsive">
-    <table class="table table-sm table-hover mb-0">
+    <table class="table table-hover table-sm align-middle mb-0">
       <thead class="table-light">
         <tr>
+          <th style="width: 52px; text-align: center;">Photo</th>
           <th>VIN</th><th>Make</th><th>Model</th><th>Year</th><th>HP</th>
-          <th>Price PLN</th><th>Mileage</th><th>Source</th><th>Observed</th><th>Status</th>
+          <th>Price PLN</th><th>Mileage</th><th>Location</th><th>Source</th><th>Observed</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for r in recent %}
         <tr>
-          <td><a href="/vehicle/{{ r.vin }}">{{ r.vin[:12] }}…</a></td>
+          <td style="width: 52px; text-align: center; padding: 4px;">
+            {% if r.photo %}
+            <a href="/vehicle/{{ r.vin }}" title="View vehicle">
+              <img src="/media/{{ r.photo }}" alt="{{ r.make }} {{ r.model }}"
+                   style="width: 46px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; display: block; margin: 0 auto;"
+                   loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\'text-muted\' style=\'font-size: 10px;\'>No pic</span>';">
+            </a>
+            {% else %}
+            <div style="width: 46px; height: 32px; border-radius: 4px; background: #e9ecef; display: flex; align-items: center; justify-content: center; margin: 0 auto; color: #adb5bd; font-size: 13px;">
+              <i class="bi bi-car-front"></i>
+            </div>
+            {% endif %}
+          </td>
+          <td><a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a></td>
           <td>{{ r.make }}</td>
           <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
-          <td>{{ r.year }}</td>
+          <td>{{ r.year or '—' }}</td>
           <td>{{ r.power_hp or '—' }}</td>
-          <td>{{ "{:,.0f}".format(r.price_pln) if r.price_pln else '—' }}</td>
-          <td>{{ "{:,}".format(r.mileage_km) if r.mileage_km else '—' }}</td>
+          <td><span class="fw-semibold text-success">{{ "{:,.0f} zł".format(r.price_pln) if r.price_pln else '—' }}</span></td>
+          <td>{{ "{:,} km".format(r.mileage_km) if r.mileage_km else '—' }}</td>
+          <td>
+            <span class="small">{{ r.location_city or '—' }}</span>
+            {% if r.region %}
+            <br><span class="badge bg-light text-dark border" style="font-size: 9px;">{{ r.region }}</span>
+            {% endif %}
+          </td>
           <td><span class="badge bg-secondary">{{ r.source_method }}</span></td>
-          <td class="text-nowrap">{{ r.observed_at[:16] }}</td>
+          <td class="text-nowrap small text-muted">{{ r.observed_at[:16] }}</td>
           <td>
             <span class="badge badge-{{ r.vin_status }}">{{ r.vin_status }}</span>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="10" class="text-center text-muted py-3">No observations yet</td></tr>
+        <tr><td colspan="12" class="text-center text-muted py-4">No matching observations found</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -100,14 +153,30 @@
 <script>
 const PALETTE = ['#0d6efd','#6f42c1','#d63384','#fd7e14','#ffc107','#198754','#0dcaf0','#6c757d','#20c997','#dc3545','#0d6efd','#adb5bd'];
 
-function barChart(id, data, labelKey, valueKey) {
+function barChart(id, data, labelKey, valueKey, filterParam) {
   new Chart(document.getElementById(id), {
     type: 'bar',
     data: {
       labels: data.map(d => d[labelKey]),
-      datasets: [{ data: data.map(d => d[valueKey]), backgroundColor: PALETTE }]
+      datasets: [{ data: data.map(d => d[valueKey]), backgroundColor: PALETTE, borderRadius: 4 }]
     },
-    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } },
+      onClick: (e, elements) => {
+        if (elements && elements.length > 0 && filterParam) {
+          const idx = elements[0].index;
+          const val = data[idx][labelKey];
+          window.location.href = '/?' + filterParam + '=' + encodeURIComponent(val) + '#obs-card';
+        }
+      },
+      onHover: (e, elements) => {
+        if (filterParam) {
+          e.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+        }
+      }
+    }
   });
 }
 
@@ -118,12 +187,12 @@ function pieChart(id, data, labelKey, valueKey) {
       labels: data.map(d => d[labelKey]),
       datasets: [{ data: data.map(d => d[valueKey]), backgroundColor: PALETTE }]
     },
-    options: { plugins: { legend: { position: 'bottom' } } }
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
   });
 }
 
-barChart('chartMakes',  {{ makes_dist|safe }},  'make', 'cnt');
-barChart('chartPrices', {{ price_ranges|safe }}, 'rng',  'cnt');
+barChart('chartMakes',  {{ makes_dist|safe }},  'make', 'cnt', 'make');
+barChart('chartPrices', {{ price_ranges|safe }}, 'rng',  'cnt', 'price');
 barChart('chartWeekly', {{ weekly|safe }},       'week', 'cnt');
 pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
 </script>
@@ -135,7 +204,8 @@ pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
   google.charts.setOnLoadCallback(drawRegionsMap);
 
   function drawRegionsMap() {
-    var data = google.visualization.arrayToDataTable({{ map_data|safe }});
+    var rawData = {{ map_data|safe }};
+    var data = google.visualization.arrayToDataTable(rawData);
 
     var options = {
       region: 'PL',
@@ -145,6 +215,19 @@ pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
     };
 
     var chart = new google.visualization.GeoChart(document.getElementById('chartMap'));
+    
+    // Interactive click filter
+    google.visualization.events.addListener(chart, 'select', function() {
+      var selection = chart.getSelection();
+      if (selection && selection.length > 0) {
+        var row = selection[0].row;
+        var regionCode = data.getValue(row, 0);
+        if (regionCode) {
+          window.location.href = '/?region=' + encodeURIComponent(regionCode) + '#obs-card';
+        }
+      }
+    });
+
     chart.draw(data, options);
   }
 </script>
