@@ -137,7 +137,7 @@
       {% if status_filter == 'approved' or status_filter == 'pending' %}
       <div class="d-inline remove-action"
             data-action="/review/{{ l.id }}/reject"
-            data-title="{{ l.raw_title | replace('"', '&quot;') }}"
+            data-title="{{ l.raw_title | e }}"
             data-status="{{ status_filter }}"
             data-reason="{% if status_filter == 'approved' %}removed from approved{% else %}quick reject{% endif %}">
         <button type="button" class="btn btn-outline-danger btn-sm remove-btn" title="Reject">✖</button>
@@ -147,7 +147,7 @@
       {% if status_filter == 'pending' %}
       <div class="d-inline approve-action"
             data-action="/review/{{ l.id }}/approve"
-            data-title="{{ l.raw_title | replace('"', '&quot;') }}">
+            data-title="{{ l.raw_title | e }}">
         <button type="button" class="btn btn-outline-success btn-sm approve-btn" title="Quick Approve">✓</button>
       </div>
       {% endif %}
