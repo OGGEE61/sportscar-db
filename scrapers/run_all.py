@@ -30,7 +30,8 @@ from base_scraper import run
 from audi_rs3_8v        import CONFIG    as RS3
 from audi_rs4_b85       import CONFIG    as RS4_B85
 from audi_rs4_b9        import CONFIG    as RS4_B9
-from bmw_m4_f82         import CONFIG_M4 as M4, CONFIG_M3 as M3
+from bmw_m3_f80         import CONFIG    as M3
+from bmw_m4_f82         import CONFIG_M4 as M4
 from bmw_x3_m_f97       import CONFIG    as X3_M
 from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
