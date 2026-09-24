@@ -1008,12 +1008,22 @@ def review_approve(pid):
         return f"Error approving listing: {e}", 500
 
     conn.close()
-    return redirect(url_for("review_queue"))
+    if request.args.get("ajax") == "1":
+        return {"status": "success", "id": pid}
 
+    # Auto-advance to next pending
+    conn = get_db()
+    next_p = conn.execute(
+        "SELECT id FROM pending_listings WHERE status='pending' ORDER BY scraped_at DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if next_p:
+        return redirect(url_for("review_detail", pid=next_p["id"]))
+    return redirect(url_for("review_queue"))
 
 @app.route("/review/reject_all_pending")
 def review_reject_all_pending():
-    conn = get_conn()
+    conn = get_db()
     conn.execute(
         "UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') WHERE status='pending'"
     )
@@ -1039,6 +1049,9 @@ def review_bulk_approve():
                 pass
         conn.commit()
         conn.close()
+    
+    if request.args.get("ajax") == "1":
+        return {"status": "success"}
     return redirect(url_for("review_queue"))
 
 
@@ -1054,6 +1067,8 @@ def review_bulk_reject():
         )
         conn.commit()
         conn.close()
+    if request.args.get("ajax") == "1":
+        return {"status": "success"}
     return redirect(url_for("review_queue"))
 
 
@@ -1068,6 +1083,9 @@ def review_reject(pid):
     """, (reason, pid))
     conn.commit()
     
+    if request.args.get("ajax") == "1":
+        return {"status": "success", "id": pid}
+
     # Auto-advance to next pending
     next_p = conn.execute(
         "SELECT id FROM pending_listings WHERE status='pending' ORDER BY scraped_at DESC LIMIT 1"

@@ -41,11 +41,10 @@
   </div>
   <span class="small text-muted" id="sel-count">0 selected</span>
   <div class="d-flex gap-2 ms-auto">
-    <button type="button" class="btn btn-success btn-sm" id="bulk-approve-btn" disabled
-            onclick="submitBulkApprove()">
+    <button type="button" class="btn btn-success btn-sm" id="bulk-approve-btn" disabled>
       Approve selected
     </button>
-    <button type="submit" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
+    <button type="button" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
       Reject selected
     </button>
     <a href="/review/reject_all_pending"
@@ -142,8 +141,9 @@
       {% endif %}
       
       {% if status_filter == 'pending' %}
-      <form method="post" action="/review/{{ l.id }}/approve" class="d-inline">
-        <button type="submit" class="btn btn-outline-success btn-sm" title="Quick Approve">✓</button>
+      <form method="post" action="/review/{{ l.id }}/approve" class="d-inline approve-form"
+            data-title="{{ l.raw_title | replace('"', '&quot;') }}">
+        <button type="button" class="btn btn-outline-success btn-sm approve-btn" title="Quick Approve">✓</button>
       </form>
       {% endif %}
     </div>
@@ -154,21 +154,73 @@
 
 </form>
 
+<!-- Operation Tracker (Toasts) -->
+<div id="op-tracker" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055; pointer-events: none;"></div>
+
 <script>
-// Quick reject / remove confirmation
+function showToast(title, msg, type='success') {
+  const container = document.getElementById('op-tracker');
+  const id = 'toast-' + Date.now();
+  const html = `
+    <div id="${id}" class="toast align-items-center text-bg-${type} border-0 show mb-2" role="alert" style="pointer-events: auto;">
+      <div class="d-flex">
+        <div class="toast-body">
+          <strong>${title}</strong><br><span style="font-size: 0.9em">${msg}</span>
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.closest('.toast').remove()"></button>
+      </div>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  }, 4000);
+}
+
+function handleQuickAction(btn, actionName, confirmMsg) {
+  const form = btn.closest('form');
+  const title = form.dataset.title || 'Listing';
+  const row = form.closest('.list-group-item');
+  
+  if (confirmMsg && !confirm(confirmMsg + '\n\n' + title)) {
+    return;
+  }
+  
+  row.style.opacity = '0.3';
+  row.style.pointerEvents = 'none';
+  
+  fetch(form.action + '?ajax=1', {
+    method: 'POST',
+    body: new FormData(form)
+  })
+  .then(res => res.json())
+  .then(data => {
+    row.remove();
+    showToast(actionName, title, 'success');
+  })
+  .catch(err => {
+    row.style.opacity = '1';
+    row.style.pointerEvents = 'auto';
+    showToast('Error', 'Failed to process request.', 'danger');
+  });
+}
+
 document.querySelectorAll('.remove-btn').forEach(btn => {
   btn.addEventListener('click', e => {
     e.stopPropagation();
     const form = btn.closest('form');
-    const title = form.dataset.title;
-    const status = form.dataset.status;
-    const msg = status === 'approved' 
-      ? 'Remove this approved listing?\n\n' + title + '\n\nThis will move it to Rejected.'
-      : 'Reject this pending listing?\n\n' + title;
-      
-    if (confirm(msg)) {
-      form.submit();
-    }
+    const msg = form.dataset.status === 'approved' 
+      ? 'Remove this approved listing?\nIt will be moved to Rejected.'
+      : null; // no confirmation for quick reject
+    handleQuickAction(btn, 'Rejected', msg);
+  });
+});
+
+document.querySelectorAll('.approve-btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    handleQuickAction(btn, 'Approved', null); // no confirmation for quick approve
   });
 });
 
@@ -188,21 +240,52 @@ function updateBar() {
   selectAll.checked = n > 0 && n === checks().length;
 }
 
-function submitBulkApprove() {
+function submitBulkAction(actionUrl, actionName) {
   const selected = [...checks()].filter(c => c.checked);
   if (!selected.length) return;
-  if (!confirm(`Approve ${selected.length} listing(s)?`)) return;
-  const form = document.createElement('form');
-  form.method = 'post';
-  form.action = '/review/bulk_approve';
+  
+  if (!confirm(`${actionName} ${selected.length} listing(s)?`)) return;
+  
+  const formData = new FormData();
   selected.forEach(c => {
-    const inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'ids'; inp.value = c.value;
-    form.appendChild(inp);
+    formData.append('ids', c.value);
+    const row = c.closest('.list-group-item');
+    row.style.opacity = '0.3';
+    row.style.pointerEvents = 'none';
   });
-  document.body.appendChild(form);
-  form.submit();
+  
+  fetch(actionUrl + '?ajax=1', {
+    method: 'POST',
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    selected.forEach(c => c.closest('.list-group-item').remove());
+    showToast(actionName + ' Complete', `Processed ${selected.length} listings.`, 'success');
+    updateBar();
+  })
+  .catch(err => {
+    selected.forEach(c => {
+      const row = c.closest('.list-group-item');
+      row.style.opacity = '1';
+      row.style.pointerEvents = 'auto';
+    });
+    showToast('Error', 'Failed to process bulk request.', 'danger');
+  });
 }
+
+const rejectBtn = document.getElementById('bulk-reject-btn');
+rejectBtn.type = "button";
+rejectBtn.onclick = (e) => {
+  e.preventDefault();
+  submitBulkAction('/review/bulk_reject', 'Bulk Reject');
+};
+
+const approveBtn = document.getElementById('bulk-approve-btn');
+approveBtn.onclick = (e) => {
+  e.preventDefault();
+  submitBulkAction('/review/bulk_approve', 'Bulk Approve');
+};
 
 selectAll.addEventListener('change', () => {
   checks().forEach(c => c.checked = selectAll.checked);
