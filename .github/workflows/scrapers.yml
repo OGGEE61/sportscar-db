@@ -14,13 +14,15 @@ on:
         options:
           - rotation
           - all
+          - m3
+          - m4
+          - x3_m
           - c63
           - e55
+          - rs3
           - rs4_b85
           - rs4_b9
           - rs4
-          - m4
-          - x3_m
 
 jobs:
   scrape:
