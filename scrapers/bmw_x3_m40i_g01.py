@@ -11,14 +11,24 @@ CONFIG = ScraperConfig(
     model   = "X3",
     variant = "M40i G01",
     source  = "otomoto",
-    list_url = (
-        "https://www.otomoto.pl/osobowe/bmw/x3"
-        "?search%5Bfilter_float_year%3Afrom%5D=2017"
-        "&search%5Bfilter_float_year%3Ato%5D=2024"
-        "&search%5Bfilter_float_engine_power%3Afrom%5D=340"
-        "&search%5Bfilter_float_engine_power%3Ato%5D=370"
-        "&page={page}"
-    ),
+    list_url = [
+        (
+            "https://www.otomoto.pl/osobowe/bmw/x3"
+            "?search%5Bfilter_float_year%3Afrom%5D=2017"
+            "&search%5Bfilter_float_year%3Ato%5D=2024"
+            "&search%5Bfilter_float_engine_power%3Afrom%5D=340"
+            "&search%5Bfilter_float_engine_power%3Ato%5D=370"
+            "&page={page}"
+        ),
+        (
+            "https://www.otomoto.pl/osobowe/bmw/x3-m"
+            "?search%5Bfilter_float_year%3Afrom%5D=2017"
+            "&search%5Bfilter_float_year%3Ato%5D=2024"
+            "&search%5Bfilter_float_engine_power%3Afrom%5D=340"
+            "&search%5Bfilter_float_engine_power%3Ato%5D=370"
+            "&page={page}"
+        )
+    ],
     min_year = 2017,
     max_year = 2024,
     pages = 5,

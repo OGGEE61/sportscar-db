@@ -85,8 +85,8 @@ class ScraperConfig:
     # "otomoto" or "olx"
     source: str = "otomoto"
 
-    # List-page URL template — must contain {page}
-    list_url: str = ""
+    # List-page URL template(s) — must contain {page}
+    list_url: str | list[str] = ""
 
     # Keyword that must appear in the card title (case-insensitive).
     # Use when no model-specific URL filter exists (e.g. Mercedes C63).
@@ -694,8 +694,11 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     results  = []
     seen_ids = set()
 
-    for page in range(1, cfg.pages + 1):
-        url = cfg.list_url.format(page=page)
+    list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
+
+    for url_tmpl in list_urls:
+        for page in range(1, cfg.pages + 1):
+            url = url_tmpl.format(page=page)
         print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
 
         try:
