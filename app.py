@@ -250,8 +250,8 @@ def _approve_listing(conn, listing, overrides=None):
         final_drivetrain,
         final_transmission,
         _get("color_ext"),
-        listing.get("registration_plate"),
-        listing.get("first_registration_date"),
+        _get("registration_plate"),
+        _get("first_registration_date"),
         "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
         f"scraper-{listing['source']}",
     ))
