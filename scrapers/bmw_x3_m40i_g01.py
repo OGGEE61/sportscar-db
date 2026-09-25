@@ -1,6 +1,6 @@
-"""BMW X3 M F97 (2019–2024) — run directly to scrape.
+"""BMW X3 M40i G01 (2017–2024) — run directly to scrape.
 
-F97 = X3 M (S58 3.0 biturbo engine, 480/510 HP).
+G01 = X3 M40i (B58 3.0 turbo engine, 354/360 HP).
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -8,22 +8,23 @@ from base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(
     make    = "BMW",
-    model   = "X3 M",
-    variant = "F97",
+    model   = "X3",
+    variant = "M40i G01",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/bmw/x3-m"
-        "?search%5Bfilter_float_year%3Afrom%5D=2019"
+        "https://www.otomoto.pl/osobowe/bmw/x3"
+        "?search%5Bfilter_float_year%3Afrom%5D=2017"
         "&search%5Bfilter_float_year%3Ato%5D=2024"
-        "&search%5Bfilter_float_engine_power%3Afrom%5D=450"
+        "&search%5Bfilter_float_engine_power%3Afrom%5D=340"
+        "&search%5Bfilter_float_engine_power%3Ato%5D=370"
         "&page={page}"
     ),
-    min_year = 2019,
+    min_year = 2017,
     max_year = 2024,
     pages = 5,
     defaults = {
-        "power_hp":     510,
-        "engine_cc":    2993,
+        "power_hp":     360,
+        "engine_cc":    2998,
         "engine_cyl":   6,
         "fuel_type":    "petrol",
         "transmission": "automatic",
