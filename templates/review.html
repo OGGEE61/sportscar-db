@@ -275,42 +275,83 @@ function submitBulkAction(actionUrl, actionName) {
   
   if (!confirm(`${actionName} ${selected.length} listing(s)?`)) return;
   
-  const formData = new FormData();
+  // Disable UI
   selected.forEach(c => {
-    formData.append('ids', c.value);
     const row = c.closest('.list-group-item');
     if (row) {
       row.style.opacity = '0.3';
       row.style.pointerEvents = 'none';
     }
   });
-  
-  fetch(actionUrl + '?ajax=1', {
-    method: 'POST',
-    body: formData
-  })
-  .then(res => {
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
-  })
-  .then(data => {
-    selected.forEach(c => {
-      const row = c.closest('.list-group-item');
-      if (row) row.remove();
-    });
-    showToast(actionName + ' Complete', `Processed ${selected.length} listings.`, 'success');
-    updateBar();
-  })
-  .catch(err => {
-    selected.forEach(c => {
-      const row = c.closest('.list-group-item');
-      if (row) {
-        row.style.opacity = '1';
-        row.style.pointerEvents = 'auto';
+
+  const isApprove = actionUrl.includes('bulk_approve');
+  const btn = isApprove ? approveBtn : rejectBtn;
+  const originalText = btn ? btn.textContent : '';
+
+  if (isApprove) {
+    // Sequential processing for approvals to show progress (approving is slow)
+    let completed = 0;
+    
+    async function processSequentially() {
+      for (const c of selected) {
+        if (btn) btn.textContent = `Approving ${completed + 1}/${selected.length}...`;
+        try {
+          const res = await fetch(`/review/${c.value}/approve?ajax=1`, { method: 'POST' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const row = c.closest('.list-group-item');
+          if (row) row.remove();
+          completed++;
+        } catch (err) {
+          console.error(`Failed to approve ${c.value}:`, err);
+          const row = c.closest('.list-group-item');
+          if (row) {
+            row.style.opacity = '1';
+            row.style.pointerEvents = 'auto';
+          }
+        }
       }
+      
+      if (btn) btn.textContent = originalText;
+      showToast(actionName + ' Complete', `Successfully approved ${completed} out of ${selected.length} listings.`, 'success');
+      updateBar();
+    }
+    
+    processSequentially();
+  } else {
+    // Standard bulk request for rejects (fast)
+    if (btn) btn.textContent = 'Processing...';
+    const formData = new FormData();
+    selected.forEach(c => formData.append('ids', c.value));
+    
+    fetch(actionUrl + '?ajax=1', {
+      method: 'POST',
+      body: formData
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(data => {
+      selected.forEach(c => {
+        const row = c.closest('.list-group-item');
+        if (row) row.remove();
+      });
+      if (btn) btn.textContent = originalText;
+      showToast(actionName + ' Complete', `Processed ${selected.length} listings.`, 'success');
+      updateBar();
+    })
+    .catch(err => {
+      selected.forEach(c => {
+        const row = c.closest('.list-group-item');
+        if (row) {
+          row.style.opacity = '1';
+          row.style.pointerEvents = 'auto';
+        }
+      });
+      if (btn) btn.textContent = originalText;
+      showToast('Error', 'Failed to process bulk request: ' + err.message, 'danger');
     });
-    showToast('Error', 'Failed to process bulk request: ' + err.message, 'danger');
-  });
+  }
 }
 
 if (rejectBtn) {
