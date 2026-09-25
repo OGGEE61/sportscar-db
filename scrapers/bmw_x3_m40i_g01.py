@@ -18,6 +18,7 @@ CONFIG = ScraperConfig(
             "&search%5Bfilter_float_year%3Ato%5D=2024"
             "&search%5Bfilter_float_engine_power%3Afrom%5D=340"
             "&search%5Bfilter_float_engine_power%3Ato%5D=370"
+            "&search%5Bfilter_enum_fuel_type%5D=petrol"
             "&page={page}"
         ),
         (
@@ -26,6 +27,7 @@ CONFIG = ScraperConfig(
             "&search%5Bfilter_float_year%3Ato%5D=2024"
             "&search%5Bfilter_float_engine_power%3Afrom%5D=340"
             "&search%5Bfilter_float_engine_power%3Ato%5D=370"
+            "&search%5Bfilter_enum_fuel_type%5D=petrol"
             "&page={page}"
         )
     ],

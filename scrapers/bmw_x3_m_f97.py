@@ -16,6 +16,7 @@ CONFIG = ScraperConfig(
         "?search%5Bfilter_float_year%3Afrom%5D=2019"
         "&search%5Bfilter_float_year%3Ato%5D=2024"
         "&search%5Bfilter_float_engine_power%3Afrom%5D=450"
+        "&search%5Bfilter_enum_fuel_type%5D=petrol"
         "&page={page}"
     ),
     min_year = 2019,
