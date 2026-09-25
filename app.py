@@ -1235,8 +1235,10 @@ def api_ingest_pending():
                price_pln, price_eur, mileage_km,
                location_city, location_region,
                seller_type, seller_name,
-               vin, vin_confidence, is_listing_active)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               vin, vin_confidence,
+               registration_plate, first_registration_date,
+               is_listing_active)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             source, sid, p.get("source_url"),
             p.get("raw_title"), p.get("raw_description"),
@@ -1249,7 +1251,9 @@ def api_ingest_pending():
             p.get("price_pln"), p.get("price_eur"), p.get("mileage_km"),
             p.get("location_city"), p.get("location_region"),
             p.get("seller_type"), p.get("seller_name"),
-            vin or None, vc, 1,
+            vin or None, vc,
+            p.get("registration_plate"), p.get("first_registration_date"),
+            1,
         ))
         conn.commit()
 

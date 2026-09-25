@@ -340,41 +340,90 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         if not advert:
             return {}
 
-        # Flat params dict from the details list
+        # Flat params dict from the details list (Polish display values + encrypted fields)
         params = {d["key"]: d["value"]
                   for d in advert.get("details", [])
                   if "key" in d and "value" in d}
 
+        # ── parametersDict: Otomoto provides clean English/numeric values here ─────
+        pd = advert.get("parametersDict") or {}
+        def _pd_val(key):
+            """Get the first .value from parametersDict[key].values, or None."""
+            entry = pd.get(key) or {}
+            vals  = entry.get("values") or []
+            return vals[0].get("value") if vals else None
+
         year         = int(params["year"])                               if "year"         in params else None
-        mileage_km   = int(re.sub(r"[^\d]", "", params["mileage"]))     if params.get("mileage")      else None
-        power_hp     = int(re.sub(r"[^\d]", "", params["engine_power"])) if params.get("engine_power") else None
-        engine_cc    = int(re.sub(r"[^\d]", "", params["engine_capacity"])) if params.get("engine_capacity") else None
-        fuel_type    = params.get("fuel_type")
-        transmission = params.get("gearbox")
+        mileage_km   = int(_pd_val("mileage"))  if _pd_val("mileage")  else \
+                       int(re.sub(r"[^\d]", "", params["mileage"])) if params.get("mileage") else None
+        power_hp     = int(_pd_val("engine_power")) if _pd_val("engine_power") else \
+                       int(re.sub(r"[^\d]", "", params["engine_power"])) if params.get("engine_power") else None
+
+        # engine_cc: parametersDict gives clean integer (e.g. '2979'), fallback strips 'cm3' from details
+        _ec_pd       = _pd_val("engine_capacity")
+        if _ec_pd and str(_ec_pd).isdigit():
+            engine_cc = int(_ec_pd)
+        elif params.get("engine_capacity"):
+            _ec_raw   = re.sub(r"\s*cm3\s*$", "", params["engine_capacity"], flags=re.I)
+            engine_cc = int(re.sub(r"[^\d]", "", _ec_raw)) if _ec_raw else None
+        else:
+            engine_cc = None
+
+        # fuel_type: parametersDict gives English value (e.g. 'petrol', 'diesel', 'electric', 'hybrid')
+        _ft          = _pd_val("fuel_type") or params.get("fuel_type", "")
+        _ft_l        = str(_ft).lower()
+        if   "petrol"   in _ft_l or "benzyn" in _ft_l:    fuel_type = "petrol"
+        elif "diesel"   in _ft_l:                          fuel_type = "diesel"
+        elif "electric" in _ft_l or "elektr" in _ft_l:    fuel_type = "electric"
+        elif "hybrid"   in _ft_l or "hybr"   in _ft_l:    fuel_type = "hybrid"
+        else:                                               fuel_type = _ft or None
+
         color_ext    = params.get("color")
-        doors        = int(re.sub(r"[^\d]", "", params["doors_count"])) if params.get("doors_count") else None
+        _dc          = _pd_val("door_count") or params.get("doors_count")
+        doors        = int(re.sub(r"[^\d]", "", str(_dc))) if _dc else None
 
-        body_type_raw= params.get("body_type")
-        body_type    = None
-        if body_type_raw:
-            bt_l = str(body_type_raw).lower()
-            if "kombi" in bt_l or "estate" in bt_l or "wagon" in bt_l: body_type = "Kombi"
-            elif "sedan" in bt_l or "limuzyna" in bt_l or "saloon" in bt_l: body_type = "Sedan"
-            elif "coupe" in bt_l or "coupé" in bt_l: body_type = "Coupe"
-            elif "kabriolet" in bt_l or "cabrio" in bt_l: body_type = "Kabriolet"
-            elif "hatchback" in bt_l: body_type = "Hatchback"
-            elif "suv" in bt_l: body_type = "SUV"
-            else: body_type = str(body_type_raw).capitalize()
+        # gearbox: parametersDict gives English 'automatic' / 'manual' — use directly
+        _gb_pd       = _pd_val("gearbox") or ""
+        _gb_raw      = params.get("gearbox", "")
+        _gb_l        = (_gb_pd or _gb_raw).lower()
+        if   "automat" in _gb_l:                                                   transmission = "automatic"
+        elif "manual"  in _gb_l or "manualna" in _gb_l:                           transmission = "manual"
+        elif any(x in _gb_l for x in ["semi", "p\u00f3\u0142auto", "sekwency",
+                                       "dsg", "dkg", "pdc", "s-tronic",
+                                       "tiptronic"]):
+            transmission = "semi-auto"
+        else:
+            transmission = (_gb_pd or _gb_raw) or None
 
-        drive_raw    = params.get("drive")
-        drivetrain   = None
-        if drive_raw:
-            dr_l = str(drive_raw).lower()
-            if "4x4" in dr_l or "awd" in dr_l or "quattro" in dr_l or "4matic" in dr_l or "stały" in dr_l: drivetrain = "AWD"
-            elif "tyl" in dr_l or "rwd" in dr_l: drivetrain = "RWD"
-            elif "przód" in dr_l or "przed" in dr_l or "fwd" in dr_l: drivetrain = "FWD"
+        # body_type: parametersDict gives English slug ('coupe', 'sedan', 'suv', 'estate' …)
+        _bt_pd       = _pd_val("body_type") or ""
+        _bt_raw      = params.get("body_type", "")
+        _bt_l        = (_bt_pd or _bt_raw).lower()
+        if   "coupe"     in _bt_l or "coup\u00e9" in _bt_l:           body_type = "Coupe"
+        elif "sedan"     in _bt_l or "saloon" in _bt_l \
+             or "limuzyna" in _bt_l:                                   body_type = "Sedan"
+        elif "estate"    in _bt_l or "kombi"  in _bt_l \
+             or "wagon"   in _bt_l:                                    body_type = "Kombi"
+        elif "cabrio"    in _bt_l or "kabriolet" in _bt_l \
+             or "convertible" in _bt_l:                                body_type = "Kabriolet"
+        elif "hatchback" in _bt_l:                                     body_type = "Hatchback"
+        elif "suv"       in _bt_l or "off-road" in _bt_l:             body_type = "SUV"
+        elif _bt_pd or _bt_raw:
+            body_type = (_bt_pd or _bt_raw).capitalize()
+        else:
+            body_type = None
 
-        # Description text — search for plain VIN
+        # drivetrain: parametersDict gives English slug ('rear-wheel', 'front-wheel', 'all-wheel')
+        _dr_pd       = _pd_val("transmission") or ""
+        _dr_raw      = params.get("transmission") or params.get("drive") or ""
+        _dr_l        = (_dr_pd or _dr_raw).lower()
+        if   any(x in _dr_l for x in ["all", "four", "4x4", "awd", "quattro",
+                                        "4matic", "cztery", "sta\u0142y", "4wd"]): drivetrain = "AWD"
+        elif any(x in _dr_l for x in ["rear", "tyl", "rwd"]):                     drivetrain = "RWD"
+        elif any(x in _dr_l for x in ["front", "prz\u00f3d", "przed", "fwd"]):   drivetrain = "FWD"
+        else:                                                                       drivetrain = None
+
+        # Description text
         description_text = advert.get("description", "")
 
         # VIN — three tiers (best to worst):
@@ -384,7 +433,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         vin_found      = None
         vin_confidence = "none"
         advert_id      = advert.get("id", "")
-        has_vin        = bool((advert.get("parametersDict") or {}).get("has_vin"))
+        has_vin        = bool((pd).get("has_vin"))
 
         # Tier 1: decrypt the encrypted value in params["vin"]
         enc_vin = params.get("vin", "")
@@ -405,6 +454,18 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         # Tier 3: flag only
         if not vin_found and has_vin:
             vin_confidence = "found_in_schema"
+
+        # Registration plate — encrypted with same AES-GCM algorithm as VIN
+        registration_plate = None
+        enc_reg = params.get("registration", "")
+        if enc_reg and advert_id:
+            registration_plate = _decrypt_vin(enc_reg, advert_id)  # same decrypt fn
+
+        # First registration date — encrypted the same way
+        first_registration_date = None
+        enc_date = params.get("date_registration", "")
+        if enc_date and advert_id:
+            first_registration_date = _decrypt_vin(enc_date, advert_id)
 
         # Photo — images.photos[0].id IS the CDN URL on otomoto
         photos    = advert.get("images", {}).get("photos", [])
@@ -434,22 +495,24 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             pass
 
         return {
-            "year":                 year,
-            "mileage_km":           mileage_km,
-            "power_hp":             power_hp,
-            "engine_cc":            engine_cc,
-            "body_type":            body_type,
-            "drivetrain":           drivetrain,
-            "doors":                doors,
-            "fuel_type":            fuel_type,
-            "transmission":         transmission,
-            "color_ext":            color_ext,
-            "vin":                  vin_found,
-            "vin_confidence":       vin_confidence,
-            "photo_url":            photo_url,
-            "raw_description":      description_text,
-            "price_from_detail":    price_from_detail,
-            "location_from_detail": location_from_detail,
+            "year":                    year,
+            "mileage_km":              mileage_km,
+            "power_hp":                power_hp,
+            "engine_cc":               engine_cc,
+            "body_type":               body_type,
+            "drivetrain":              drivetrain,
+            "doors":                   doors,
+            "fuel_type":               fuel_type,
+            "transmission":            transmission,
+            "color_ext":               color_ext,
+            "vin":                     vin_found,
+            "vin_confidence":          vin_confidence,
+            "registration_plate":      registration_plate,
+            "first_registration_date": first_registration_date,
+            "photo_url":               photo_url,
+            "raw_description":         description_text,
+            "price_from_detail":       price_from_detail,
+            "location_from_detail":    location_from_detail,
         }
 
     except Exception as e:
@@ -744,6 +807,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 "photos":            [photo] if photo else [],
                 "vin":               detail.get("vin"),
                 "vin_confidence":    detail.get("vin_confidence", "none"),
+                "registration_plate":      detail.get("registration_plate"),
+                "first_registration_date": detail.get("first_registration_date"),
             }
 
             # Fill gaps with known model defaults
@@ -771,7 +836,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                                          headers=API_HEADERS, impersonate="chrome")
                     rj   = resp.json()
                     tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
-                    print(f"    > API {resp.status_code} [{tag}]")
+                    print(f"    > SID {payload.get('source_listing_id')} API {resp.status_code} [{tag}]")
                 except Exception as e:
                     print(f"    > API error: {_safe(str(e))}")
 

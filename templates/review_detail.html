@@ -208,6 +208,16 @@
           <label class="form-label small mb-1">Seller name</label>
           <input name="seller_name" class="form-control" value="{{ listing.seller_name or '' }}">
         </div>
+        {% if listing.registration_plate or listing.first_registration_date %}
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Reg. plate</label>
+          <input class="form-control font-monospace" readonly value="{{ listing.registration_plate or '—' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">First registered</label>
+          <input class="form-control" readonly value="{{ listing.first_registration_date or '—' }}">
+        </div>
+        {% endif %}
       </div>
 
       <div class="section-label">Your notes</div>

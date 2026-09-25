@@ -140,6 +140,8 @@ CREATE TABLE IF NOT EXISTS pending_listings (
     seller_name         TEXT,
     vin                 TEXT,
     vin_confidence      TEXT DEFAULT 'none',
+    registration_plate      TEXT,
+    first_registration_date TEXT,
     is_listing_active   INTEGER NOT NULL DEFAULT 1,
     review_notes        TEXT,
     reviewed_at         TEXT,
