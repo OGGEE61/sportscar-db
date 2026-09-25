@@ -223,8 +223,9 @@ def _approve_listing(conn, listing, overrides=None):
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
            engine_cc, engine_cyl, power_hp, drivetrain, transmission,
-           color_ext, vin_status, source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           color_ext, registration_plate, first_registration_date,
+           vin_status, source_method)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
           make        = COALESCE(excluded.make, make),
           model       = COALESCE(excluded.model, model),
@@ -249,6 +250,8 @@ def _approve_listing(conn, listing, overrides=None):
         final_drivetrain,
         final_transmission,
         _get("color_ext"),
+        listing.get("registration_plate"),
+        listing.get("first_registration_date"),
         "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
         f"scraper-{listing['source']}",
     ))

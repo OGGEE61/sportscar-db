@@ -40,7 +40,8 @@
         ("Engine cc", vehicle.engine_cc), ("Cylinders", vehicle.engine_cyl),
         ("Power HP", vehicle.power_hp), ("Drivetrain", vehicle.drivetrain),
         ("Transmission", vehicle.transmission), ("Ext. color", vehicle.color_ext),
-        ("Int. color", vehicle.color_int), ("Source method", vehicle.source_method),
+        ("Int. color", vehicle.color_int), ("Reg. Plate", vehicle.registration_plate),
+        ("First Reg", vehicle.first_registration_date), ("Source method", vehicle.source_method),
         ("Created", vehicle.created_at[:16] if vehicle.created_at else None),
         ("Updated", vehicle.updated_at[:16] if vehicle.updated_at else None),
       ] %}

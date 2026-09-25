@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
     transmission        TEXT,
     color_ext           TEXT,
     color_int           TEXT,
+    registration_plate  TEXT,
+    first_registration_date TEXT,
     vin_status          TEXT NOT NULL DEFAULT 'unverified',
     vin_verified_at     TEXT,
     vin_verified_by     TEXT,
