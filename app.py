@@ -1412,6 +1412,16 @@ def review_reject_all_pending():
         return {"status": "success"}
     return redirect(url_for("review_queue"))
 
+@app.route("/review/clear_rejected")
+def review_clear_rejected():
+    conn = get_db()
+    conn.execute("DELETE FROM pending_listings WHERE status='rejected'")
+    conn.commit()
+    conn.close()
+    if request.args.get("ajax") == "1":
+        return {"status": "success"}
+    return redirect(url_for("review_queue"))
+
 
 @app.route("/review/bulk_approve", methods=["POST"])
 def review_bulk_approve():

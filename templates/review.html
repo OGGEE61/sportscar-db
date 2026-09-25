@@ -54,6 +54,17 @@
 </div>
 {% endif %}
 
+<!-- Bulk action bar (only in rejected tab) -->
+{% if status_filter == 'rejected' %}
+<div class="d-flex align-items-center gap-3 mb-3 p-2 bg-light border rounded">
+  <div class="d-flex gap-2 ms-auto">
+    <button type="button" class="btn btn-outline-danger btn-sm" id="clear-rejected-btn">
+      Clear all rejected
+    </button>
+  </div>
+</div>
+{% endif %}
+
 <div class="list-group" 
      id="review-list-group"
      hx-get="/review?status={{ status_filter }}" 
@@ -357,6 +368,36 @@ if (rejectAllBtn) {
         row.style.pointerEvents = 'auto';
       });
       showToast('Error', 'Failed to reject all: ' + err.message, 'danger');
+    });
+  };
+}
+
+const clearRejectedBtn = document.getElementById('clear-rejected-btn');
+if (clearRejectedBtn) {
+  clearRejectedBtn.onclick = (e) => {
+    e.preventDefault();
+    if (!confirm('Permanently delete ALL rejected listings?')) return;
+    
+    document.querySelectorAll('.list-group-item').forEach(row => {
+      row.style.opacity = '0.3';
+      row.style.pointerEvents = 'none';
+    });
+    
+    fetch('/review/clear_rejected?ajax=1')
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(data => {
+      document.querySelectorAll('.list-group-item').forEach(row => row.remove());
+      showToast('Clear Rejected Complete', 'All rejected listings deleted.', 'success');
+    })
+    .catch(err => {
+      document.querySelectorAll('.list-group-item').forEach(row => {
+        row.style.opacity = '1';
+        row.style.pointerEvents = 'auto';
+      });
+      showToast('Error', 'Failed to clear rejected: ' + err.message, 'danger');
     });
   };
 }
