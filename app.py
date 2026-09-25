@@ -201,8 +201,10 @@ def _approve_listing(conn, listing, overrides=None):
         )
 
     def _get(key, cast=None):
-        val = overrides.get(key) if overrides.get(key) else listing[key]
-        if val is None:
+        val = overrides.get(key)
+        if not val and key in listing.keys():
+            val = listing[key]
+        if val is None or val == "":
             return None
         return cast(val) if cast else val
 
