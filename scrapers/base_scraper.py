@@ -701,150 +701,150 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     for url_tmpl in list_urls:
         for page in range(1, cfg.pages + 1):
             url = url_tmpl.format(page=page)
-        print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
-
-        try:
-            r = requests.get(
-                url, headers=HEADERS, cookies=cookies,
-                timeout=15, impersonate="chrome"
-            )
-        except Exception as e:
-            print(f"  [list error] {_safe(str(e))}")
-            break
-
-        if r.status_code != 200:
-            print(f"  HTTP {r.status_code} -- stopping.")
-            break
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        if cfg.source == "otomoto":
-            cards = _parse_otomoto_cards(soup, r.text)
-        else:
-            cards = _parse_olx_cards(soup)
-
-        if not cards:
-            print("  No cards found -- stopping.")
-            break
-
-        page_ids = {c["listing_id"] for c in cards}
-        if page_ids and page_ids.issubset(seen_ids):
-            print(f"  All {len(cards)} cards already seen -- stopping.")
-            break
-        seen_ids |= page_ids
-
-        for card in cards:
-            listing_id    = card["listing_id"]
-            title         = card["title"]
-            price_raw     = card["price_raw"]
-            source_url    = card["source_url"]
-            thumbnail     = card["thumbnail"]
-            location_city = card["location_city"]
-            price_pln     = parse_price(price_raw)
-
-            # Title keyword guard (normalizes spaces so "C 63" matches "C63" and "E 55" matches "E55")
-            if cfg.title_must_contain:
-                needle = cfg.title_must_contain.lower().replace(" ", "")
-                haystack = title.lower().replace(" ", "")
-                if needle not in haystack:
-                    print(f"  [skip] {_safe(title[:60])}")
-                    continue
-
-            print(f"  {_safe(title[:65])} | {_safe(price_raw)} | {_safe(location_city or '')}")
-
-            detail = {}
-            if source_url:
-                jitter = random.uniform(0.5, 2.5)
-                time.sleep(cfg.detail_delay + jitter)
-                detail = fetch_detail(source_url, cookies=cookies)
-                vc = detail.get("vin_confidence", "none")
-                if detail.get("vin") and vc == "found_in_description":
-                    print(f"    VIN (desc):   {detail['vin']}")
-                elif detail.get("vin") and vc == "found_in_schema":
-                    print(f"    VIN (login):  {detail['vin']}")
-                elif vc == "found_in_schema" and logged_in:
-                    # VIN exists but was encrypted in page — try the GraphQL reveal endpoint
-                    revealed = reveal_vin(listing_id, cookies)
-                    if revealed:
-                        detail["vin"]            = revealed
-                        detail["vin_confidence"] = "found_in_schema"
-                        print(f"    VIN (api):    {revealed}")
-                    else:
-                        print(f"    VIN: encrypted — reveal endpoint not matched yet")
-                elif vc == "found_in_schema":
-                    print(f"    VIN: exists but encrypted -- not logged in")
-                if detail.get("year"):
-                    print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
-                          f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
-                    
-                    if cfg.min_year and detail['year'] < cfg.min_year:
-                        print(f"  [skip] Year {detail['year']} < min {cfg.min_year}")
+            print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
+    
+            try:
+                r = requests.get(
+                    url, headers=HEADERS, cookies=cookies,
+                    timeout=15, impersonate="chrome"
+                )
+            except Exception as e:
+                print(f"  [list error] {_safe(str(e))}")
+                break
+    
+            if r.status_code != 200:
+                print(f"  HTTP {r.status_code} -- stopping.")
+                break
+    
+            soup = BeautifulSoup(r.text, "html.parser")
+    
+            if cfg.source == "otomoto":
+                cards = _parse_otomoto_cards(soup, r.text)
+            else:
+                cards = _parse_olx_cards(soup)
+    
+            if not cards:
+                print("  No cards found -- stopping.")
+                break
+    
+            page_ids = {c["listing_id"] for c in cards}
+            if page_ids and page_ids.issubset(seen_ids):
+                print(f"  All {len(cards)} cards already seen -- stopping.")
+                break
+            seen_ids |= page_ids
+    
+            for card in cards:
+                listing_id    = card["listing_id"]
+                title         = card["title"]
+                price_raw     = card["price_raw"]
+                source_url    = card["source_url"]
+                thumbnail     = card["thumbnail"]
+                location_city = card["location_city"]
+                price_pln     = parse_price(price_raw)
+    
+                # Title keyword guard (normalizes spaces so "C 63" matches "C63" and "E 55" matches "E55")
+                if cfg.title_must_contain:
+                    needle = cfg.title_must_contain.lower().replace(" ", "")
+                    haystack = title.lower().replace(" ", "")
+                    if needle not in haystack:
+                        print(f"  [skip] {_safe(title[:60])}")
                         continue
-                    if cfg.max_year and detail['year'] > cfg.max_year:
-                        print(f"  [skip] Year {detail['year']} > max {cfg.max_year}")
-                        continue
-
-            photo         = detail.get("photo_url") or thumbnail
-            final_price   = detail.get("price_from_detail") or price_pln
-            final_loc     = detail.get("location_from_detail") or location_city
-
-            payload = {
-                "source":            cfg.source,
-                "source_listing_id": listing_id,
-                "source_url":        source_url,
-                "raw_title":         title,
-                "raw_description":   detail.get("raw_description"),
-                "make":              cfg.make,
-                "model":             cfg.model,
-                "variant":           cfg.variant,
-                "year":              detail.get("year"),
-                "body_type":         detail.get("body_type"),
-                "engine_cc":         detail.get("engine_cc"),
-                "power_hp":          detail.get("power_hp"),
-                "drivetrain":        detail.get("drivetrain"),
-                "doors":             detail.get("doors"),
-                "fuel_type":         detail.get("fuel_type"),
-                "transmission":      detail.get("transmission"),
-                "color_ext":         detail.get("color_ext"),
-                "price_pln":         final_price,
-                "mileage_km":        detail.get("mileage_km"),
-                "location_city":     final_loc,
-                "photos":            [photo] if photo else [],
-                "vin":               detail.get("vin"),
-                "vin_confidence":    detail.get("vin_confidence", "none"),
-                "registration_plate":      detail.get("registration_plate"),
-                "first_registration_date": detail.get("first_registration_date"),
-            }
-
-            # Fill gaps with known model defaults
-            for key, value in cfg.defaults.items():
-                if not payload.get(key):
-                    payload[key] = value
-
-            # Secondary fallback for body_type from title if still missing
-            if not payload.get("body_type"):
-                tl = title.lower()
-                if "kombi" in tl or "avant" in tl or "t-modell" in tl or "touring" in tl or "estate" in tl:
-                    payload["body_type"] = "Kombi"
-                elif "coupe" in tl or "coupé" in tl:
-                    payload["body_type"] = "Coupe"
-                elif "sedan" in tl or "limuzyna" in tl or "saloon" in tl:
-                    payload["body_type"] = "Sedan"
-                elif "cabrio" in tl or "kabriolet" in tl:
-                    payload["body_type"] = "Kabriolet"
-
-            results.append(payload)
-
-            if post_to_api:
-                try:
-                    resp = requests.post(API_URL, json=payload, timeout=5,
-                                         headers=API_HEADERS, impersonate="chrome")
-                    rj   = resp.json()
-                    tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
-                    print(f"    > SID {payload.get('source_listing_id')} API {resp.status_code} [{tag}]")
-                except Exception as e:
-                    print(f"    > API error: {_safe(str(e))}")
-
+    
+                print(f"  {_safe(title[:65])} | {_safe(price_raw)} | {_safe(location_city or '')}")
+    
+                detail = {}
+                if source_url:
+                    jitter = random.uniform(0.5, 2.5)
+                    time.sleep(cfg.detail_delay + jitter)
+                    detail = fetch_detail(source_url, cookies=cookies)
+                    vc = detail.get("vin_confidence", "none")
+                    if detail.get("vin") and vc == "found_in_description":
+                        print(f"    VIN (desc):   {detail['vin']}")
+                    elif detail.get("vin") and vc == "found_in_schema":
+                        print(f"    VIN (login):  {detail['vin']}")
+                    elif vc == "found_in_schema" and logged_in:
+                        # VIN exists but was encrypted in page — try the GraphQL reveal endpoint
+                        revealed = reveal_vin(listing_id, cookies)
+                        if revealed:
+                            detail["vin"]            = revealed
+                            detail["vin_confidence"] = "found_in_schema"
+                            print(f"    VIN (api):    {revealed}")
+                        else:
+                            print(f"    VIN: encrypted — reveal endpoint not matched yet")
+                    elif vc == "found_in_schema":
+                        print(f"    VIN: exists but encrypted -- not logged in")
+                    if detail.get("year"):
+                        print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
+                              f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
+    
+                        if cfg.min_year and detail['year'] < cfg.min_year:
+                            print(f"  [skip] Year {detail['year']} < min {cfg.min_year}")
+                            continue
+                        if cfg.max_year and detail['year'] > cfg.max_year:
+                            print(f"  [skip] Year {detail['year']} > max {cfg.max_year}")
+                            continue
+    
+                photo         = detail.get("photo_url") or thumbnail
+                final_price   = detail.get("price_from_detail") or price_pln
+                final_loc     = detail.get("location_from_detail") or location_city
+    
+                payload = {
+                    "source":            cfg.source,
+                    "source_listing_id": listing_id,
+                    "source_url":        source_url,
+                    "raw_title":         title,
+                    "raw_description":   detail.get("raw_description"),
+                    "make":              cfg.make,
+                    "model":             cfg.model,
+                    "variant":           cfg.variant,
+                    "year":              detail.get("year"),
+                    "body_type":         detail.get("body_type"),
+                    "engine_cc":         detail.get("engine_cc"),
+                    "power_hp":          detail.get("power_hp"),
+                    "drivetrain":        detail.get("drivetrain"),
+                    "doors":             detail.get("doors"),
+                    "fuel_type":         detail.get("fuel_type"),
+                    "transmission":      detail.get("transmission"),
+                    "color_ext":         detail.get("color_ext"),
+                    "price_pln":         final_price,
+                    "mileage_km":        detail.get("mileage_km"),
+                    "location_city":     final_loc,
+                    "photos":            [photo] if photo else [],
+                    "vin":               detail.get("vin"),
+                    "vin_confidence":    detail.get("vin_confidence", "none"),
+                    "registration_plate":      detail.get("registration_plate"),
+                    "first_registration_date": detail.get("first_registration_date"),
+                }
+    
+                # Fill gaps with known model defaults
+                for key, value in cfg.defaults.items():
+                    if not payload.get(key):
+                        payload[key] = value
+    
+                # Secondary fallback for body_type from title if still missing
+                if not payload.get("body_type"):
+                    tl = title.lower()
+                    if "kombi" in tl or "avant" in tl or "t-modell" in tl or "touring" in tl or "estate" in tl:
+                        payload["body_type"] = "Kombi"
+                    elif "coupe" in tl or "coupé" in tl:
+                        payload["body_type"] = "Coupe"
+                    elif "sedan" in tl or "limuzyna" in tl or "saloon" in tl:
+                        payload["body_type"] = "Sedan"
+                    elif "cabrio" in tl or "kabriolet" in tl:
+                        payload["body_type"] = "Kabriolet"
+    
+                results.append(payload)
+    
+                if post_to_api:
+                    try:
+                        resp = requests.post(API_URL, json=payload, timeout=5,
+                                             headers=API_HEADERS, impersonate="chrome")
+                        rj   = resp.json()
+                        tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
+                        print(f"    > SID {payload.get('source_listing_id')} API {resp.status_code} [{tag}]")
+                    except Exception as e:
+                        print(f"    > API error: {_safe(str(e))}")
+    
     # Sold/removed detection — mark active observations not seen this run
     if post_to_api and seen_ids:
         try:
