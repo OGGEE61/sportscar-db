@@ -1444,30 +1444,32 @@ def api_ingest_pending():
             if existing and existing["status"] == "approved":
                 new_price = p.get("price_pln")
                 old_price = existing["price_pln"]
-                if new_price and old_price and abs(float(new_price) - float(old_price)) > 500:
-                    # Price changed on an already-approved listing → new observation
-                    existing_vin = existing["vin"]
-                    if existing_vin:
-                        conn.execute("""
-                            INSERT INTO listing_observations
-                              (vin, source, source_listing_id, source_url, title,
-                               price_pln, mileage_km, location_city,
-                               seller_type, first_seen_at, observed_at, source_method)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                        """, (
-                            existing_vin, source, sid,
-                            existing["source_url"], existing["raw_title"],
-                            float(new_price),
-                            p.get("mileage_km") or existing["mileage_km"],
-                            p.get("location_city") or existing["location_city"],
-                            existing["seller_type"] or "private",
-                            NOW(), NOW(),
-                            f"scraper-{source}",
-                        ))
-                        conn.commit()
-                        conn.close()
-                        return jsonify({"status": "ok", "id": existing["id"],
-                                        "tag": "price_updated"})
+                existing_vin = existing["vin"]
+                
+                if existing_vin:
+                    conn.execute("""
+                        INSERT INTO listing_observations
+                          (vin, source, source_listing_id, source_url, title,
+                           price_pln, mileage_km, location_city,
+                           seller_type, first_seen_at, observed_at, source_method)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    """, (
+                        existing_vin, source, sid,
+                        existing["source_url"], existing["raw_title"],
+                        float(new_price) if new_price else float(old_price or 0),
+                        p.get("mileage_km") or existing["mileage_km"],
+                        p.get("location_city") or existing["location_city"],
+                        existing["seller_type"] or "private",
+                        NOW(), NOW(),
+                        f"scraper-{source}",
+                    ))
+                    conn.commit()
+                    conn.close()
+                    
+                    # Optional: flag if price actually changed
+                    tag = "price_updated" if (new_price and old_price and abs(float(new_price) - float(old_price)) > 500) else "seen_again"
+                    return jsonify({"status": "ok", "id": existing["id"], "tag": tag})
+            
             conn.close()
             return jsonify({"status": "ok", "id": 0, "tag": "duplicate"})
 
