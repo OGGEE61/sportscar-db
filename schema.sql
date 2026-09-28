@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS vehicles (
     updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_vehicles_make_model_year 
+    ON vehicles(make, model, year);
+
 -- ── listing_observations ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS listing_observations (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,

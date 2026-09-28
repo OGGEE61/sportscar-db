@@ -184,6 +184,55 @@ def backfill_vehicle_specs(conn):
         print(f"Backfill error: {e}")
 
 
+import urllib.request
+import urllib.parse
+from bs4 import BeautifulSoup
+import json
+
+def _enrich_location_with_nominatim(city_name):
+    if not city_name: return None
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?city={urllib.parse.quote(city_name)}&country=Poland&format=json&addressdetails=1"
+        req = urllib.request.Request(url, headers={'User-Agent': 'SportsCarDB/1.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            if data:
+                state = data[0].get('address', {}).get('state', '').lower()
+                mapping = {
+                    "dolnośląskie": "PL-DS", "kujawsko-pomorskie": "PL-KP",
+                    "lubelskie": "PL-LU", "lubuskie": "PL-LB", "łódzkie": "PL-LD",
+                    "małopolskie": "PL-MA", "mazowieckie": "PL-MZ", "opolskie": "PL-OP",
+                    "podkarpackie": "PL-PK", "podlaskie": "PL-PD", "pomorskie": "PL-PM",
+                    "śląskie": "PL-SL", "świętokrzyskie": "PL-SK",
+                    "warmińsko-mazurskie": "PL-WN", "wielkopolskie": "PL-WP",
+                    "zachodniopomorskie": "PL-ZP"
+                }
+                for k, v in mapping.items():
+                    if k in state: return v
+    except Exception as e:
+        print(f"Nominatim error for {city_name}:", e)
+    return None
+
+def _enrich_otomoto_ad(url):
+    try:
+        if not url or "otomoto.pl" not in url: return {}
+        from curl_cffi import requests
+        r = requests.get(url, impersonate="chrome", timeout=5)
+        soup = BeautifulSoup(r.text, "html.parser")
+        reg_plate, reg_date = None, None
+        for el in soup.find_all(["p", "span", "div"]):
+            txt = el.get_text(strip=True)
+            if txt == "Numer rejestracyjny pojazdu":
+                nxt = el.find_next_sibling()
+                if nxt: reg_plate = nxt.get_text(strip=True)
+            elif txt == "Pierwsza rejestracja":
+                nxt = el.find_next_sibling()
+                if nxt: reg_date = nxt.get_text(strip=True)
+        return {"registration_plate": reg_plate, "first_registration_date": reg_date}
+    except Exception as e:
+        print("Enrich error:", e)
+    return {}
+
 def _approve_listing(conn, listing, overrides=None):
     """Upsert vehicle + insert observation + mark pending row approved.
 
@@ -192,6 +241,11 @@ def _approve_listing(conn, listing, overrides=None):
     Returns the VIN string used.
     """
     overrides = overrides or {}
+
+    # Scrape ad details dynamically if missing
+    enriched = {}
+    if not overrides:
+        enriched = _enrich_otomoto_ad(listing.get("source_url"))
 
     vin = (overrides.get("vin") or listing["vin"] or "").strip().upper()
     if not vin or len(vin) != 17:
@@ -204,6 +258,8 @@ def _approve_listing(conn, listing, overrides=None):
         val = overrides.get(key)
         if not val and key in listing.keys():
             val = listing[key]
+        if not val and key in enriched:
+            val = enriched[key]
         if val is None or val == "":
             return None
         return cast(val) if cast else val
@@ -218,6 +274,17 @@ def _approve_listing(conn, listing, overrides=None):
     final_power_hp     = _get("power_hp", int) or inferred.get("power_hp")
     final_drivetrain   = _get("drivetrain") or inferred.get("drivetrain")
     final_transmission = _get("transmission") or inferred.get("transmission")
+    
+    # Store these in variables so we can inject them into the DB later
+    final_reg_plate = _get("registration_plate")
+    final_first_reg = _get("first_registration_date")
+
+    # Enrich location with Nominatim
+    loc_city = _get("location_city")
+    loc_region = listing.get("location_region")
+    if loc_city and (not loc_region or len(loc_region) != 5):
+        best_region = _enrich_location_with_nominatim(loc_city)
+        if best_region: loc_region = best_region
 
     conn.execute("""
         INSERT INTO vehicles
@@ -236,6 +303,8 @@ def _approve_listing(conn, listing, overrides=None):
           body_type   = COALESCE(excluded.body_type, body_type),
           drivetrain  = COALESCE(excluded.drivetrain, drivetrain),
           transmission= COALESCE(excluded.transmission, transmission),
+          registration_plate = COALESCE(excluded.registration_plate, registration_plate),
+          first_registration_date = COALESCE(excluded.first_registration_date, first_registration_date),
           updated_at  = datetime('now')
     """, (
         vin,
@@ -250,8 +319,8 @@ def _approve_listing(conn, listing, overrides=None):
         final_drivetrain,
         final_transmission,
         _get("color_ext"),
-        _get("registration_plate"),
-        _get("first_registration_date"),
+        final_reg_plate,
+        final_first_reg,
         "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
         f"scraper-{listing['source']}",
     ))
@@ -259,10 +328,10 @@ def _approve_listing(conn, listing, overrides=None):
     conn.execute("""
         INSERT INTO listing_observations
           (vin, source, source_listing_id, source_url, title,
-           price_pln, mileage_km, location_city,
+           price_pln, mileage_km, location_city, location_region,
            seller_type, seller_name,
            first_seen_at, observed_at, source_method, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         vin, listing["source"],
         listing["source_listing_id"],
@@ -270,7 +339,8 @@ def _approve_listing(conn, listing, overrides=None):
         listing["raw_title"],
         float(overrides["price_pln"])  if overrides.get("price_pln")  else listing["price_pln"],
         int(overrides["mileage_km"])   if overrides.get("mileage_km") else listing["mileage_km"],
-        overrides.get("location_city") or listing["location_city"],
+        loc_city,
+        loc_region,
         overrides.get("seller_type")   or listing["seller_type"] or "private",
         overrides.get("seller_name")   or listing["seller_name"],
         listing["scraped_at"], listing["scraped_at"],
@@ -602,6 +672,26 @@ def model_analytics():
             "years": "2019–2024",
             "engine": "3.0L Twin-Turbo S58 · 510 HP · AWD",
             "where": "v.make = 'BMW' AND (v.model = 'X3 M' OR v.model = 'X3M' OR (v.model = 'X3' AND (v.variant LIKE '%M%' OR v.variant LIKE '%F97%'))) AND (v.year >= 2019 AND v.year <= 2024)"
+        },
+        {
+            "id": "m3_f80",
+            "name": "BMW M3 (F80)",
+            "make": "BMW",
+            "model": "M3",
+            "variant": "F80",
+            "years": "2014–2020",
+            "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M3' OR v.variant LIKE '%F80%') AND (v.year >= 2014 AND v.year <= 2020)"
+        },
+        {
+            "id": "x3_m40i_g01",
+            "name": "BMW X3 M40i (G01)",
+            "make": "BMW",
+            "model": "X3",
+            "variant": "M40i G01",
+            "years": "2017–2024",
+            "engine": "3.0L Turbo B58 · 360 HP · AWD",
+            "where": "v.make = 'BMW' AND (v.model = 'X3 M40i' OR (v.model = 'X3' AND (v.variant LIKE '%M40i%' OR v.variant LIKE '%G01%'))) AND (v.year >= 2017 AND v.year <= 2024)"
         },
     ]
 
