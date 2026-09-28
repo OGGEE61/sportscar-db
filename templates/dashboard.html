@@ -2,7 +2,14 @@
 {% block title %}Dashboard – SportsCar DB{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Dashboard</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Dashboard</h2>
+  {% if active_filter %}
+  <a href="/" class="btn btn-outline-danger shadow-sm">
+    <i class="bi bi-x-circle me-1"></i> Clear Filter: <strong>{{ active_filter.label }}</strong> ✕
+  </a>
+  {% endif %}
+</div>
 
 <!-- Stat cards -->
 <div class="row g-3 mb-4">

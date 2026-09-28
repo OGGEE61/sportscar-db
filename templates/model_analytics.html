@@ -81,6 +81,21 @@
   </div>
 </div>
 
+<!-- Active Filter Banner -->
+<div id="activeFilterBannerWrapper" class="mb-4">
+  <div id="activeFilterBanner" class="alert alert-info py-3 px-4 shadow-sm d-none align-items-center justify-content-between border-0">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-funnel-fill text-primary fs-5"></i>
+      <span class="fs-5">Filtered by: <strong id="activeFilterLabel"></strong></span>
+      <span class="badge bg-white text-dark border ms-2 fs-6" id="activeFilterCount"></span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-outline-danger shadow-sm" onclick="clearModelFilter()">✕ Clear filter</button>
+      <a id="dashboardFilterLink" href="/" class="btn btn-primary shadow-sm">View in Dashboard →</a>
+    </div>
+  </div>
+</div>
+
 <!-- KPI Cards Row -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-4 col-lg-2">
@@ -208,19 +223,6 @@
       Tracked {{ selected_model.name }} Vehicles <span id="tableHeaderCount">({{ vehicles|length }})</span>
     </span>
     <span class="text-muted small">Updated live from market observations</span>
-  </div>
-  <div class="card-body pb-0 pt-3" id="activeFilterBannerWrapper">
-    <div id="activeFilterBanner" class="alert alert-info py-2 px-3 mb-0 d-none align-items-center justify-content-between">
-      <div class="d-flex align-items-center gap-2">
-        <i class="bi bi-funnel-fill text-primary"></i>
-        <span>Filtered by: <strong id="activeFilterLabel"></strong></span>
-        <span class="badge bg-white text-dark border ms-2" id="activeFilterCount"></span>
-      </div>
-      <div class="d-flex align-items-center gap-2">
-        <button class="btn btn-sm btn-outline-secondary" onclick="clearModelFilter()">✕ Clear filter</button>
-        <a id="dashboardFilterLink" href="/" class="btn btn-sm btn-outline-primary">View in Dashboard →</a>
-      </div>
-    </div>
   </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
