@@ -574,10 +574,10 @@ def dashboard():
         FROM listing_observations GROUP BY source_method
     """).fetchall()
 
-    cities = conn.execute("SELECT location_city, COUNT(*) as cnt FROM listing_observations WHERE location_city IS NOT NULL GROUP BY location_city").fetchall()
+    regions = conn.execute("SELECT location_region, COUNT(*) as cnt FROM listing_observations WHERE location_region IS NOT NULL AND length(location_region) = 5 GROUP BY location_region").fetchall()
     region_counts = {}
-    for r in cities:
-        reg = CITY_TO_REGION.get(r["location_city"], "PL-MZ")
+    for r in regions:
+        reg = r["location_region"]
         region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
     
     map_data = [["State", "Observations"]] + [[k, v] for k, v in region_counts.items()]
@@ -701,10 +701,10 @@ def model_analytics():
     # Strict query matching this exact generation - NO loose cross-model fallback!
     sql = f"""
         SELECT v.*, 
-               o.price_pln, o.mileage_km, o.location_city, o.observed_at, o.source_url, o.title
+               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title
         FROM vehicles v
         LEFT JOIN (
-            SELECT vin, price_pln, mileage_km, location_city, observed_at, source_url, title,
+            SELECT vin, price_pln, mileage_km, location_city, location_region, observed_at, source_url, title,
                    ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
             FROM listing_observations
             WHERE price_pln IS NOT NULL AND price_pln > 0
@@ -717,9 +717,15 @@ def model_analytics():
     # Annotate region codes and names for mapping & filtering
     region_counts = {}
     for v in vehicles:
-        city = v.get("location_city")
-        if city:
-            reg = CITY_TO_REGION.get(city, "PL-MZ")
+        reg = v.get("location_region")
+        if not reg or len(reg) != 5:
+            city = v.get("location_city")
+            if city and city in CITY_TO_REGION:
+                reg = CITY_TO_REGION[city]
+            else:
+                reg = None
+                
+        if reg:
             region_counts[reg] = region_counts.get(reg, 0) + 1
             v["region"] = reg
             v["region_name"] = REGION_NAMES.get(reg, reg)
