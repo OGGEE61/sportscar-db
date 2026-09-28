@@ -38,17 +38,17 @@ from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
 
 # Active target fleet
-ALL_FLEET = [C63, E55, RS4_B85, RS4_B9, M3, M4, X3_M, X3_M40I]
+ALL_FLEET = [C63, E55, RS4_B85, RS4_B9, M3, M4, RS3, X3_M, X3_M40I]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
 # Guarantees each model runs 3 times per week, distributed evenly across days
 WEEKDAY_SCHEDULE = {
     0: [E55, RS4_B9, M3, X3_M40I],       # Monday
-    1: [C63, M4, X3_M],                  # Tuesday
+    1: [C63, M4, X3_M, RS3],                  # Tuesday
     2: [RS4_B85, E55, M3, X3_M40I],      # Wednesday
-    3: [C63, RS4_B9, X3_M],              # Thursday
+    3: [C63, RS4_B9, X3_M, RS3],              # Thursday
     4: [M4, RS4_B85, M3, X3_M40I],       # Friday
-    5: [C63, E55, RS4_B9],               # Saturday
+    5: [C63, E55, RS4_B9, RS3],               # Saturday
     6: [RS4_B85, M4, X3_M],              # Sunday
 }
 
