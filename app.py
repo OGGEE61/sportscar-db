@@ -485,7 +485,7 @@ def dashboard():
     filter_price = request.args.get("price", "").strip()
 
     recent_sql = """
-        SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo,
+        SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
                o.price_pln, o.mileage_km, o.location_city, o.source, o.source_method, o.observed_at, o.source_url
         FROM listing_observations o
         JOIN vehicles v ON o.vin = v.vin
@@ -1402,6 +1402,45 @@ def api_ingest_pending():
                 "SELECT * FROM pending_listings WHERE source=? AND source_listing_id=?",
                 (source, sid)
             ).fetchone()
+            
+            if existing:
+                # Update missing fields in pending_listings
+                fields_to_check = [
+                    "registration_plate", "first_registration_date", "body_type", 
+                    "engine_cc", "power_hp", "fuel_type", "drivetrain", "transmission", 
+                    "color_ext", "doors"
+                ]
+                updates_pending = {}
+                for field in fields_to_check:
+                    if not existing[field] and p.get(field):
+                        updates_pending[field] = p[field]
+                
+                if updates_pending:
+                    set_clause = ", ".join(f"{k}=?" for k in updates_pending.keys())
+                    vals = list(updates_pending.values()) + [existing["id"]]
+                    conn.execute(f"UPDATE pending_listings SET {set_clause} WHERE id=?", vals)
+                    conn.commit()
+
+                # If it's approved and has a VIN, update the vehicles table as well
+                existing_vin = existing["vin"]
+                if existing_vin and existing["status"] == "approved":
+                    v_existing = conn.execute("SELECT * FROM vehicles WHERE vin=?", (existing_vin,)).fetchone()
+                    if v_existing:
+                        v_fields = [
+                            "body_type", "engine_cc", "power_hp", "drivetrain", 
+                            "transmission", "color_ext", "registration_plate", 
+                            "first_registration_date"
+                        ]
+                        updates_v = {}
+                        for field in v_fields:
+                            if not v_existing[field] and p.get(field):
+                                updates_v[field] = p[field]
+                        if updates_v:
+                            set_clause = ", ".join(f"{k}=?" for k in updates_v.keys())
+                            vals = list(updates_v.values()) + [existing_vin]
+                            conn.execute(f"UPDATE vehicles SET {set_clause}, updated_at=datetime('now') WHERE vin=?", vals)
+                            conn.commit()
+
             if existing and existing["status"] == "approved":
                 new_price = p.get("price_pln")
                 old_price = existing["price_pln"]
