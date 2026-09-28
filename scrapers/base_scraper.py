@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Shared scraping engine for OLX / Otomoto listings.
 Each model scraper imports `run` from here and passes a ScraperConfig.
