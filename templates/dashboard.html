@@ -128,7 +128,12 @@
             </div>
             {% endif %}
           </td>
-          <td><a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a></td>
+          <td>
+            <a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a><br>
+            {% if not r.registration_plate %}
+            <span class="badge bg-warning text-dark" style="font-size: 0.65rem;" title="Registration plate is missing">Missing plates</span>
+            {% endif %}
+          </td>
           <td>{{ r.make }}</td>
           <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
           <td>{{ r.year or '—' }}</td>

@@ -32,7 +32,12 @@
 
 <!-- Vehicle details -->
 <div class="card mb-4">
-  <div class="card-header">Vehicle details</div>
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Vehicle details</span>
+    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editDetailsModal">
+      Edit
+    </button>
+  </div>
   <div class="card-body">
     <div class="row g-2">
       {% set fields = [
@@ -57,6 +62,37 @@
     {% endif %}
   </div>
 </div>
+
+<!-- Edit Details Modal -->
+<div class="modal fade" id="editDetailsModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/update_details">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Vehicle Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body row g-2">
+          <div class="col-6"><label class="small text-muted">Year</label><input type="number" name="year" class="form-control form-control-sm" value="{{ vehicle.year or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Body Type</label><input type="text" name="body_type" class="form-control form-control-sm" value="{{ vehicle.body_type or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Engine cc</label><input type="number" name="engine_cc" class="form-control form-control-sm" value="{{ vehicle.engine_cc or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Cylinders</label><input type="number" name="engine_cyl" class="form-control form-control-sm" value="{{ vehicle.engine_cyl or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Power HP</label><input type="number" name="power_hp" class="form-control form-control-sm" value="{{ vehicle.power_hp or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Drivetrain</label><input type="text" name="drivetrain" class="form-control form-control-sm" value="{{ vehicle.drivetrain or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Transmission</label><input type="text" name="transmission" class="form-control form-control-sm" value="{{ vehicle.transmission or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Ext. color</label><input type="text" name="color_ext" class="form-control form-control-sm" value="{{ vehicle.color_ext or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Int. color</label><input type="text" name="color_int" class="form-control form-control-sm" value="{{ vehicle.color_int or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Reg. Plate</label><input type="text" name="registration_plate" class="form-control form-control-sm" value="{{ vehicle.registration_plate or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">First Reg</label><input type="text" name="first_registration_date" class="form-control form-control-sm" value="{{ vehicle.first_registration_date or '' }}"></div>
+        </div>
+        <div class="modal-footer p-1">
+          <button type="submit" class="btn btn-primary btn-sm w-100">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 
 <!-- Resolve placeholder -->
 {% if vehicle.vin_status == 'placeholder' %}
@@ -92,9 +128,13 @@
                 title="Remove tag" onclick="event.stopPropagation()"></button>
       </form>
     </span>
-    {% else %}
-    <span class="text-muted">No tags</span>
     {% endfor %}
+    {% if not vehicle.registration_plate %}
+    <span class="badge bg-warning text-dark me-1 align-middle" title="Registration plate is missing">Missing plates</span>
+    {% endif %}
+    {% if not tags and vehicle.registration_plate %}
+    <span class="text-muted">No tags</span>
+    {% endif %}
     <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
       <input name="tag" class="form-control form-control-sm" placeholder="Add tag…" style="width:140px;">
       <button class="btn btn-sm btn-outline-secondary">+</button>

@@ -255,6 +255,9 @@
                   {{ v.title or (v.make ~ ' ' ~ v.model) }}
                 </a>
                 <code class="small text-muted">{{ v.vin }}</code>
+                {% if not v.registration_plate %}
+                <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;" title="Registration plate is missing">Missing plates</span>
+                {% endif %}
               </div>
             </div>
           </td>

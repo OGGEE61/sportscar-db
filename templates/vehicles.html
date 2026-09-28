@@ -103,6 +103,9 @@
             <span class="badge bg-info text-dark">{{ tag }}</span>
             {% endfor %}
           {% endif %}
+          {% if not v.registration_plate %}
+            <span class="badge bg-warning text-dark" title="Registration plate is missing">Missing plates</span>
+          {% endif %}
         </td>
         <td><span class="badge badge-{{ v.vin_status }}">{{ v.vin_status }}</span></td>
       </tr>
