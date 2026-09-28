@@ -218,7 +218,8 @@ pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
       region: 'PL',
       resolution: 'provinces',
       colorAxis: {colors: ['#e0f3db', '#0868ac']},
-      legend: 'none'
+      legend: 'none',
+      tooltip: { isHtml: true }
     };
 
     var chart = new google.visualization.GeoChart(document.getElementById('chartMap'));

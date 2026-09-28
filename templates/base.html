@@ -15,6 +15,9 @@
     .badge-placeholder { background: #ffc107; color: #000; }
     .badge-unverified  { background: #6c757d; }
     .badge-verified    { background: #198754; }
+    
+    /* Fix Google Charts tooltip flickering bug */
+    .google-visualization-tooltip { pointer-events: none !important; }
   </style>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   {% block head %}{% endblock %}
