@@ -574,11 +574,19 @@ def dashboard():
         FROM listing_observations GROUP BY source_method
     """).fetchall()
 
-    regions = conn.execute("SELECT location_region, COUNT(*) as cnt FROM listing_observations WHERE location_region IS NOT NULL AND length(location_region) = 5 GROUP BY location_region").fetchall()
+    cities = conn.execute("SELECT location_region, location_city, COUNT(*) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
     region_counts = {}
-    for r in regions:
+    for r in cities:
         reg = r["location_region"]
-        region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
+        if not reg or len(reg) != 5:
+            city = r["location_city"]
+            if city and city in CITY_TO_REGION:
+                reg = CITY_TO_REGION[city]
+            else:
+                reg = None
+                
+        if reg:
+            region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
     
     map_data = [["State", "Observations"]] + [[k, v] for k, v in region_counts.items()]
 
