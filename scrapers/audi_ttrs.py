@@ -14,12 +14,11 @@ CONFIG = ScraperConfig(
     variant = "TT RS",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/audi/tt"
+        "https://www.otomoto.pl/osobowe/audi/tt-rs"
         "?search%5Bfilter_float_year%3Afrom%5D=2009"
-        "&search%5Bfilter_float_engine_power%3Afrom%5D=330"
         "&page={page}"
     ),
-    title_must_contain = "TT RS",
+    title_must_contain = None,
     pages = 5,
     defaults = {
         "power_hp":     400,
