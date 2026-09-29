@@ -14,6 +14,9 @@ on:
         options:
           - rotation
           - all
+          - m2
+          - m2_f87
+          - m2_g87
           - m3
           - m4
           - x3_m
@@ -25,6 +28,8 @@ on:
           - rs4_b85
           - rs4_b9
           - rs4
+          - ttrs
+          - cayman_gt4
           - gr_yaris
 
 jobs:

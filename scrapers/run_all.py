@@ -29,31 +29,41 @@ except ImportError:
 
 from base_scraper import run
 
-from audi_rs3_8v        import CONFIG    as RS3
-from audi_rs4_b85       import CONFIG    as RS4_B85
-from audi_rs4_b9        import CONFIG    as RS4_B9
-from bmw_m3_f80         import CONFIG    as M3
-from bmw_m4_f82         import CONFIG_M4 as M4
-from bmw_x3_m_f97       import CONFIG    as X3_M
-from bmw_x3_m40i_g01    import CONFIG    as X3_M40I
-from mercedes_c63_w204  import CONFIG    as C63
-from mercedes_e55_w211  import CONFIG    as E55
-from mercedes_cls55_c219 import CONFIG   as CLS55
-from toyota_gr_yaris    import CONFIG    as GR_YARIS
+from audi_rs3_8v          import CONFIG    as RS3
+from audi_rs4_b85         import CONFIG    as RS4_B85
+from audi_rs4_b9          import CONFIG    as RS4_B9
+from audi_ttrs            import CONFIG    as TTRS
+from bmw_m2_f87           import CONFIG    as M2_F87
+from bmw_m2_g87           import CONFIG    as M2_G87
+from bmw_m3_f80           import CONFIG    as M3
+from bmw_m4_f82           import CONFIG_M4 as M4
+from bmw_x3_m_f97         import CONFIG    as X3_M
+from bmw_x3_m40i_g01      import CONFIG    as X3_M40I
+from mercedes_c63_w204    import CONFIG    as C63
+from mercedes_e55_w211    import CONFIG    as E55
+from mercedes_cls55_c219  import CONFIG    as CLS55
+from porsche_cayman_gt4_981 import CONFIG  as CAYMAN_GT4
+from toyota_gr_yaris      import CONFIG    as GR_YARIS
 
 # Active target fleet
-ALL_FLEET = [C63, E55, CLS55, RS4_B85, RS4_B9, M3, M4, RS3, X3_M, X3_M40I, GR_YARIS]
+ALL_FLEET = [
+    C63, E55, CLS55,
+    RS4_B85, RS4_B9, RS3, TTRS,
+    M2_F87, M2_G87, M3, M4, X3_M, X3_M40I,
+    CAYMAN_GT4,
+    GR_YARIS,
+]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
 # Guarantees each model runs 3 times per week, distributed evenly across days
 WEEKDAY_SCHEDULE = {
-    0: [E55, CLS55, RS4_B9, M3, X3_M40I],          # Monday
-    1: [C63, M4, X3_M, RS3, GR_YARIS],              # Tuesday
-    2: [RS4_B85, E55, CLS55, M3, X3_M40I],          # Wednesday
-    3: [C63, RS4_B9, X3_M, RS3, GR_YARIS],          # Thursday
-    4: [M4, RS4_B85, M3, X3_M40I, GR_YARIS],        # Friday
-    5: [C63, E55, CLS55, RS4_B9, RS3],              # Saturday
-    6: [RS4_B85, M4, X3_M, GR_YARIS],              # Sunday
+    0: [E55, CLS55, RS4_B9, M2_F87, X3_M40I, CAYMAN_GT4],   # Monday
+    1: [C63, M4, X3_M, RS3, GR_YARIS, TTRS],                 # Tuesday
+    2: [RS4_B85, E55, M3, M2_G87, CAYMAN_GT4],               # Wednesday
+    3: [C63, RS4_B9, X3_M, RS3, TTRS],                       # Thursday
+    4: [M4, RS4_B85, M2_F87, X3_M40I, GR_YARIS],             # Friday
+    5: [C63, E55, CLS55, RS4_B9, M2_G87, CAYMAN_GT4],        # Saturday
+    6: [RS4_B85, M4, X3_M, GR_YARIS, TTRS],                  # Sunday
 }
 
 SCRAPER_MAP = {
@@ -61,12 +71,17 @@ SCRAPER_MAP = {
     "e55": [E55],
     "cls55": [CLS55],
     "gr_yaris": [GR_YARIS],
+    "ttrs": [TTRS],
+    "m2_f87": [M2_F87],
+    "m2_g87": [M2_G87],
+    "m2": [M2_F87, M2_G87],
+    "m3": [M3],
+    "m4": [M4],
+    "rs3": [RS3],
     "rs4_b85": [RS4_B85],
     "rs4_b9": [RS4_B9],
     "rs4": [RS4_B85, RS4_B9],
-    "m4": [M4],
-    "m3": [M3],
-    "rs3": [RS3],
+    "cayman_gt4": [CAYMAN_GT4],
     "x3_m": [X3_M],
     "x3_m40i": [X3_M40I],
     "all": ALL_FLEET,
