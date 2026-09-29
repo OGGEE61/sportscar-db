@@ -55,15 +55,16 @@ ALL_FLEET = [
 ]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
-# Guarantees each model runs 3 times per week, distributed evenly across days
+# 15 models × 3 runs/week = 45 slots across 7 days (Mon/Wed/Thu/Sat: 6, Tue/Fri/Sun: 7)
+# Every model appears EXACTLY 3 times per week.
 WEEKDAY_SCHEDULE = {
-    0: [E55, CLS55, RS4_B9, M2_F87, X3_M40I, CAYMAN_GT4],   # Monday
-    1: [C63, M4, X3_M, RS3, GR_YARIS, TTRS],                 # Tuesday
-    2: [RS4_B85, E55, M3, M2_G87, CAYMAN_GT4],               # Wednesday
-    3: [C63, RS4_B9, X3_M, RS3, TTRS],                       # Thursday
-    4: [M4, RS4_B85, M2_F87, X3_M40I, GR_YARIS],             # Friday
-    5: [C63, E55, CLS55, RS4_B9, M2_G87, CAYMAN_GT4],        # Saturday
-    6: [RS4_B85, M4, X3_M, GR_YARIS, TTRS],                  # Sunday
+    0: [C63,   E55,   RS4_B9,  M2_F87, X3_M,    CAYMAN_GT4],          # Mon — 6
+    1: [CLS55, RS4_B85, RS3,   M2_G87, M4,    X3_M40I, GR_YARIS],     # Tue — 7
+    2: [C63,   RS4_B9,  TTRS,  M3,     X3_M,    CAYMAN_GT4],          # Wed — 6
+    3: [E55,   RS4_B85, RS3,   M2_F87, M4,    X3_M40I],               # Thu — 6
+    4: [CLS55, RS4_B9,  TTRS,  M2_G87, M3,    GR_YARIS,  CAYMAN_GT4], # Fri — 7
+    5: [C63,   RS4_B85, RS3,   M2_F87, M4,    X3_M],                  # Sat — 6
+    6: [E55,   CLS55,   TTRS,  M2_G87, M3,    X3_M40I,   GR_YARIS],   # Sun — 7
 }
 
 SCRAPER_MAP = {
