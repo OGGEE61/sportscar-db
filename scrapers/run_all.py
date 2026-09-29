@@ -6,10 +6,12 @@ Usage:
     python scrapers/run_all.py all          # runs all fleet scrapers
     python scrapers/run_all.py c63          # runs only C63 W204
     python scrapers/run_all.py e55          # runs only E55 W211
+    python scrapers/run_all.py cls55        # runs only CLS 55 AMG
     python scrapers/run_all.py rs4_b85      # runs only RS4 B8.5 Avant
     python scrapers/run_all.py rs4_b9       # runs only RS4 B9 Avant
     python scrapers/run_all.py rs4          # runs both RS4 scrapers (B8.5 and B9)
     python scrapers/run_all.py m4           # runs BMW M4 F82
+    python scrapers/run_all.py gr_yaris     # runs Toyota GR Yaris
 """
 import sys
 import os
@@ -37,26 +39,28 @@ from bmw_x3_m40i_g01    import CONFIG    as X3_M40I
 from mercedes_c63_w204  import CONFIG    as C63
 from mercedes_e55_w211  import CONFIG    as E55
 from mercedes_cls55_c219 import CONFIG   as CLS55
+from toyota_gr_yaris    import CONFIG    as GR_YARIS
 
 # Active target fleet
-ALL_FLEET = [C63, E55, CLS55, RS4_B85, RS4_B9, M3, M4, RS3, X3_M, X3_M40I]
+ALL_FLEET = [C63, E55, CLS55, RS4_B85, RS4_B9, M3, M4, RS3, X3_M, X3_M40I, GR_YARIS]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
 # Guarantees each model runs 3 times per week, distributed evenly across days
 WEEKDAY_SCHEDULE = {
-    0: [E55, CLS55, RS4_B9, M3, X3_M40I],       # Monday
-    1: [C63, M4, X3_M, RS3],                  # Tuesday
-    2: [RS4_B85, E55, CLS55, M3, X3_M40I],      # Wednesday
-    3: [C63, RS4_B9, X3_M, RS3],              # Thursday
-    4: [M4, RS4_B85, M3, X3_M40I],       # Friday
-    5: [C63, E55, CLS55, RS4_B9, RS3],               # Saturday
-    6: [RS4_B85, M4, X3_M],              # Sunday
+    0: [E55, CLS55, RS4_B9, M3, X3_M40I],          # Monday
+    1: [C63, M4, X3_M, RS3, GR_YARIS],              # Tuesday
+    2: [RS4_B85, E55, CLS55, M3, X3_M40I],          # Wednesday
+    3: [C63, RS4_B9, X3_M, RS3, GR_YARIS],          # Thursday
+    4: [M4, RS4_B85, M3, X3_M40I, GR_YARIS],        # Friday
+    5: [C63, E55, CLS55, RS4_B9, RS3],              # Saturday
+    6: [RS4_B85, M4, X3_M, GR_YARIS],              # Sunday
 }
 
 SCRAPER_MAP = {
     "c63": [C63],
     "e55": [E55],
     "cls55": [CLS55],
+    "gr_yaris": [GR_YARIS],
     "rs4_b85": [RS4_B85],
     "rs4_b9": [RS4_B9],
     "rs4": [RS4_B85, RS4_B9],

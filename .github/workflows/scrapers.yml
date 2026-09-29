@@ -25,6 +25,7 @@ on:
           - rs4_b85
           - rs4_b9
           - rs4
+          - gr_yaris
 
 jobs:
   scrape:
