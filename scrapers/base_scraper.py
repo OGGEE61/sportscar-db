@@ -74,14 +74,21 @@ def is_plausible_vin(vin: str) -> bool:
     if max(vin.count(c) for c in set(vin)) >= 7:
         return False
         
-    # ZASADA 1: Ostatnie 4, 5 lub 6 znaków w prawdziwym numerze seryjnym VIN to zawsze cyfry (nigdy X)
-    if not re.search(r"[0-9]{4}$", vin):
+    # ZASADA 1: Brak liter I, O, Q jest już zapewniony przez główny regex
+    
+    # ZASADA 2: Odrzucamy cenzurę (np. "XXXX") na końcu numeru
+    if "X" in vin[-4:]:
         return False
         
-    # ZASADA 2: WMI (pierwsze 3 znaki) musi pasować do marek z bazy (BMW, Audi, Merc, Porsche, Toyota, Alpina)
+    # ZASADA 3: Końcówka (VIS) musi kończyć się cyframi, ale ze względu na nowe normy 
+    # BMW (braki numerów seryjnych) wymagamy minimum 2 cyfr zamiast 4
+    if not re.search(r"[0-9]{2}$", vin):
+        return False
+        
+    # ZASADA 4: WMI (pierwsze 3 znaki) musi pasować do marek z bazy (BMW, Audi, Merc, Porsche, Toyota, Alpina)
     valid_wmi = (
         r"^(WAU|WUA|TRU|WA1|"     # Audi
-        r"WBA|WBS|WBY|5UX|5YM|3MW|" # BMW
+        r"WBA|WBS|WBY|5UX|5YM|3MW|3MF|" # BMW
         r"WAP|"                   # Alpina
         r"WDB|WDD|WDC|W1N|W1K|1MB|" # Mercedes
         r"WP0|WP1|"               # Porsche
