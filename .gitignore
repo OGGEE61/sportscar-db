@@ -13,3 +13,8 @@ files.zip
 export.sql
 scrapers/otomoto_cookies.json
 static/photos/
+
+# Temporary files
+advert_dump.json
+test.html
+scrapers/otomoto_cookies.txt
