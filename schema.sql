@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS listing_observations (
     observed_at         TEXT NOT NULL DEFAULT (datetime('now')),
     last_seen_at        TEXT,
     removed_at          TEXT,
+    registration_plate  TEXT,
     source_method       TEXT NOT NULL DEFAULT 'manual',
     notes               TEXT,
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))

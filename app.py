@@ -369,9 +369,9 @@ def _approve_listing(conn, listing, overrides=None):
         INSERT INTO listing_observations
           (vin, source, source_listing_id, source_url, title,
            price_pln, mileage_km, location_city, location_region,
-           seller_type, seller_name,
+           seller_type, seller_name, registration_plate,
            first_seen_at, observed_at, source_method, notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         vin, listing["source"],
         listing["source_listing_id"],
@@ -383,6 +383,7 @@ def _approve_listing(conn, listing, overrides=None):
         loc_region,
         overrides.get("seller_type")   or listing["seller_type"] or "private",
         overrides.get("seller_name")   or listing["seller_name"],
+        final_reg_plate,
         listing["scraped_at"], listing["scraped_at"],
         f"scraper-{listing['source']}",
         overrides.get("notes"),
@@ -1551,8 +1552,8 @@ def api_ingest_pending():
                         INSERT INTO listing_observations
                           (vin, source, source_listing_id, source_url, title,
                            price_pln, mileage_km, location_city,
-                           seller_type, first_seen_at, observed_at, source_method)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                           seller_type, registration_plate, first_seen_at, observed_at, source_method)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """, (
                         existing_vin, source, sid,
                         existing["source_url"], existing["raw_title"],
@@ -1560,6 +1561,7 @@ def api_ingest_pending():
                         p.get("mileage_km") or existing["mileage_km"],
                         p.get("location_city") or existing["location_city"],
                         existing["seller_type"] or "private",
+                        p.get("registration_plate") or existing["registration_plate"],
                         NOW(), NOW(),
                         f"scraper-{source}",
                     ))
