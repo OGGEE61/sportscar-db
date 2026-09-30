@@ -25,6 +25,23 @@ def is_plausible_vin(vin: str) -> bool:
         return False
     if max(vin.count(c) for c in set(vin)) >= 7:
         return False
+        
+    # ZASADA 1: Ostatnie 4, 5 lub 6 znaków w prawdziwym numerze seryjnym VIN to zawsze cyfry (nigdy X)
+    if not re.search(r"[0-9]{4}$", vin):
+        return False
+        
+    # ZASADA 2: WMI (pierwsze 3 znaki) musi pasować do marek z bazy (BMW, Audi, Merc, Porsche, Toyota, Alpina)
+    valid_wmi = (
+        r"^(WAU|WUA|TRU|WA1|"     # Audi
+        r"WBA|WBS|WBY|5UX|5YM|3MW|" # BMW
+        r"WAP|"                   # Alpina
+        r"WDB|WDD|WDC|W1N|W1K|1MB|" # Mercedes
+        r"WP0|WP1|"               # Porsche
+        r"JT)"                    # Toyota (JTD, JTN, JT1 itp)
+    )
+    if not re.match(valid_wmi, vin):
+        return False
+
     return True
 
 app.jinja_env.tests["plausible_vin"] = is_plausible_vin
