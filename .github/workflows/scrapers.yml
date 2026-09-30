@@ -31,6 +31,7 @@ on:
           - ttrs
           - cayman_gt4
           - gr_yaris
+          - alpina
 
 jobs:
   scrape:

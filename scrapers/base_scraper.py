@@ -138,7 +138,36 @@ def load_cookies() -> dict:
                         if "name" in c and "value" in c}
             return data
         except Exception:
+            # Fallback: maybe it's just a raw text string dumped into the .json file
+            try:
+                with open(COOKIES_FILE, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content and "{" not in content:
+                        cookies = {}
+                        for chunk in content.split(";"):
+                            if "=" in chunk:
+                                k, v = chunk.split("=", 1)
+                                cookies[k.strip()] = v.strip()
+                        return cookies
+            except Exception:
+                pass
+            
+    txt_file = COOKIES_FILE.replace(".json", ".txt")
+    if os.path.exists(txt_file):
+        try:
+            with open(txt_file, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    # Parse raw cookie string like "name1=val1; name2=val2"
+                    cookies = {}
+                    for chunk in content.split(";"):
+                        if "=" in chunk:
+                            k, v = chunk.split("=", 1)
+                            cookies[k.strip()] = v.strip()
+                    return cookies
+        except Exception:
             pass
+            
     return {}
 
 
