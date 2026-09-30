@@ -93,6 +93,7 @@ class ScraperConfig:
     # Keyword that must appear in the card title (case-insensitive).
     # Use when no model-specific URL filter exists (e.g. Mercedes C63).
     title_must_contain: Optional[str] = None
+    title_must_not_contain: list[str] = field(default_factory=list)
     min_year: Optional[int] = None
     max_year: Optional[int] = None
 
@@ -743,11 +744,15 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 price_pln     = parse_price(price_raw)
     
                 # Title keyword guard (normalizes spaces so "C 63" matches "C63" and "E 55" matches "E55")
+                haystack = title.lower().replace(" ", "")
                 if cfg.title_must_contain:
                     needle = cfg.title_must_contain.lower().replace(" ", "")
-                    haystack = title.lower().replace(" ", "")
                     if needle not in haystack:
                         print(f"  [skip] {_safe(title[:60])}")
+                        continue
+                if cfg.title_must_not_contain:
+                    if any(bad.lower().replace(" ", "") in haystack for bad in cfg.title_must_not_contain):
+                        print(f"  [skip-bad-word] {_safe(title[:60])}")
                         continue
     
                 print(f"  {_safe(title[:65])} | {_safe(price_raw)} | {_safe(location_city or '')}")

@@ -44,6 +44,7 @@ from mercedes_e55_w211    import CONFIG    as E55
 from mercedes_cls55_c219  import CONFIG    as CLS55
 from porsche_cayman_gt4_981 import CONFIG  as CAYMAN_GT4
 from toyota_gr_yaris      import CONFIG    as GR_YARIS
+from bmw_alpina           import CONFIG    as ALPINA
 
 # Active target fleet
 ALL_FLEET = [
@@ -52,22 +53,24 @@ ALL_FLEET = [
     M2_F87, M2_G87, M3, M4, X3_M, X3_M40I,
     CAYMAN_GT4,
     GR_YARIS,
+    ALPINA,
 ]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
-# 15 models × 3 runs/week = 45 slots across 7 days (Mon/Wed/Thu/Sat: 6, Tue/Fri/Sun: 7)
+# 16 models × 3 runs/week = 48 slots across 7 days (6 days: 7 models, 1 day: 6 models)
 # Every model appears EXACTLY 3 times per week.
 WEEKDAY_SCHEDULE = {
-    0: [C63,   E55,   RS4_B9,  M2_F87, X3_M,    CAYMAN_GT4],          # Mon — 6
-    1: [CLS55, RS4_B85, RS3,   M2_G87, M4,    X3_M40I, GR_YARIS],     # Tue — 7
-    2: [C63,   RS4_B9,  TTRS,  M3,     X3_M,    CAYMAN_GT4],          # Wed — 6
-    3: [E55,   RS4_B85, RS3,   M2_F87, M4,    X3_M40I],               # Thu — 6
-    4: [CLS55, RS4_B9,  TTRS,  M2_G87, M3,    GR_YARIS,  CAYMAN_GT4], # Fri — 7
-    5: [C63,   RS4_B85, RS3,   M2_F87, M4,    X3_M],                  # Sat — 6
-    6: [E55,   CLS55,   TTRS,  M2_G87, M3,    X3_M40I,   GR_YARIS],   # Sun — 7
+    0: [C63,   E55,   RS4_B9,  M2_F87, X3_M,    CAYMAN_GT4, ALPINA],      # Mon — 7
+    1: [CLS55, RS4_B85, RS3,   M2_G87, M4,    X3_M40I, GR_YARIS],         # Tue — 7
+    2: [C63,   RS4_B9,  TTRS,  M3,     X3_M,    CAYMAN_GT4, ALPINA],      # Wed — 7
+    3: [E55,   RS4_B85, RS3,   M2_F87, M4,    X3_M40I],                   # Thu — 6
+    4: [CLS55, RS4_B9,  TTRS,  M2_G87, M3,    GR_YARIS,  CAYMAN_GT4],     # Fri — 7
+    5: [C63,   RS4_B85, RS3,   M2_F87, M4,    X3_M,      ALPINA],         # Sat — 7
+    6: [E55,   CLS55,   TTRS,  M2_G87, M3,    X3_M40I,   GR_YARIS],       # Sun — 7
 }
 
 SCRAPER_MAP = {
+    "alpina": [ALPINA],
     "c63": [C63],
     "e55": [E55],
     "cls55": [CLS55],

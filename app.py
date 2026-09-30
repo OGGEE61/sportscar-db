@@ -14,6 +14,35 @@ app.secret_key = os.environ.get("SECRET_KEY", "fallback-dev-secret-key")
 app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
+def is_plausible_vin(vin: str) -> bool:
+    """Basic sanity check — see base_scraper.py for rationale."""
+    if not vin or len(vin) != 17:
+        return False
+    vin = vin.upper()
+    if not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", vin):
+        return False
+    if len(set(vin)) < 5:
+        return False
+    if max(vin.count(c) for c in set(vin)) >= 7:
+        return False
+    return True
+
+app.jinja_env.tests["plausible_vin"] = is_plausible_vin
+
+def safe_int(val, default=None):
+    try:
+        if val is None or str(val).strip() == "": return default
+        return int(float(str(val).replace(" ", "").replace(",", ".")))
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val, default=None):
+    try:
+        if val is None or str(val).strip() == "": return default
+        return float(str(val).replace(" ", "").replace(",", "."))
+    except (ValueError, TypeError):
+        return default
+
 PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "static", "photos")
 try:
     os.makedirs(PHOTOS_DIR, exist_ok=True)
@@ -53,20 +82,6 @@ def login():
 def logout():
     session.pop("logged_in", None)
     return redirect(url_for("login"))
-
-
-def is_plausible_vin(vin: str) -> bool:
-    """Basic sanity check — see base_scraper.py for rationale."""
-    if not vin or len(vin) != 17:
-        return False
-    vin = vin.upper()
-    if not re.fullmatch(r"[A-HJ-NPR-Z0-9]{17}", vin):
-        return False
-    if len(set(vin)) < 5:
-        return False
-    if max(vin.count(c) for c in set(vin)) >= 7:
-        return False
-    return True
 
 
 CITY_TO_REGION = {
@@ -241,6 +256,7 @@ def _approve_listing(conn, listing, overrides=None):
     Returns the VIN string used.
     """
     overrides = overrides or {}
+    listing = dict(listing)
 
     # Scrape ad details dynamically if missing
     enriched = {}
@@ -269,9 +285,9 @@ def _approve_listing(conn, listing, overrides=None):
         _get("make"), _get("model"), _get("variant"), raw_title
     )
     final_body_type    = _get("body_type") or inferred.get("body_type")
-    final_engine_cc    = _get("engine_cc", int) or inferred.get("engine_cc")
-    final_engine_cyl   = _get("engine_cyl", int) or inferred.get("engine_cyl")
-    final_power_hp     = _get("power_hp", int) or inferred.get("power_hp")
+    final_engine_cc    = _get("engine_cc", safe_int) or inferred.get("engine_cc")
+    final_engine_cyl   = _get("engine_cyl", safe_int) or inferred.get("engine_cyl")
+    final_power_hp     = _get("power_hp", safe_int) or inferred.get("power_hp")
     final_drivetrain   = _get("drivetrain") or inferred.get("drivetrain")
     final_transmission = _get("transmission") or inferred.get("transmission")
     
@@ -311,7 +327,7 @@ def _approve_listing(conn, listing, overrides=None):
         _get("make") or "Unknown",
         _get("model") or "Unknown",
         _get("variant"),
-        int(overrides["year"])      if overrides.get("year")      else (listing["year"] or 0),
+        safe_int(overrides.get("year"), listing.get("year") or 0),
         final_body_type,
         final_engine_cc,
         final_engine_cyl,
@@ -337,8 +353,8 @@ def _approve_listing(conn, listing, overrides=None):
         listing["source_listing_id"],
         listing["source_url"],
         listing["raw_title"],
-        float(overrides["price_pln"])  if overrides.get("price_pln")  else listing["price_pln"],
-        int(overrides["mileage_km"])   if overrides.get("mileage_km") else listing["mileage_km"],
+        safe_float(overrides.get("price_pln"), listing.get("price_pln")),
+        safe_int(overrides.get("mileage_km"), listing.get("mileage_km")),
         loc_city,
         loc_region,
         overrides.get("seller_type")   or listing["seller_type"] or "private",
@@ -701,6 +717,66 @@ def model_analytics():
             "engine": "3.0L Turbo B58 · 360 HP · AWD",
             "where": "v.make = 'BMW' AND (v.model = 'X3 M40i' OR (v.model = 'X3' AND (v.variant LIKE '%M40i%' OR v.variant LIKE '%G01%'))) AND (v.year >= 2017 AND v.year <= 2024)"
         },
+        {
+            "id": "ttrs",
+            "name": "Audi TT RS",
+            "make": "Audi",
+            "model": "TT",
+            "variant": "TT RS",
+            "years": "2009–2023",
+            "engine": "2.5L TFSI · 340-400 HP · Quattro",
+            "where": "v.make = 'Audi' AND (v.model = 'TT RS' OR (v.model = 'TT' AND (v.variant LIKE '%RS%' OR v.power_hp >= 340)))"
+        },
+        {
+            "id": "m2_f87",
+            "name": "BMW M2 (F87)",
+            "make": "BMW",
+            "model": "M2",
+            "variant": "F87",
+            "years": "2016–2021",
+            "engine": "3.0L N55/S55 · 370-410 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M2' OR v.variant LIKE '%F87%') AND (v.year >= 2015 AND v.year <= 2021)"
+        },
+        {
+            "id": "m2_g87",
+            "name": "BMW M2 (G87)",
+            "make": "BMW",
+            "model": "M2",
+            "variant": "G87",
+            "years": "2022–",
+            "engine": "3.0L Twin-Turbo S58 · 460 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M2' OR v.variant LIKE '%G87%') AND v.year >= 2022"
+        },
+        {
+            "id": "cls55_c219",
+            "name": "Mercedes CLS55 AMG",
+            "make": "Mercedes-Benz",
+            "model": "CLS",
+            "variant": "C219 CLS 55 AMG",
+            "years": "2004–2006",
+            "engine": "5.4L V8 Kompressor · 476 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%C219%' OR v.variant LIKE '%CLS 55%' OR v.variant LIKE '%CLS55%' OR (v.model = 'CLS' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
+        },
+        {
+            "id": "cayman_gt4_981",
+            "name": "Porsche Cayman GT4 (981)",
+            "make": "Porsche",
+            "model": "Cayman",
+            "variant": "GT4 981",
+            "years": "2015–2016",
+            "engine": "3.8L Flat-6 NA · 385 HP · RWD",
+            "where": "v.make = 'Porsche' AND (v.model = 'Cayman' OR v.model = '718 Cayman') AND (v.variant LIKE '%GT4%' OR v.variant LIKE '%981%') AND v.year <= 2016"
+        },
+        {
+            "id": "gr_yaris",
+            "name": "Toyota GR Yaris",
+            "make": "Toyota",
+            "model": "Yaris",
+            "variant": "GR",
+            "years": "2020–",
+            "engine": "1.6L 3-cyl Turbo · 261 HP · AWD",
+            "where": "v.make = 'Toyota' AND (v.model = 'GR Yaris' OR (v.model = 'Yaris' AND (v.variant LIKE '%GR%' OR v.power_hp >= 250)))"
+        },
     ]
 
     selected_id = request.args.get("model", "rs4_b85")
@@ -957,11 +1033,11 @@ def add_vehicle():
             """, (
                 vin, data["make"], data["model"],
                 data.get("variant") or None,
-                int(data["year"]),
+                safe_int(data.get("year")),
                 data.get("body_type") or None,
-                int(data["engine_cc"])  if data.get("engine_cc")  else None,
-                int(data["engine_cyl"]) if data.get("engine_cyl") else None,
-                int(data["power_hp"])   if data.get("power_hp")   else None,
+                safe_int(data.get("engine_cc")),
+                safe_int(data.get("engine_cyl")),
+                safe_int(data.get("power_hp")),
                 data.get("drivetrain")    or None,
                 data.get("transmission")  or None,
                 data.get("color_ext")     or None,
@@ -982,8 +1058,8 @@ def add_vehicle():
                     vin,
                     data.get("source", "manual"),
                     data.get("source_url") or None,
-                    float(data["price_pln"])  if data.get("price_pln")  else None,
-                    int(data["mileage_km"])   if data.get("mileage_km") else None,
+                    safe_float(data.get("price_pln")),
+                    safe_int(data.get("mileage_km")),
                     data.get("location_city") or None,
                     data.get("seller_type", "private"),
                     NOW(), NOW(),
@@ -1026,9 +1102,9 @@ def add_observation(vin):
         data.get("source","manual"),
         data.get("source_listing_id") or None,
         data.get("source_url") or None,
-        float(data["price_pln"])   if data.get("price_pln")   else None,
-        float(data["price_eur"])   if data.get("price_eur")   else None,
-        int(data["mileage_km"])    if data.get("mileage_km")  else None,
+        safe_float(data.get("price_pln")),
+        safe_float(data.get("price_eur")),
+        safe_int(data.get("mileage_km")),
         data.get("location_city")  or None,
         data.get("location_region")or None,
         data.get("seller_type","private"),
@@ -1062,10 +1138,10 @@ def add_condition(vin):
     """, (
         vin,
         data.get("report_date", datetime.today().strftime("%Y-%m-%d")),
-        int(data["mileage_km"])      if data.get("mileage_km")      else None,
+        safe_int(data.get("mileage_km")),
         1 if af=="yes" else (0 if af=="no" else None),
         data.get("service_history")  or None,
-        int(data["condition_score"]) if data.get("condition_score") else None,
+        safe_int(data.get("condition_score")),
         data.get("inspection_by")    or None,
         data.get("notes")            or None,
         "manual",
@@ -1244,9 +1320,9 @@ def api_ingest():
     """, (
         vin,
         p.get("make","Unknown"), p.get("model","Unknown"),
-        p.get("variant"), p.get("year", 0),
+        p.get("variant"), safe_int(p.get("year", 0)),
         p.get("body_type"),
-        p.get("engine_cc"), p.get("engine_cyl"), p.get("power_hp"),
+        safe_int(p.get("engine_cc")), safe_int(p.get("engine_cyl")), safe_int(p.get("power_hp")),
         p.get("drivetrain"), p.get("transmission"), p.get("color_ext"),
         "placeholder" if is_placeholder else "unverified",
         f"scraper-{source}" if source in ("otomoto","olx") else "api",
@@ -1261,8 +1337,8 @@ def api_ingest():
     """, (
         vin, source, source_id,
         p.get("source_url"), p.get("title"),
-        p.get("price_pln"), p.get("price_eur"),
-        p.get("mileage_km"),
+        safe_float(p.get("price_pln")), safe_float(p.get("price_eur")),
+        safe_int(p.get("mileage_km")),
         p.get("location_city"), p.get("location_region"),
         p.get("seller_type"), p.get("seller_name"),
         p.get("first_seen_at") or NOW(),
@@ -1383,11 +1459,11 @@ def api_ingest_pending():
             p.get("raw_title"), p.get("raw_description"),
             json.dumps(p.get("photos", [])),
             p.get("make"), p.get("model"), p.get("variant"),
-            p.get("year"), p.get("body_type"),
-            p.get("engine_cc"), p.get("power_hp"), p.get("fuel_type"),
+            safe_int(p.get("year")), p.get("body_type"),
+            safe_int(p.get("engine_cc")), safe_int(p.get("power_hp")), p.get("fuel_type"),
             p.get("drivetrain"), p.get("transmission"),
-            p.get("color_ext"), p.get("doors"),
-            p.get("price_pln"), p.get("price_eur"), p.get("mileage_km"),
+            p.get("color_ext"), safe_int(p.get("doors")),
+            safe_float(p.get("price_pln")), safe_float(p.get("price_eur")), safe_int(p.get("mileage_km")),
             p.get("location_city"), p.get("location_region"),
             p.get("seller_type"), p.get("seller_name"),
             vin or None, vc,
@@ -1456,7 +1532,7 @@ def api_ingest_pending():
                     """, (
                         existing_vin, source, sid,
                         existing["source_url"], existing["raw_title"],
-                        float(new_price) if new_price else float(old_price or 0),
+                        safe_float(new_price, safe_float(old_price, 0)),
                         p.get("mileage_km") or existing["mileage_km"],
                         p.get("location_city") or existing["location_city"],
                         existing["seller_type"] or "private",
@@ -1467,7 +1543,7 @@ def api_ingest_pending():
                     conn.close()
                     
                     # Optional: flag if price actually changed
-                    tag = "price_updated" if (new_price and old_price and abs(float(new_price) - float(old_price)) > 500) else "seen_again"
+                    tag = "price_updated" if (new_price and old_price and abs(safe_float(new_price, 0) - safe_float(old_price, 0)) > 500) else "seen_again"
                     return jsonify({"status": "ok", "id": existing["id"], "tag": tag})
             
             conn.close()
@@ -1567,6 +1643,8 @@ def review_approve(pid):
         _approve_listing(conn, listing, overrides=dict(request.form))
         conn.commit()
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         conn.close()
         return f"Error approving listing: {e}", 500
 
@@ -1620,13 +1698,28 @@ def review_bulk_approve():
                 continue
             try:
                 _approve_listing(conn, listing)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Bulk approve error for id {pid}: {e}")
         conn.commit()
         conn.close()
     
     if request.args.get("ajax") == "1":
         return {"status": "success"}
+    return redirect(url_for("review_queue"))
+
+
+@app.route("/review/bulk_reject_novin", methods=["POST"])
+def review_bulk_reject_novin():
+    conn = get_db()
+    pending = conn.execute("SELECT id, vin FROM pending_listings WHERE status='pending'").fetchall()
+    count = 0
+    for p in pending:
+        if not is_plausible_vin(p["vin"]):
+            conn.execute("UPDATE pending_listings SET status='rejected', review_notes='Missing/Invalid VIN' WHERE id=?", (p["id"],))
+            count += 1
+    conn.commit()
+    conn.close()
+    flash(f"Automatically rejected {count} listings with missing or invalid VINs.", "success")
     return redirect(url_for("review_queue"))
 
 

@@ -227,6 +227,8 @@ def init_db():
         transmission        TEXT,
         color_ext           TEXT,
         color_int           TEXT,
+        registration_plate  TEXT,
+        first_registration_date TEXT,
         vin_status          TEXT NOT NULL DEFAULT 'unverified',
             -- 'placeholder' | 'unverified' | 'verified'
         vin_verified_at     TEXT,
@@ -379,6 +381,13 @@ def init_db():
     if "photo" not in v_cols:
         db.execute("ALTER TABLE vehicles ADD COLUMN photo TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(5,'vehicle_photo')")
+
+    # Migration v6: registration_plate and first_registration_date
+    if "registration_plate" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN registration_plate TEXT")
+    if "first_registration_date" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN first_registration_date TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(6,'vehicle_registration')")
 
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")

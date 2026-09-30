@@ -47,6 +47,9 @@
     <button type="button" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
       Reject selected
     </button>
+    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL pending listings that are missing a valid VIN?')) { fetch('/review/bulk_reject_novin', {method: 'POST'}).then(r => window.location.reload()); }">
+      Reject All w/o VIN
+    </button>
     <button type="button" class="btn btn-outline-danger btn-sm" id="reject-all-btn">
       Reject all
     </button>
@@ -119,13 +122,19 @@
       </div>
 
       <div class="d-flex align-items-center gap-2">
-        {% if l.vin %}
+        {% set has_valid_vin = l.vin and (l.vin is plausible_vin) and not l.vin.startswith('UNVERIFIED') %}
+        {% if has_valid_vin %}
         <code class="small text-secondary">{{ l.vin }}</code>
-        {% endif %}
         {% if l.vin_confidence == 'found_in_schema' %}
         <span class="badge bg-success" style="font-size: 0.6em;">VIN</span>
         {% elif l.vin_confidence == 'found_in_description' %}
         <span class="badge bg-warning text-dark" style="font-size: 0.6em;">VIN?</span>
+        {% endif %}
+        {% else %}
+        {% if l.vin and not l.vin.startswith('UNVERIFIED') %}
+        <code class="small text-secondary text-decoration-line-through">{{ l.vin }}</code>
+        {% endif %}
+        <span class="badge bg-danger" style="font-size: 0.6em;">NO VIN</span>
         {% endif %}
 
         <span class="ms-auto small">
