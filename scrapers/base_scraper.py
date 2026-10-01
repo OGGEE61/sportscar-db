@@ -515,7 +515,16 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         registration_plate = None
         enc_reg = params.get("registration", "")
         if enc_reg and advert_id:
-            registration_plate = _decrypt_vin(enc_reg, advert_id)  # same decrypt fn
+            raw_plate = _decrypt_vin(enc_reg, advert_id)  # same decrypt fn
+            if raw_plate:
+                # Basic validation: remove whitespace and hyphens
+                cleaned_plate = re.sub(r"[\s\-]", "", raw_plate).upper()
+                # Reject known dummy values and ensure it looks like a real plate
+                # Typically 4-8 alphanumeric chars
+                if len(cleaned_plate) >= 4 and len(cleaned_plate) <= 10:
+                    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX"]
+                    if not any(bad in cleaned_plate for bad in blacklist) and not re.fullmatch(r"X+", cleaned_plate):
+                        registration_plate = raw_plate.strip().upper()
 
         # First registration date — encrypted the same way
         first_registration_date = None

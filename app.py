@@ -512,7 +512,7 @@ def dashboard():
             (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins,
             (SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder')                          AS placeholder_vins,
             (SELECT COUNT(*) FROM listing_observations)                                              AS total_obs,
-            (SELECT COUNT(*) FROM listing_observations WHERE removed_at IS NULL)                     AS active_obs,
+            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
              WHERE source_listing_id IS NOT NULL)                                                    AS unique_ads,
             (SELECT AVG(price_pln) FROM listing_observations
@@ -616,7 +616,7 @@ def dashboard():
         GROUP BY week ORDER BY week
     """).fetchall()
 
-    cities = conn.execute("SELECT location_region, location_city, COUNT(*) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
+    cities = conn.execute("SELECT location_region, location_city, COUNT(DISTINCT vin) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
     region_counts = {}
     for r in cities:
         reg = r["location_region"]
@@ -926,7 +926,7 @@ def vehicles_list():
     make   = request.args.get("make", "")
     status = request.args.get("status", "")
     region = request.args.get("region", "").strip()
-    sort   = request.args.get("sort", "updated_at")
+    sort   = request.args.get("sort", "last_seen")
 
     base = """
         SELECT v.*,
@@ -935,6 +935,7 @@ def vehicles_list():
                MIN(o.price_pln)                      AS min_price,
                MAX(o.price_pln)                      AS max_price,
                MAX(o.observed_at)                    AS last_observed,
+               SUM(CASE WHEN o.removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
                GROUP_CONCAT(DISTINCT t.tag)          AS tags
         FROM vehicles v
         LEFT JOIN listing_observations o ON v.vin = o.vin
@@ -962,6 +963,7 @@ def vehicles_list():
     base += " GROUP BY v.vin"
 
     sort_map = {
+        "last_seen":  "last_observed DESC, v.updated_at DESC",
         "updated_at": "v.updated_at DESC",
         "year_desc":  "v.year DESC",
         "year_asc":   "v.year ASC",
@@ -969,7 +971,7 @@ def vehicles_list():
         "obs":        "obs_count DESC",
         "price":      "min_price ASC NULLS LAST",
     }
-    base += " ORDER BY " + sort_map.get(sort, "v.updated_at DESC")
+    base += " ORDER BY " + sort_map.get(sort, "last_observed DESC, v.updated_at DESC")
 
     vehicles = conn.execute(base, params).fetchall()
     makes    = conn.execute("SELECT DISTINCT make FROM vehicles ORDER BY make").fetchall()

@@ -38,6 +38,7 @@
   </div>
   <div class="col-md-2">
     <select name="sort" class="form-select">
+      <option value="last_seen" {% if sort=='last_seen' %}selected{% endif %}>Last seen</option>
       <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Last updated</option>
       <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Year ↓</option>
       <option value="year_asc"   {% if sort=='year_asc'   %}selected{% endif %}>Year ↑</option>
