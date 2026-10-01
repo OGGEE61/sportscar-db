@@ -57,6 +57,17 @@
 </div>
 {% endif %}
 
+<!-- Bulk action bar (only in approved tab) -->
+{% if status_filter == 'approved' %}
+<div class="d-flex align-items-center gap-3 mb-3 p-2 bg-light border rounded">
+  <div class="d-flex gap-2 ms-auto">
+    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL approved listings that are missing a valid VIN? This will completely remove their vehicle profiles and observation data.')) { fetch('/review/bulk_reject_approved_novin', {method: 'POST'}).then(r => window.location.reload()); }">
+      Reject All w/o VIN
+    </button>
+  </div>
+</div>
+{% endif %}
+
 <!-- Bulk action bar (only in rejected tab) -->
 {% if status_filter == 'rejected' %}
 <div class="d-flex align-items-center gap-3 mb-3 p-2 bg-light border rounded">

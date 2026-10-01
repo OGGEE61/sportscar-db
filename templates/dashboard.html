@@ -62,20 +62,12 @@
       <div class="card-body" id="chartMap" style="height: 250px; cursor: pointer;"></div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-6">
     <div class="card h-100 shadow-sm border-0">
       <div class="card-header bg-white py-3">
         <span class="fw-bold">Weekly observations</span>
       </div>
       <div class="card-body"><canvas id="chartWeekly" height="200"></canvas></div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card h-100 shadow-sm border-0">
-      <div class="card-header bg-white py-3">
-        <span class="fw-bold">Source methods</span>
-      </div>
-      <div class="card-body"><canvas id="chartSources" height="200"></canvas></div>
     </div>
   </div>
 </div>
@@ -206,7 +198,6 @@ function pieChart(id, data, labelKey, valueKey) {
 barChart('chartMakes',  {{ makes_dist|safe }},  'make', 'cnt', 'make');
 barChart('chartPrices', {{ price_ranges|safe }}, 'rng',  'cnt', 'price');
 barChart('chartWeekly', {{ weekly|safe }},       'week', 'cnt');
-pieChart('chartSources',{{ sources|safe }},      'source_method', 'cnt');
 </script>
 <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 <script type="text/javascript">

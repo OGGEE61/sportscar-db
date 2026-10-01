@@ -326,6 +326,13 @@ def _approve_listing(conn, listing, overrides=None):
         best_region = _enrich_location_with_nominatim(loc_city)
         if best_region: loc_region = best_region
 
+    if vin.startswith("UNVERIFIED"):
+        initial_status = "placeholder"
+    elif final_reg_plate:
+        initial_status = "verified"
+    else:
+        initial_status = "unverified"
+
     conn.execute("""
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
@@ -361,7 +368,7 @@ def _approve_listing(conn, listing, overrides=None):
         _get("color_ext"),
         final_reg_plate,
         final_first_reg,
-        "placeholder" if vin.startswith("UNVERIFIED") else "unverified",
+        initial_status,
         f"scraper-{listing['source']}",
     ))
 
@@ -609,12 +616,6 @@ def dashboard():
         GROUP BY week ORDER BY week
     """).fetchall()
 
-    # Source breakdown
-    sources = conn.execute("""
-        SELECT source_method, COUNT(*) AS cnt
-        FROM listing_observations GROUP BY source_method
-    """).fetchall()
-
     cities = conn.execute("SELECT location_region, location_city, COUNT(*) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
     region_counts = {}
     for r in cities:
@@ -637,7 +638,6 @@ def dashboard():
         makes_dist=json.dumps([dict(r) for r in makes_dist]),
         price_ranges=json.dumps([dict(r) for r in price_ranges]),
         weekly=json.dumps([dict(r) for r in weekly]),
-        sources=json.dumps([dict(r) for r in sources]),
         map_data=json.dumps(map_data),
         active_filter=active_filter
     )
@@ -1592,21 +1592,30 @@ def api_ingest_pending():
         # Once a human has approved a car once, subsequent sightings are silent.
         if vin and is_plausible_vin(vin):
             known = conn.execute(
-                "SELECT vin FROM vehicles WHERE vin=?", (vin,)
+                "SELECT vin, photo FROM vehicles WHERE vin=?", (vin,)
             ).fetchone()
             if known:
                 conn.execute("""
                     INSERT INTO listing_observations
                       (vin, source, source_listing_id, source_url, title,
-                       price_pln, mileage_km, location_city,
-                       seller_type, first_seen_at, observed_at, source_method)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                       price_pln, mileage_km, location_city, location_region,
+                       seller_type, seller_name, registration_plate,
+                       first_seen_at, observed_at, source_method)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     vin, source, sid, p.get("source_url"), p.get("raw_title"),
-                    p.get("price_pln"), p.get("mileage_km"), p.get("location_city"),
-                    p.get("seller_type") or "private",
+                    p.get("price_pln"), p.get("mileage_km"), p.get("location_city"), p.get("location_region"),
+                    p.get("seller_type") or "private", p.get("seller_name"), p.get("registration_plate"),
                     NOW(), NOW(), f"scraper-{source}",
                 ))
+                
+                # Update photo if it was missing
+                if local_photo and (not known["photo"]):
+                    conn.execute(
+                        "UPDATE vehicles SET photo=? WHERE vin=?",
+                        (local_photo, vin)
+                    )
+
                 # Mark the pending row as auto-approved (it's already known)
                 conn.execute(
                     "UPDATE pending_listings SET status='approved', reviewed_at=datetime('now') WHERE id=?",
@@ -1632,10 +1641,11 @@ def api_ingest_pending():
 def review_queue():
     status_filter = request.args.get("status", "pending")
     conn = get_db()
-    listings = conn.execute("""
+    order_col = "reviewed_at" if status_filter == "approved" else "scraped_at"
+    listings = conn.execute(f"""
         SELECT * FROM pending_listings
         WHERE status = ?
-        ORDER BY scraped_at DESC
+        ORDER BY {order_col} DESC
     """, (status_filter,)).fetchall()
     counts = {r["status"]: r["cnt"] for r in conn.execute("""
         SELECT status, COUNT(*) AS cnt FROM pending_listings GROUP BY status
@@ -1747,6 +1757,25 @@ def review_bulk_reject_novin():
     conn.close()
     flash(f"Automatically rejected {count} listings with missing or invalid VINs.", "success")
     return redirect(url_for("review_queue"))
+
+
+@app.route("/review/bulk_reject_approved_novin", methods=["POST"])
+def review_bulk_reject_approved_novin():
+    conn = get_db()
+    approved = conn.execute("SELECT id, vin, source, source_listing_id FROM pending_listings WHERE status='approved'").fetchall()
+    count = 0
+    for p in approved:
+        if not is_plausible_vin(p["vin"]):
+            # Also clean up the vehicle profile that got created using the placeholder VIN
+            placeholder = make_placeholder_vin(p["source"] or "olx", p["source_listing_id"] or str(p["id"]))
+            conn.execute("DELETE FROM vehicles WHERE vin=?", (placeholder,))
+            
+            conn.execute("UPDATE pending_listings SET status='rejected', review_notes='Missing/Invalid VIN - Retroactively Rejected' WHERE id=?", (p["id"],))
+            count += 1
+    conn.commit()
+    conn.close()
+    flash(f"Retroactively rejected {count} approved listings with missing/invalid VINs and removed their vehicle profiles.", "success")
+    return redirect(url_for("review_queue", status="approved"))
 
 
 @app.route("/review/bulk_reject", methods=["POST"])
