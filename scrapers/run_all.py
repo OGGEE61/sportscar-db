@@ -20,6 +20,7 @@ import random
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 try:
     from dotenv import load_dotenv
@@ -86,18 +87,15 @@ ALL_FLEET = [
     S2000, TRX, RAPTOR, RANGER_RAPTOR, PATROL,
 ]
 
-# Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
-# 16 models × 3 runs/week = 48 slots across 7 days (6 days: 7 models, 1 day: 6 models)
-# Every model appears EXACTLY 3 times per week.
-WEEKDAY_SCHEDULE = {
-    0: [C63,   E55,   RS4_B9,  M2_F87, X3_M,    CAYMAN_GT4, ALPINA, M3_E46],
-    1: [CLS55, RS4_B85, RS3,   M2_G87, M4,    X3_M40I, GR_YARIS, M1_E82],
-    2: [C63,   RS4_B9,  TTRS,  M3,     X3_M,    CAYMAN_GT4, ALPINA, BMW_135I],
-    3: [E55,   RS4_B85, RS3,   M2_F87, M4,    X3_M40I, Z3_M],
-    4: [CLS55, RS4_B9,  TTRS,  M2_G87, M3,    GR_YARIS,  CAYMAN_GT4, M5_E39],
-    5: [C63,   RS4_B85, RS3,   M2_F87, M4,    X3_M,      ALPINA, M3_E46],
-    6: [E55,   CLS55,   TTRS,  M2_G87, M3,    X3_M40I,   GR_YARIS, BMW_135I],
-}
+# Dynamically distribute 3 runs per week for every scraper across the 7 days
+WEEKDAY_SCHEDULE = {i: [] for i in range(7)}
+_all_runs = ALL_FLEET * 3
+import random
+_rnd = random.Random(42) # Fixed seed so schedule is stable
+_rnd.shuffle(_all_runs)
+
+for i, scraper in enumerate(_all_runs):
+    WEEKDAY_SCHEDULE[i % 7].append(scraper)
 
 SCRAPER_MAP = {
     "alpina": [ALPINA],
