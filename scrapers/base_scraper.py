@@ -565,7 +565,6 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         origin_market = resolve_market(None, description_text, make=cfg.make)
 
         # Equipment extraction
-        import json
         equipment_raw = advert.get("equipment", [])
         equipment_json = json.dumps(equipment_raw) if equipment_raw else None
 
