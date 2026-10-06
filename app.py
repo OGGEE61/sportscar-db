@@ -1037,7 +1037,7 @@ def vehicle_detail(vin):
     orig = conn.execute("""
         SELECT photos, equipment, raw_description
         FROM pending_listings
-        WHERE vehicle_vin=?
+        WHERE vin=?
         ORDER BY scraped_at DESC LIMIT 1
     """, (vin,)).fetchone()
     
