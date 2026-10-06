@@ -18,18 +18,39 @@ on:
           - m2_f87
           - m2_g87
           - m3
+          - m3_e46
           - m4
+          - m5
+          - m5_e39
+          - 1m
+          - 135i
+          - z3_m
           - x3_m
           - x3_m40i
           - c63
           - e55
           - cls55
+          - a45
+          - gla45
+          - g55
+          - s55
+          - sl55
+          - cl55
           - rs3
+          - rs4
           - rs4_b85
           - rs4_b9
-          - rs4
+          - r8
+          - r8_v8
+          - r8_v10
           - ttrs
+          - cayman
           - cayman_gt4
+          - macan
+          - s2000
+          - trx
+          - raptor
+          - patrol
           - gr_yaris
           - alpina
 
