@@ -21,7 +21,6 @@ CONFIG = ScraperConfig(
     ),
     min_year = 2019,
     max_year = 2024,
-    pages = 5,
     defaults = {
         "power_hp":     510,
         "engine_cc":    2993,

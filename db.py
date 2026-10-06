@@ -227,6 +227,7 @@ def init_db():
         transmission        TEXT,
         color_ext           TEXT,
         color_int           TEXT,
+        equipment           TEXT,
         registration_plate  TEXT,
         first_registration_date TEXT,
         vin_status          TEXT NOT NULL DEFAULT 'unverified',
@@ -234,6 +235,7 @@ def init_db():
         vin_verified_at     TEXT,
         vin_verified_by     TEXT,
         notes               TEXT,
+        origin_market       TEXT,
         source_method       TEXT NOT NULL DEFAULT 'manual',
         created_at          TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
@@ -347,6 +349,8 @@ def init_db():
         drivetrain          TEXT,
         transmission        TEXT,
         color_ext           TEXT,
+        color_int           TEXT,
+        equipment           TEXT,
         doors               INTEGER,
         price_pln           REAL,
         price_eur           REAL,
@@ -356,6 +360,7 @@ def init_db():
         seller_type         TEXT,
         seller_name         TEXT,
         vin                 TEXT,
+        origin_market       TEXT,
         vin_confidence      TEXT DEFAULT 'none',
             -- 'found_in_schema' | 'found_in_description' | 'none'
         is_listing_active   INTEGER NOT NULL DEFAULT 1,
@@ -388,6 +393,22 @@ def init_db():
     if "first_registration_date" not in v_cols:
         db.execute("ALTER TABLE vehicles ADD COLUMN first_registration_date TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(6,'vehicle_registration')")
+
+    # Migration v7: origin_market
+    if "origin_market" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN origin_market TEXT")
+    if "origin_market" not in existing_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN origin_market TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(7,'origin_market')")
+
+    # Migration v8: color_int and equipment
+    if "equipment" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN equipment TEXT")
+    if "color_int" not in existing_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN color_int TEXT")
+    if "equipment" not in existing_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN equipment TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(8,'color_int_equipment')")
 
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")

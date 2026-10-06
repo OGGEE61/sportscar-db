@@ -46,6 +46,31 @@ from porsche_cayman_gt4_981 import CONFIG  as CAYMAN_GT4
 from toyota_gr_yaris      import CONFIG    as GR_YARIS
 from bmw_alpina           import CONFIG    as ALPINA
 
+from bmw_m3_e46           import CONFIG    as M3_E46
+from bmw_1m_e82           import CONFIG    as M1_E82
+from bmw_135i_e82         import CONFIG    as BMW_135I
+from bmw_z3_m_coupe       import CONFIG    as Z3_M
+from bmw_m5_e39           import CONFIG    as M5_E39
+
+from audi_r8_v8           import CONFIG    as R8_V8
+from audi_r8_v10          import CONFIG    as R8_V10
+from mercedes_a45_w176    import CONFIG    as A45
+from mercedes_gla45_x156  import CONFIG    as GLA45
+from mercedes_g55_w463    import CONFIG    as G55
+from mercedes_s55_w220    import CONFIG    as S55
+from mercedes_sl55_r230   import CONFIG    as SL55
+from mercedes_cl55_c215   import CONFIG    as CL55
+
+from porsche_cayman_987   import CONFIG    as CAYMAN_987
+from porsche_cayman_981   import CONFIG    as CAYMAN_981
+from porsche_cayman_718   import CONFIG    as CAYMAN_718
+from porsche_macan_gen1   import CONFIG    as MACAN_G1
+from honda_s2000          import CONFIG    as S2000
+from ram_trx              import CONFIG    as TRX
+from ford_f150_raptor     import CONFIG    as RAPTOR
+from ford_ranger_raptor   import CONFIG    as RANGER_RAPTOR
+from nissan_patrol_safari import CONFIG    as PATROL
+
 # Active target fleet
 ALL_FLEET = [
     C63, E55, CLS55,
@@ -54,19 +79,24 @@ ALL_FLEET = [
     CAYMAN_GT4,
     GR_YARIS,
     ALPINA,
+    M3_E46, M1_E82, BMW_135I, Z3_M, M5_E39,
+    R8_V8, R8_V10,
+    A45, GLA45, G55, S55, SL55, CL55,
+    CAYMAN_987, CAYMAN_981, CAYMAN_718, MACAN_G1,
+    S2000, TRX, RAPTOR, RANGER_RAPTOR, PATROL,
 ]
 
 # Rotation schedule by weekday (0 = Monday, ..., 6 = Sunday)
 # 16 models × 3 runs/week = 48 slots across 7 days (6 days: 7 models, 1 day: 6 models)
 # Every model appears EXACTLY 3 times per week.
 WEEKDAY_SCHEDULE = {
-    0: [C63,   E55,   RS4_B9,  M2_F87, X3_M,    CAYMAN_GT4, ALPINA],      # Mon — 7
-    1: [CLS55, RS4_B85, RS3,   M2_G87, M4,    X3_M40I, GR_YARIS],         # Tue — 7
-    2: [C63,   RS4_B9,  TTRS,  M3,     X3_M,    CAYMAN_GT4, ALPINA],      # Wed — 7
-    3: [E55,   RS4_B85, RS3,   M2_F87, M4,    X3_M40I],                   # Thu — 6
-    4: [CLS55, RS4_B9,  TTRS,  M2_G87, M3,    GR_YARIS,  CAYMAN_GT4],     # Fri — 7
-    5: [C63,   RS4_B85, RS3,   M2_F87, M4,    X3_M,      ALPINA],         # Sat — 7
-    6: [E55,   CLS55,   TTRS,  M2_G87, M3,    X3_M40I,   GR_YARIS],       # Sun — 7
+    0: [C63,   E55,   RS4_B9,  M2_F87, X3_M,    CAYMAN_GT4, ALPINA, M3_E46],
+    1: [CLS55, RS4_B85, RS3,   M2_G87, M4,    X3_M40I, GR_YARIS, M1_E82],
+    2: [C63,   RS4_B9,  TTRS,  M3,     X3_M,    CAYMAN_GT4, ALPINA, BMW_135I],
+    3: [E55,   RS4_B85, RS3,   M2_F87, M4,    X3_M40I, Z3_M],
+    4: [CLS55, RS4_B9,  TTRS,  M2_G87, M3,    GR_YARIS,  CAYMAN_GT4, M5_E39],
+    5: [C63,   RS4_B85, RS3,   M2_F87, M4,    X3_M,      ALPINA, M3_E46],
+    6: [E55,   CLS55,   TTRS,  M2_G87, M3,    X3_M40I,   GR_YARIS, BMW_135I],
 }
 
 SCRAPER_MAP = {
@@ -79,13 +109,34 @@ SCRAPER_MAP = {
     "m2_f87": [M2_F87],
     "m2_g87": [M2_G87],
     "m2": [M2_F87, M2_G87],
-    "m3": [M3],
+    "m3": [M3, M3_E46],
+    "m3_e46": [M3_E46],
     "m4": [M4],
+    "m5": [M5_E39],
+    "m5_e39": [M5_E39],
+    "1m": [M1_E82],
+    "135i": [BMW_135I],
+    "z3_m": [Z3_M],
     "rs3": [RS3],
     "rs4_b85": [RS4_B85],
     "rs4_b9": [RS4_B9],
     "rs4": [RS4_B85, RS4_B9],
+    "r8_v8": [R8_V8],
+    "r8_v10": [R8_V10],
+    "r8": [R8_V8, R8_V10],
+    "a45": [A45],
+    "gla45": [GLA45],
+    "g55": [G55],
+    "s55": [S55],
+    "sl55": [SL55],
+    "cl55": [CL55],
     "cayman_gt4": [CAYMAN_GT4],
+    "cayman": [CAYMAN_987, CAYMAN_981, CAYMAN_718, CAYMAN_GT4],
+    "macan": [MACAN_G1],
+    "s2000": [S2000],
+    "trx": [TRX],
+    "raptor": [RAPTOR, RANGER_RAPTOR],
+    "patrol": [PATROL],
     "x3_m": [X3_M],
     "x3_m40i": [X3_M40I],
     "all": ALL_FLEET,

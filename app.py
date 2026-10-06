@@ -40,7 +40,7 @@ def is_plausible_vin(vin: str) -> bool:
     # ZASADA 4: WMI (pierwsze 3 znaki) musi pasować do marek z bazy (BMW, Audi, Merc, Porsche, Toyota, Alpina)
     valid_wmi = (
         r"^(WAU|WUA|TRU|WA1|"     # Audi
-        r"WBA|WBS|WBY|5UX|5YM|3MW|3MF|" # BMW
+        r"WBA|WBS|WBY|WB[0-9A-Z]|5UX|5YM|3MW|3MF|" # BMW
         r"WAP|"                   # Alpina
         r"WDB|WDD|WDC|W1N|W1K|1MB|" # Mercedes
         r"WP0|WP1|"               # Porsche
@@ -337,9 +337,9 @@ def _approve_listing(conn, listing, overrides=None):
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
            engine_cc, engine_cyl, power_hp, drivetrain, transmission,
-           color_ext, registration_plate, first_registration_date,
+           color_ext, color_int, equipment, registration_plate, first_registration_date, origin_market,
            vin_status, source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
           make        = COALESCE(excluded.make, make),
           model       = COALESCE(excluded.model, model),
@@ -352,6 +352,9 @@ def _approve_listing(conn, listing, overrides=None):
           transmission= COALESCE(excluded.transmission, transmission),
           registration_plate = COALESCE(excluded.registration_plate, registration_plate),
           first_registration_date = COALESCE(excluded.first_registration_date, first_registration_date),
+          origin_market = COALESCE(excluded.origin_market, origin_market),
+          color_int   = COALESCE(excluded.color_int, color_int),
+          equipment   = COALESCE(excluded.equipment, equipment),
           updated_at  = datetime('now')
     """, (
         vin,
@@ -366,8 +369,11 @@ def _approve_listing(conn, listing, overrides=None):
         final_drivetrain,
         final_transmission,
         _get("color_ext"),
+        _get("color_int"),
+        _get("equipment"),
         final_reg_plate,
         final_first_reg,
+        _get("origin_market"),
         initial_status,
         f"scraper-{listing['source']}",
     ))
@@ -1473,14 +1479,14 @@ def api_ingest_pending():
                raw_title, raw_description, photos,
                make, model, variant, year, body_type,
                engine_cc, power_hp, fuel_type,
-               drivetrain, transmission, color_ext, doors,
+               drivetrain, transmission, color_ext, color_int, equipment, doors,
                price_pln, price_eur, mileage_km,
                location_city, location_region,
                seller_type, seller_name,
                vin, vin_confidence,
-               registration_plate, first_registration_date,
+               registration_plate, first_registration_date, origin_market,
                is_listing_active)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             source, sid, p.get("source_url"),
             p.get("raw_title"), p.get("raw_description"),
@@ -1489,12 +1495,12 @@ def api_ingest_pending():
             safe_int(p.get("year")), p.get("body_type"),
             safe_int(p.get("engine_cc")), safe_int(p.get("power_hp")), p.get("fuel_type"),
             p.get("drivetrain"), p.get("transmission"),
-            p.get("color_ext"), safe_int(p.get("doors")),
+            p.get("color_ext"), p.get("color_int"), p.get("equipment"), safe_int(p.get("doors")),
             safe_float(p.get("price_pln")), safe_float(p.get("price_eur")), safe_int(p.get("mileage_km")),
             p.get("location_city"), p.get("location_region"),
             p.get("seller_type"), p.get("seller_name"),
             vin or None, vc,
-            p.get("registration_plate"), p.get("first_registration_date"),
+            p.get("registration_plate"), p.get("first_registration_date"), p.get("origin_market"),
             1,
         ))
         conn.commit()
@@ -1666,7 +1672,8 @@ def review_detail(pid):
     if not listing:
         return "Not found", 404
     photos = json.loads(listing["photos"]) if listing["photos"] else []
-    return render_template("review_detail.html", listing=listing, photos=photos)
+    equipment = json.loads(listing["equipment"]) if listing.get("equipment") else []
+    return render_template("review_detail.html", listing=listing, photos=photos, equipment=equipment)
 
 
 @app.route("/review/<int:pid>/approve", methods=["POST"])

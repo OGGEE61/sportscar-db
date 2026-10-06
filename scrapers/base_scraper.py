@@ -32,6 +32,8 @@ from typing import Optional
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
+from scrapers.market_resolver import resolve_market
+
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM as _AESGCM
     _CRYPTO_OK = True
@@ -88,7 +90,7 @@ def is_plausible_vin(vin: str) -> bool:
     # ZASADA 4: WMI (pierwsze 3 znaki) musi pasować do marek z bazy (BMW, Audi, Merc, Porsche, Toyota, Alpina)
     valid_wmi = (
         r"^(WAU|WUA|TRU|WA1|"     # Audi
-        r"WBA|WBS|WBY|5UX|5YM|3MW|3MF|" # BMW
+        r"WBA|WBS|WBY|WB[0-9A-Z]|5UX|5YM|3MW|3MF|" # BMW
         r"WAP|"                   # Alpina
         r"WDB|WDD|WDC|W1N|W1K|1MB|" # Mercedes
         r"WP0|WP1|"               # Porsche
@@ -116,12 +118,12 @@ class ScraperConfig:
 
     # Keyword that must appear in the card title (case-insensitive).
     # Use when no model-specific URL filter exists (e.g. Mercedes C63).
-    title_must_contain: Optional[str] = None
+    title_must_contain: str | list[str] | None = None
     title_must_not_contain: list[str] = field(default_factory=list)
     min_year: Optional[int] = None
     max_year: Optional[int] = None
 
-    pages:        int   = 5
+
     detail_delay: float = 1.0
 
     # Known model specs — auto-filled when the scraped page doesn't return a value.
@@ -559,6 +561,14 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         except Exception:
             pass
 
+        # Market extraction
+        origin_market = resolve_market(None, description_text, make=cfg.make)
+
+        # Equipment extraction
+        import json
+        equipment_raw = advert.get("equipment", [])
+        equipment_json = json.dumps(equipment_raw) if equipment_raw else None
+
         return {
             "year":                    year,
             "mileage_km":              mileage_km,
@@ -570,6 +580,8 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "fuel_type":               fuel_type,
             "transmission":            transmission,
             "color_ext":               color_ext,
+            "color_int":               None,
+            "equipment":               equipment_json,
             "vin":                     vin_found,
             "vin_confidence":          vin_confidence,
             "registration_plate":      registration_plate,
@@ -578,6 +590,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "raw_description":         description_text,
             "price_from_detail":       price_from_detail,
             "location_from_detail":    location_from_detail,
+            "origin_market":           origin_market,
         }
 
     except Exception as e:
@@ -762,7 +775,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
     for url_tmpl in list_urls:
-        for page in range(1, cfg.pages + 1):
+        for page in range(1, 201): # Arbitrary large number, breaks when no cards are found
             url = url_tmpl.format(page=page)
             print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
     
@@ -808,8 +821,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 # Title keyword guard (normalizes spaces so "C 63" matches "C63" and "E 55" matches "E55")
                 haystack = title.lower().replace(" ", "")
                 if cfg.title_must_contain:
-                    needle = cfg.title_must_contain.lower().replace(" ", "")
-                    if needle not in haystack:
+                    needles = cfg.title_must_contain if isinstance(cfg.title_must_contain, list) else [cfg.title_must_contain]
+                    if not any(n.lower().replace(" ", "") in haystack for n in needles):
                         print(f"  [skip] {_safe(title[:60])}")
                         continue
                 if cfg.title_must_not_contain:
@@ -855,6 +868,17 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 final_price   = detail.get("price_from_detail") or price_pln
                 final_loc     = detail.get("location_from_detail") or location_city
     
+                # Market extraction from VIN if not already set by description
+                raw_vin = detail.get("vin")
+                desc = detail.get("raw_description", "")
+                final_origin_market = detail.get("origin_market")
+                
+                # Let resolver do a combined check if VIN is present
+                if raw_vin:
+                    resolved = resolve_market(raw_vin, desc, make=cfg.make)
+                    if resolved:
+                        final_origin_market = resolved
+
                 payload = {
                     "source":            cfg.source,
                     "source_listing_id": listing_id,
@@ -881,6 +905,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "vin_confidence":    detail.get("vin_confidence", "none"),
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
+                    "origin_market":           final_origin_market,
                 }
     
                 # Fill gaps with known model defaults

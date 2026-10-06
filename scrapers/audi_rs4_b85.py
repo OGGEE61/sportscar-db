@@ -14,7 +14,6 @@ CONFIG = ScraperConfig(
     list_url = "https://www.otomoto.pl/osobowe/audi/rs4-avant?search%5Bfilter_float_year%3Afrom%5D=2013&search%5Bfilter_float_year%3Ato%5D=2015&page={page}",
     min_year=2013,
     max_year=2015,
-    pages = 5,
     defaults = {
         "power_hp":     450,
         "engine_cc":    4163,

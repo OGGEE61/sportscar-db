@@ -118,6 +118,9 @@
         <a href="/review/{{ l.id }}" class="text-decoration-none text-dark text-truncate fw-semibold"
            style="max-width: 70%;" title="{{ l.raw_title }}">
           {{ l.raw_title or (l.make ~ ' ' ~ l.model) }}
+          {% if l.origin_market %}
+          <span class="badge bg-info text-dark ms-1" style="font-size: 0.7em;">{{ l.origin_market }}</span>
+          {% endif %}
         </a>
         <span class="fs-5 fw-bold text-success text-nowrap ms-2">
           {{ "{:,.0f} PLN".format(l.price_pln) if l.price_pln else '— PLN' }}
@@ -133,7 +136,7 @@
       </div>
 
       <div class="d-flex align-items-center gap-2">
-        {% set has_valid_vin = l.vin and (l.vin is plausible_vin) and not l.vin.startswith('UNVERIFIED') %}
+        {% set has_valid_vin = l.vin and (l.vin is plausible_vin or l.status == 'approved') and not l.vin.startswith('UNVERIFIED') %}
         {% if has_valid_vin %}
         <code class="small text-secondary">{{ l.vin }}</code>
         {% if l.vin_confidence == 'found_in_schema' %}

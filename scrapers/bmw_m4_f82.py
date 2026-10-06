@@ -20,7 +20,6 @@ CONFIG_M4 = ScraperConfig(
     ),
     min_year = 2014,
     max_year = 2020,
-    pages = 5,
     defaults = {
         "power_hp":     431,
         "engine_cc":    2979,

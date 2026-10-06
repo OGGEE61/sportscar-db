@@ -16,7 +16,6 @@ CONFIG = ScraperConfig(
         "?page={page}"
     ),
     title_must_not_contain = ["B7", "XB7", "XD7"],
-    pages = 3,
     defaults = {
         "make": "Alpina",
     },

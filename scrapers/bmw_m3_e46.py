@@ -1,7 +1,4 @@
-"""BMW M2 G87 (2022–) — run directly to scrape.
-
-G87 M2: 3.0L S58 twin-turbo inline-6, 460 HP, RWD.
-6-speed manual or 8-speed torque-converter auto.
+"""BMW M3 E46 (2000-2006)
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -9,20 +6,21 @@ from base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(
     make    = "BMW",
-    model   = "M2",
-    variant = "G87",
+    model   = "M3",
+    variant = "E46 M3",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/bmw/m2"
-        "?search%5Bfilter_float_year%3Afrom%5D=2022"
+        "https://www.otomoto.pl/osobowe/bmw/m3"
+        "?search%5Bfilter_float_year%3Afrom%5D=2000"
+        "&search%5Bfilter_float_year%3Ato%5D=2006"
         "&page={page}"
     ),
-    title_must_contain = "M2",
     defaults = {
-        "power_hp":     460,
-        "engine_cc":    2993,
+        "power_hp":     343,
+        "engine_cc":    3246,
         "engine_cyl":   6,
         "fuel_type":    "petrol",
+        "transmission": "manual",
         "drivetrain":   "RWD",
         "body_type":    "Coupe",
     },

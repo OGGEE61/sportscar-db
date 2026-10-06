@@ -1,26 +1,28 @@
-"""Audi RS3 8V facelift (2017–2020) — run directly to scrape."""
+"""RAM 1500 TRX (2021-).
+6.2L Supercharged V8, 702 HP, AWD.
+"""
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(
-    make    = "Audi",
-    model   = "RS3",
-    variant = "8V",
+    make    = "RAM",
+    model   = "1500",
+    variant = "TRX",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/audi/rs3"
-        "?search%5Bfilter_float_year%3Afrom%5D=2017"
-        "&search%5Bfilter_float_year%3Ato%5D=2020"
+        "https://www.otomoto.pl/osobowe/ram"
+        "?search%5Bfilter_float_power%3Afrom%5D=690"
         "&page={page}"
     ),
+    title_must_contain = None,
     defaults = {
-        "power_hp":     400,
+        "engine_cyl":   8,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "AWD",
-        "doors":        4,
-    },
+        "body_type":    "Pickup",
+    }
 )
 
 if __name__ == "__main__":

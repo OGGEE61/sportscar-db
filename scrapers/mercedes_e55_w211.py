@@ -21,7 +21,6 @@ CONFIG = ScraperConfig(
         "&page={page}"
     ),
     title_must_contain = "E 55",
-    pages = 5,
     defaults = {
         "power_hp":     476,
         "engine_cc":    5439,

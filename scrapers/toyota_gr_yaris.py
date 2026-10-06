@@ -18,7 +18,6 @@ CONFIG = ScraperConfig(
         "&page={page}"
     ),
     title_must_contain = "GR Yaris",
-    pages = 5,
     defaults = {
         "power_hp":     261,
         "engine_cc":    1618,

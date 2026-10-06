@@ -1,26 +1,26 @@
-"""Audi RS3 8V facelift (2017–2020) — run directly to scrape."""
+"""Ford F-150 Raptor & Raptor R.
+"""
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(
-    make    = "Audi",
-    model   = "RS3",
-    variant = "8V",
+    make    = "Ford",
+    model   = "F150",
+    variant = "Raptor",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/audi/rs3"
-        "?search%5Bfilter_float_year%3Afrom%5D=2017"
-        "&search%5Bfilter_float_year%3Ato%5D=2020"
+        "https://www.otomoto.pl/osobowe/ford/f150"
+        "?search%5Bfilter_float_power%3Afrom%5D=440"
         "&page={page}"
     ),
+    title_must_contain = "raptor",
     defaults = {
-        "power_hp":     400,
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "AWD",
-        "doors":        4,
-    },
+        "body_type":    "Pickup",
+    }
 )
 
 if __name__ == "__main__":
