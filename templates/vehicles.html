@@ -116,7 +116,7 @@
         <code class="small text-secondary font-monospace">{{ v.vin }}</code>
         
         {% if v.registration_plate %}
-        <span class="badge bg-light text-dark border border-secondary fw-bold" style="letter-spacing: 1px;">{{ v.registration_plate }}</span>
+        <span class="badge bg-light text-dark border border-secondary fw-bold text-uppercase" style="letter-spacing: 1px;">{{ v.registration_plate }}</span>
         {% else %}
         <span class="badge bg-warning text-dark border border-warning ms-1" title="Registration plate is missing">No plates</span>
         {% endif %}
