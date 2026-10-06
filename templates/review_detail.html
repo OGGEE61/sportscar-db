@@ -74,7 +74,7 @@
 
     <!-- Raw description -->
     <div class="section-label">Original description</div>
-    <div class="raw-desc mb-3">{{ listing.raw_description or '(no description)' }}</div>
+    <div class="raw-desc mb-3">{{ (listing.raw_description or '(no description)')|safe }}</div>
 
     <!-- VIN status -->
     <div class="section-label">VIN detection</div>
