@@ -132,11 +132,6 @@
           <span class="badge bg-light text-dark border ms-1">{{ tag }}</span>
           {% endfor %}
         {% endif %}
-        
-        {% if not v.registration_plate %}
-          <span class="badge bg-warning text-dark border border-warning ms-1" title="Registration plate is missing">No plates</span>
-        {% endif %}
-
         <span class="ms-auto small">
           <span class="text-muted">Seen: {{ v.last_observed[:10] if v.last_observed else '—' }}</span>
         </span>
