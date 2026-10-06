@@ -94,21 +94,33 @@
           {% endif %}
         </a>
         <span class="fs-5 fw-bold text-success text-nowrap ms-2">
-          {{ "{:,.0f} PLN".format(v.min_price) if v.min_price else '— PLN' }}
+          {% if v.min_price and v.max_price and v.min_price != v.max_price %}
+            {{ "{:,.0f}".format(v.min_price) }} - {{ "{:,.0f} PLN".format(v.max_price) }}
+          {% elif v.min_price %}
+            {{ "{:,.0f} PLN".format(v.min_price) }}
+          {% else %}
+            — PLN
+          {% endif %}
         </span>
       </div>
 
       <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
-        <span>{{ v.make }} {{ v.model }}</span>
-        {% if v.year %}<span class="border-start ps-2">{{ v.year }}</span>{% endif %}
+        <span>{{ v.year }}</span>
         {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} HP</span>{% endif %}
         {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cc</span>{% endif %}
-        <span class="border-start ps-2">{{ v.obs_count }} obs / {{ v.ad_count }} ads</span>
+        <span class="border-start ps-2">{{ v.obs_count }} observations</span>
+        <span class="border-start ps-2">{{ v.ad_count }} ads</span>
       </div>
 
-      <div class="d-flex align-items-center gap-2">
+      <div class="d-flex align-items-center gap-2 mt-2">
         <code class="small text-secondary font-monospace">{{ v.vin }}</code>
         
+        {% if v.registration_plate %}
+        <span class="badge bg-light text-dark border border-secondary fw-bold" style="letter-spacing: 1px;">{{ v.registration_plate }}</span>
+        {% else %}
+        <span class="badge bg-warning text-dark border border-warning ms-1" title="Registration plate is missing">No plates</span>
+        {% endif %}
+
         {% if v.vin_status == 'verified' %}
         <span class="badge bg-success" style="font-size: 0.6em;">VERIFIED</span>
         {% elif v.vin_status == 'placeholder' %}
