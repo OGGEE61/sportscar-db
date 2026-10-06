@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
+{% block head %}
+<style>
+  .photo-strip { display:flex; gap:8px; overflow-x:auto; padding-bottom:8px; }
+  .photo-strip img { height:160px; width:240px; object-fit:cover; border-radius:6px;
+                     cursor:pointer; flex-shrink:0; transition:opacity .15s; }
+  .photo-strip img:hover { opacity:.85; }
+  .raw-desc    { white-space:pre-wrap; font-size:.85rem; max-height:220px;
+                 overflow-y:auto; background:#f8f9fa; padding:12px;
+                 border-radius:6px; border:1px solid #dee2e6; }
+  .section-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
+                   color:#6c757d; font-weight:600; margin-bottom:.5rem; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3">
@@ -29,6 +42,38 @@
   </div>
   <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
 </div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    {% if photos %}
+    <div class="section-label">Photos ({{ photos|length }})</div>
+    <div class="photo-strip mb-3">
+      {% for url in photos %}
+      <img src="{{ url }}" alt="Photo {{ loop.index }}"
+           onclick="window.open('{{ url }}','_blank')"
+           onerror="this.style.display='none'">
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if raw_desc %}
+    <div class="section-label">Original description</div>
+    <div class="raw-desc mb-3">{{ raw_desc }}</div>
+    {% endif %}
+
+    {% if equipment %}
+    <div class="section-label mt-4">Equipment (Otomoto)</div>
+    <div class="mb-4">
+      <div class="d-flex flex-wrap gap-2">
+        {% for eq in equipment %}
+        <span class="badge bg-light text-dark" style="border:1px solid #dee2e6;">{{ eq }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-7">
 
 <!-- Vehicle details -->
 <div class="card mb-4">
@@ -346,6 +391,10 @@
     </form>
   </div>
 </div>
+
+  </div> <!-- end col-lg-7 -->
+</div> <!-- end row -->
+
 {% endblock %}
 
 {% block scripts %}

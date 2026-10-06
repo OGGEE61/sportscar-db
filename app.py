@@ -1033,6 +1033,23 @@ def vehicle_detail(vin):
         ORDER BY observed_at ASC
     """, (vin,)).fetchall()
 
+    # Fetch original data for rich view
+    orig = conn.execute("""
+        SELECT photos, equipment, raw_description
+        FROM pending_listings
+        WHERE vehicle_vin=?
+        ORDER BY scraped_at DESC LIMIT 1
+    """, (vin,)).fetchone()
+    
+    photos = []
+    equipment = []
+    raw_desc = ""
+    if orig:
+        import json
+        photos = json.loads(orig["photos"]) if orig["photos"] else []
+        equipment = json.loads(orig["equipment"]) if orig["equipment"] else []
+        raw_desc = orig["raw_description"]
+
     conn.close()
     return render_template("vehicle.html",
         vehicle=vehicle,
@@ -1043,6 +1060,9 @@ def vehicle_detail(vin):
         tags=tags,
         corrections=corrections,
         price_timeline=json.dumps([dict(r) for r in price_timeline]),
+        photos=photos,
+        equipment=equipment,
+        raw_desc=raw_desc,
     )
 
 
