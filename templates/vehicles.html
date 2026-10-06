@@ -63,57 +63,79 @@
   {% endif %}
 </div>
 
-<div class="table-responsive">
-  <table class="table table-hover table-sm align-middle">
-    <thead class="table-dark">
-      <tr>
-        <th style="width: 52px; text-align: center;">Photo</th>
-        <th>VIN</th><th>Make</th><th>Model</th><th>Year</th><th>HP</th>
-        <th>Min price</th><th>Max price</th><th>Obs</th><th>Ads</th><th>Last seen</th><th>Tags</th><th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for v in vehicles %}
-      <tr>
-        <td style="width: 52px; text-align: center; padding: 4px;">
-          {% if v.photo %}
-          <a href="/vehicle/{{ v.vin }}" title="View vehicle details">
-            <img src="/media/{{ v.photo }}" alt="{{ v.make }} {{ v.model }}"
-                 style="width: 46px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; display: block; margin: 0 auto;"
-                 loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\'text-muted\' style=\'font-size: 10px;\'>No pic</span>';">
-          </a>
-          {% else %}
-          <div style="width: 46px; height: 32px; border-radius: 4px; background: #e9ecef; display: flex; align-items: center; justify-content: center; margin: 0 auto; color: #adb5bd; font-size: 13px;">
-            <i class="bi bi-car-front"></i>
-          </div>
-          {% endif %}
-        </td>
-        <td><a href="/vehicle/{{ v.vin }}" class="font-monospace small">{{ v.vin }}</a></td>
-        <td>{{ v.make }}</td>
-        <td>{{ v.model }}{% if v.variant %} <small class="text-muted">{{ v.variant }}</small>{% endif %}</td>
-        <td>{{ v.year }}</td>
-        <td>{{ v.power_hp or '—' }}</td>
-        <td>{{ "{:,.0f}".format(v.min_price) if v.min_price else '—' }}</td>
-        <td>{{ "{:,.0f}".format(v.max_price) if v.max_price else '—' }}</td>
-        <td>{{ v.obs_count }}</td>
-        <td>{{ v.ad_count }}</td>
-        <td class="text-nowrap small">{{ v.last_observed[:16] if v.last_observed else '—' }}</td>
-        <td>
-          {% if v.tags %}
-            {% for tag in v.tags.split(',') %}
-            <span class="badge bg-info text-dark">{{ tag }}</span>
-            {% endfor %}
-          {% endif %}
-          {% if not v.registration_plate %}
-            <span class="badge bg-warning text-dark" title="Registration plate is missing">Missing plates</span>
-          {% endif %}
-        </td>
-        <td><span class="badge badge-{{ v.vin_status }}">{{ v.vin_status }}</span></td>
-      </tr>
+<div class="list-group mb-4">
+  {% for v in vehicles %}
+  <div class="list-group-item d-flex gap-3 py-3 align-items-center">
+    
+    <!-- Photo -->
+    <a href="/vehicle/{{ v.vin }}" class="flex-shrink-0 text-decoration-none">
+      {% if v.photo %}
+      <img src="/media/{{ v.photo }}" class="rounded shadow-sm"
+           style="width: 120px; height: 80px; object-fit: cover;">
       {% else %}
-      <tr><td colspan="13" class="text-center py-4 text-muted">No vehicles found</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      <div class="bg-secondary rounded shadow-sm d-flex align-items-center justify-content-center"
+           style="width: 120px; height: 80px;">
+        <span class="text-white opacity-50" style="font-size: 0.7em;">No photo</span>
+      </div>
+      {% endif %}
+    </a>
+
+    <!-- Details -->
+    <div class="flex-grow-1 min-w-0">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <a href="/vehicle/{{ v.vin }}" class="text-decoration-none text-dark text-truncate fw-semibold"
+           style="max-width: 70%;" title="{{ v.make }} {{ v.model }}">
+          {{ v.make }} {{ v.model }}
+          {% if v.variant %}
+          <span class="text-muted fw-normal ms-1">{{ v.variant }}</span>
+          {% endif %}
+          {% if v.origin_market %}
+          <span class="badge bg-info text-dark ms-1" style="font-size: 0.7em;">{{ v.origin_market }}</span>
+          {% endif %}
+        </a>
+        <span class="fs-5 fw-bold text-success text-nowrap ms-2">
+          {{ "{:,.0f} PLN".format(v.min_price) if v.min_price else '— PLN' }}
+        </span>
+      </div>
+
+      <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
+        <span>{{ v.make }} {{ v.model }}</span>
+        {% if v.year %}<span class="border-start ps-2">{{ v.year }}</span>{% endif %}
+        {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} HP</span>{% endif %}
+        {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cc</span>{% endif %}
+        <span class="border-start ps-2">{{ v.obs_count }} obs / {{ v.ad_count }} ads</span>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <code class="small text-secondary font-monospace">{{ v.vin }}</code>
+        
+        {% if v.vin_status == 'verified' %}
+        <span class="badge bg-success" style="font-size: 0.6em;">VERIFIED</span>
+        {% elif v.vin_status == 'placeholder' %}
+        <span class="badge bg-warning text-dark" style="font-size: 0.6em;">PLACEHOLDER</span>
+        {% endif %}
+
+        {% if v.tags %}
+          {% for tag in v.tags.split(',') %}
+          <span class="badge bg-light text-dark border ms-1">{{ tag }}</span>
+          {% endfor %}
+        {% endif %}
+        
+        {% if not v.registration_plate %}
+          <span class="badge bg-warning text-dark border border-warning ms-1" title="Registration plate is missing">No plates</span>
+        {% endif %}
+
+        <span class="ms-auto small">
+          <span class="text-muted">Seen: {{ v.last_observed[:10] if v.last_observed else '—' }}</span>
+        </span>
+      </div>
+    </div>
+    
+  </div>
+  {% else %}
+  <div class="list-group-item py-4 text-center text-muted">
+    No vehicles found.
+  </div>
+  {% endfor %}
 </div>
 {% endblock %}
