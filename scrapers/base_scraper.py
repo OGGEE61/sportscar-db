@@ -42,8 +42,21 @@ except ImportError:
 
 API_BASE     = os.environ.get("BASE_URL") or os.environ.get("VERCEL_URL") or "http://127.0.0.1:5555"
 API_URL      = f"{API_BASE}/api/ingest_pending"
+LOG_URL      = f"{API_BASE}/api/log_run"
 API_TOKEN    = os.environ.get("API_TOKEN")
 API_HEADERS  = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
+
+def _log_run(status: str, message: str, processed: int = 0):
+    try:
+        requests.post(
+            LOG_URL,
+            json={"status": status, "message": message, "processed_count": processed},
+            headers=API_HEADERS,
+            timeout=5
+        )
+    except Exception as e:
+        print(f"[log_run] failed: {e}")
+
 BROWSER_UA   = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -247,11 +260,13 @@ def refresh_session(cookies: dict) -> dict:
         )
         if r.status_code != 200:
             print(f"[auth] Token refresh failed: HTTP {r.status_code} -- {r.text[:120]}")
+            _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.")
             return cookies
         tokens       = r.json().get("AuthenticationResult", {})
         new_id_token = tokens.get("IdToken")
         if not new_id_token:
             print("[auth] Token refresh: no IdToken in response")
+            _log_run("error", "Token refresh failed: No IdToken in response.")
             return cookies
         updated = dict(cookies)
         updated["id_token"] = new_id_token
@@ -952,5 +967,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
         except Exception:
             pass
 
+    msg = f"Processed '{cfg.variant or cfg.model}' successfully."
     print(f"\nDone. {len(results)} listings processed.")
+    if post_to_api:
+        _log_run("success", msg, len(results))
     return results

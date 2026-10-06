@@ -43,6 +43,7 @@ from bmw_x3_m40i_g01      import CONFIG    as X3_M40I
 from mercedes_c63_w204    import CONFIG    as C63
 from mercedes_e55_w211    import CONFIG    as E55
 from mercedes_cls55_c219  import CONFIG    as CLS55
+from mercedes_clk63_w209  import CONFIG    as CLK63
 from porsche_cayman_gt4_981 import CONFIG  as CAYMAN_GT4
 from toyota_gr_yaris      import CONFIG    as GR_YARIS
 from bmw_alpina           import CONFIG    as ALPINA
@@ -74,7 +75,7 @@ from nissan_patrol_safari import CONFIG    as PATROL
 
 # Active target fleet
 ALL_FLEET = [
-    C63, E55, CLS55,
+    C63, E55, CLS55, CLK63,
     RS4_B85, RS4_B9, RS3, TTRS,
     M2_F87, M2_G87, M3, M4, X3_M, X3_M40I,
     CAYMAN_GT4,
@@ -102,6 +103,7 @@ SCRAPER_MAP = {
     "c63": [C63],
     "e55": [E55],
     "cls55": [CLS55],
+    "clk63": [CLK63],
     "gr_yaris": [GR_YARIS],
     "ttrs": [TTRS],
     "m2_f87": [M2_F87],
@@ -170,7 +172,7 @@ if __name__ == "__main__":
 
     totals = {"total": 0}
 
-    for cfg in scrapers_to_run:
+    for i, cfg in enumerate(scrapers_to_run):
         label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
         print(f"\n{'='*60}")
         print(f"  {label}")
@@ -181,9 +183,14 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  [ERROR running scraper {label}]: {e}")
 
-        # Random pause between 3 to 8 seconds between scrapers
-        pause = random.uniform(3.0, 8.0)
-        time.sleep(pause)
+        # If running 'all', take a long 2-minute break every 10 models to protect cookies
+        if target in ("all", "fleet") and (i + 1) % 10 == 0 and (i + 1) < len(scrapers_to_run):
+            print("\n[CHUNKING] Taking a 120s cooldown break to protect session cookies...")
+            time.sleep(120)
+        else:
+            # Standard random pause between 3 to 8 seconds between scrapers
+            pause = random.uniform(3.0, 8.0)
+            time.sleep(pause)
 
     print(f"\n{'='*60}")
     print(f"  ALL DONE — {totals['total']} listings processed across {len(scrapers_to_run)} scrapers")

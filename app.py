@@ -638,6 +638,10 @@ def dashboard():
     
     map_data = [["State", "Observations"]] + [[k, v] for k, v in region_counts.items()]
 
+    scraper_logs = conn.execute(
+        "SELECT * FROM scraper_logs ORDER BY run_date DESC LIMIT 5"
+    ).fetchall()
+
     conn.close()
     return render_template("dashboard.html",
         stats=stats, recent=recent,
@@ -645,7 +649,8 @@ def dashboard():
         price_ranges=json.dumps([dict(r) for r in price_ranges]),
         weekly=json.dumps([dict(r) for r in weekly]),
         map_data=json.dumps(map_data),
-        active_filter=active_filter
+        active_filter=active_filter,
+        scraper_logs=[dict(r) for r in scraper_logs]
     )
 
 
@@ -1480,6 +1485,23 @@ def api_vehicles():
 # ─────────────────────────────────────────────────────────────────────────────
 # SCRAPER INGEST  (scrapers POST here → pending_listing for manual review)
 # ─────────────────────────────────────────────────────────────────────────────
+@app.route("/api/log_run", methods=["POST"])
+def api_log_run():
+    if err := check_api_token(): return err
+    p = request.get_json(force=True)
+    status = p.get("status", "info")
+    message = p.get("message", "")
+    processed = int(p.get("processed_count", 0))
+
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO scraper_logs (status, message, processed_count) VALUES (?, ?, ?)",
+        (status, message, processed)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
 
 @app.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
