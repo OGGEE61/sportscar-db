@@ -562,7 +562,8 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             pass
 
         # Market extraction
-        origin_market = resolve_market(None, description_text, make=cfg.make)
+        ad_make = _pd_val("make") or params.get("make") or ""
+        origin_market = resolve_market(None, description_text, make=ad_make)
 
         # Equipment extraction
         equipment_raw = advert.get("equipment", [])
