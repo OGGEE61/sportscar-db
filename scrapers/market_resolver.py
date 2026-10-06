@@ -38,24 +38,29 @@ def resolve_market(vin: str, description: str, make: str = None) -> str:
     # ---------------------------------------------------------
     # STAGE 3: Description Keyword Matching
     # ---------------------------------------------------------
-    if any(w in desc_clean for w in ["zatoka perska", "zatoki", "dubaj", "gcc", "middle east", "uae", "zje", "emiraty"]):
+    import re
+    
+    def has_keyword(words):
+        pattern = r'\b(?:' + '|'.join(re.escape(w) for w in words) + r')\b'
+        return bool(re.search(pattern, desc_clean))
+
+    if has_keyword(["zatoka perska", "zatoki", "dubaj", "gcc", "middle east", "uae", "zea", "emiraty"]):
         return "Zatoka Perska"
         
-    if any(w in desc_clean for w in ["usa", "stanów", "stany zjednoczone", "ameryka", "z ameryki", "us spec", "ameryki", "wersja ameryk"]):
+    if has_keyword(["usa", "stanów", "stany zjednoczone", "ameryka", "z ameryki", "us spec", "ameryki", "wersja ameryk"]):
         return "USA"
         
-    if any(w in desc_clean for w in ["kanady", "kanada", "z kanady", "kanadyjska"]):
+    if has_keyword(["kanady", "kanada", "z kanady", "kanadyjska"]):
         return "Kanada"
         
-    if any(w in desc_clean for w in ["japonii", "japonia", "jdm", "z japonii"]):
+    if has_keyword(["japonii", "japonia", "jdm", "z japonii"]):
         return "Japonia"
         
-    if any(w in desc_clean for w in ["szwajcarii", "szwajcaria", "ze szwajcarii"]):
+    if has_keyword(["szwajcarii", "szwajcaria", "ze szwajcarii"]):
         return "Szwajcaria"
         
-    if any(w in desc_clean for w in ["salon polska", "salon pl", "krajowy", "krajowa", "salonowy", "polska"]):
-        # A bit risky to just map "polska" -> Europa, but "salon polska" is very strong
-        if "salon polska" in desc_clean or "krajowy" in desc_clean or "salon pl" in desc_clean:
+    if has_keyword(["salon polska", "salon pl", "krajowy", "krajowa", "salonowy", "polska"]):
+        if has_keyword(["salon polska", "krajowy", "salon pl"]):
             return "Europa"
             
     # ---------------------------------------------------------
