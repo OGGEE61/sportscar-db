@@ -1672,7 +1672,7 @@ def review_detail(pid):
     if not listing:
         return "Not found", 404
     photos = json.loads(listing["photos"]) if listing["photos"] else []
-    equipment = json.loads(listing["equipment"]) if listing.get("equipment") else []
+    equipment = json.loads(listing["equipment"]) if listing["equipment"] else []
     return render_template("review_detail.html", listing=listing, photos=photos, equipment=equipment)
 
 
