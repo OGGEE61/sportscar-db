@@ -61,7 +61,7 @@ def resolve_market(vin: str, description: str, make: str = None) -> str:
         
     if has_keyword(["salon polska", "salon pl", "krajowy", "krajowa", "salonowy", "polska"]):
         if has_keyword(["salon polska", "krajowy", "salon pl"]):
-            return "Europa"
+            return "Polska"
             
     # ---------------------------------------------------------
     # STAGE 4: VIN Fallbacks (If description didn't clarify)
