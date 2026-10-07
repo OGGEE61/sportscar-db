@@ -835,6 +835,16 @@ def model_analytics():
             "engine": "1.6L 3-cyl Turbo · 261 HP · AWD",
             "where": "v.make = 'Toyota' AND (v.model = 'GR Yaris' OR (v.model = 'Yaris' AND (v.variant LIKE '%GR%' OR v.power_hp >= 250)))"
         },
+        {
+            "id": "a45_w176",
+            "name": "Mercedes A45 AMG (W176)",
+            "make": "Mercedes-Benz",
+            "model": "Klasa A",
+            "variant": "W176 A45 AMG",
+            "years": "2013–2018",
+            "engine": "2.0L Turbo · 360-381 HP · AWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa A' OR v.model = 'A 45 AMG' OR v.model = 'A45 AMG') AND (v.variant LIKE '%W176%' OR v.variant LIKE '%A 45%' OR v.variant LIKE '%A45%' OR v.power_hp >= 360)"
+        },
     ]
 
     selected_id = request.args.get("model", "rs4_b85")

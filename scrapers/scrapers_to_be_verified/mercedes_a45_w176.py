@@ -3,7 +3,7 @@
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
-from base_scraper import ScraperConfig, run
+from scrapers.base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(
     make    = "Mercedes-Benz",
@@ -12,11 +12,13 @@ CONFIG = ScraperConfig(
     source  = "otomoto",
     list_url = (
         "https://www.otomoto.pl/osobowe/mercedes-benz/klasa-a"
-        "?search%5Bfilter_float_year%3Ato%5D=2018"
-        "&search%5Bfilter_float_engine_power%3Afrom%5D=350"
+        "?search%5Bfilter_float_year%3Afrom%5D=2016"
+        "&search%5Bfilter_float_year%3Ato%5D=2018"
+        "&search%5Bfilter_float_engine_power%3Afrom%5D=380"
+        "&search%5Bfilter_float_engine_power%3Ato%5D=390"
         "&page={page}"
     ),
-    title_must_contain = ["a45", "a 45", "amg 45"],
+    title_must_contain = ["a45", "a 45", "45 amg", "45amg"],
     title_must_not_contain = ["cla", "gla"],
     defaults = {
         "power_hp":     381,
