@@ -107,6 +107,15 @@ CREATE TABLE IF NOT EXISTS tags (
     UNIQUE(vin, tag)
 );
 
+-- ── scraper_logs ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS scraper_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date        TEXT NOT NULL DEFAULT (datetime('now')),
+    status          TEXT NOT NULL,
+    message         TEXT,
+    processed_count INTEGER DEFAULT 0
+);
+
 -- ── schema_migrations ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version    INTEGER PRIMARY KEY,

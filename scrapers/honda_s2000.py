@@ -11,10 +11,10 @@ CONFIG = ScraperConfig(
     variant = "S2000",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/honda/s2000"
+        "https://www.otomoto.pl/osobowe/honda/s-2000"
         "?page={page}"
     ),
-    title_must_contain = None,
+    title_must_contain = ["s2000", "s 2000"],
     defaults = {
         "engine_cyl":   4,
         "fuel_type":    "petrol",

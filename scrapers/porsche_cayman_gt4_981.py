@@ -20,6 +20,7 @@ CONFIG = ScraperConfig(
         "&page={page}"
     ),
     title_must_contain = "GT4",
+    title_must_not_contain = ["911", "carrera", "macan", "panamera", "cayenne", "taycan"],
     defaults = {
         "power_hp":     385,
         "engine_cc":    3800,

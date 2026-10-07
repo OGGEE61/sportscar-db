@@ -13,7 +13,7 @@ CONFIG = ScraperConfig(
     list_url = (
         "https://www.otomoto.pl/osobowe/mercedes-benz/klasa-a"
         "?search%5Bfilter_enum_generation%5D=gen-w176-2012-2018"
-        "&search%5Bfilter_float_power%3Afrom%5D=350"
+        "&search%5Bfilter_float_engine_power%3Afrom%5D=350"
         "&page={page}"
     ),
     title_must_contain = None,

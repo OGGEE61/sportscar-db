@@ -17,6 +17,7 @@ CONFIG = ScraperConfig(
         "&page={page}"
     ),
     title_must_contain = ["gts", "gt4"],
+    title_must_not_contain = ["911", "carrera", "macan", "panamera", "cayenne", "taycan"],
     defaults = {
         "engine_cyl":   6,
         "fuel_type":    "petrol",

@@ -68,10 +68,6 @@ from porsche_cayman_981   import CONFIG    as CAYMAN_981
 from porsche_cayman_718   import CONFIG    as CAYMAN_718
 from porsche_macan_gen1   import CONFIG    as MACAN_G1
 from honda_s2000          import CONFIG    as S2000
-from ram_trx              import CONFIG    as TRX
-from ford_f150_raptor     import CONFIG    as RAPTOR
-from ford_ranger_raptor   import CONFIG    as RANGER_RAPTOR
-from nissan_patrol_safari import CONFIG    as PATROL
 
 # Active target fleet
 ALL_FLEET = [
@@ -85,7 +81,7 @@ ALL_FLEET = [
     R8_V8, R8_V10,
     A45, GLA45, G55, S55, SL55, CL55,
     CAYMAN_987, CAYMAN_981, CAYMAN_718, MACAN_G1,
-    S2000, TRX, RAPTOR, RANGER_RAPTOR, PATROL,
+    S2000,
 ]
 
 # Dynamically distribute 3 runs per week for every scraper across the 7 days
@@ -134,9 +130,6 @@ SCRAPER_MAP = {
     "cayman": [CAYMAN_987, CAYMAN_981, CAYMAN_718, CAYMAN_GT4],
     "macan": [MACAN_G1],
     "s2000": [S2000],
-    "trx": [TRX],
-    "raptor": [RAPTOR, RANGER_RAPTOR],
-    "patrol": [PATROL],
     "x3_m": [X3_M],
     "x3_m40i": [X3_M40I],
     "all": ALL_FLEET,
