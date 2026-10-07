@@ -107,7 +107,10 @@ def is_plausible_vin(vin: str) -> bool:
         r"WAP|"                   # Alpina
         r"WDB|WDD|WDC|W1N|W1K|1MB|" # Mercedes
         r"WP0|WP1|"               # Porsche
-        r"JT)"                    # Toyota (JTD, JTN, JT1 itp)
+        r"JT|"                    # Toyota
+        r"1C6|3C6|"               # RAM
+        r"JH[A-Z0-9]|SH[A-Z0-9]|1HG|2HG|" # Honda
+        r"1F[A-Z0-9]|1Z[A-Z0-9]|3F[A-Z0-9]|WF[A-Z0-9])" # Ford
     )
     if not re.match(valid_wmi, vin):
         return False

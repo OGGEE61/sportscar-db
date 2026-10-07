@@ -16,7 +16,7 @@ CONFIG = ScraperConfig(
         "&search%5Bfilter_float_engine_capacity%3Ato%5D=5600"
         "&page={page}"
     ),
-    title_must_contain = "55",
+    title_must_contain = "sl55",
     defaults = {
         "power_hp":     500,
         "engine_cc":    5439,

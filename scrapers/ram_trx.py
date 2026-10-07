@@ -12,10 +12,10 @@ CONFIG = ScraperConfig(
     source  = "otomoto",
     list_url = (
         "https://www.otomoto.pl/osobowe/ram"
-        "?search%5Bfilter_float_power%3Afrom%5D=690"
+        "?search%5Bfilter_float_engine_power%3Afrom%5D=700"
         "&page={page}"
     ),
-    title_must_contain = None,
+    title_must_contain = ["trx"],
     defaults = {
         "engine_cyl":   8,
         "fuel_type":    "petrol",
