@@ -10,14 +10,14 @@
         <table class="table table-hover mb-0 align-middle">
             <thead class="table-light">
                 <tr>
-                    <th>Data</th>
+                    <th class="text-nowrap">Data</th>
                     <th>Status</th>
                     <th>Wiadomość</th>
-                    <th>Widziane na stronie</th>
-                    <th>Pobrane (pasujące)</th>
-                    <th><span class="badge bg-success">Nowe</span></th>
-                    <th><span class="badge bg-secondary">Duplikaty</span></th>
-                    <th><span class="badge bg-danger">Odrzucone</span></th>
+                    <th class="text-center text-nowrap">Widziane</th>
+                    <th class="text-center text-nowrap">Pobrane</th>
+                    <th class="text-center text-success text-nowrap">Nowe</th>
+                    <th class="text-center text-secondary text-nowrap">Duplikaty</th>
+                    <th class="text-center text-danger text-nowrap">Odrzucone</th>
                     <th>URL</th>
                 </tr>
             </thead>
@@ -34,15 +34,15 @@
                         <span class="badge bg-secondary">{{ log.status }}</span>
                         {% endif %}
                     </td>
-                    <td>{{ log.message }}</td>
-                    <td class="fw-bold">{{ log.processed_count }}</td>
-                    <td class="fw-bold">{{ log.found_count }}</td>
-                    <td class="text-success fw-bold">{{ log.new_count or 0 }}</td>
-                    <td class="text-secondary fw-bold">{{ log.dup_count or 0 }}</td>
-                    <td class="text-danger fw-bold">{{ log.rej_count or 0 }}</td>
+                    <td>{{ log.message.split(' (New:')[0] }}</td>
+                    <td class="text-center fw-bold">{{ log.processed_count }}</td>
+                    <td class="text-center fw-bold">{{ log.found_count }}</td>
+                    <td class="text-center text-success fw-bold">{{ log.new_count or 0 }}</td>
+                    <td class="text-center text-secondary fw-bold">{{ log.dup_count or 0 }}</td>
+                    <td class="text-center text-danger fw-bold">{{ log.rej_count or 0 }}</td>
                     <td>
                         {% if log.list_url %}
-                        <a href="{{ log.list_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-link-45deg"></i> Link</a>
+                        <a href="{{ log.list_url }}" target="_blank" class="btn btn-sm btn-outline-primary text-nowrap"><i class="bi bi-link-45deg"></i> Link</a>
                         {% endif %}
                     </td>
                 </tr>
