@@ -86,20 +86,8 @@ try:
 except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
 
-_BACKFILLED = False
-
 @app.before_request
 def require_login():
-    global _BACKFILLED
-    if not _BACKFILLED:
-        try:
-            conn = get_db()
-            backfill_vehicle_specs(conn)
-            conn.close()
-            _BACKFILLED = True
-        except Exception as e:
-            print(f"Backfill startup notice: {e}")
-
     if request.path.startswith("/api/") or request.path.startswith("/static/") or request.path == "/login":
         return
     admin_password = os.environ.get("ADMIN_PASSWORD")
@@ -431,17 +419,26 @@ def _approve_listing(conn, listing, overrides=None):
     return vin
 
 
+_LAST_STORAGE_CHECK = 0.0
+_STORAGE_OK_CACHE = True
+
 def check_storage_limit(conn) -> bool:
-    """Returns True if we're under the estimated 7.5GB limit."""
+    """Returns True if we're under the estimated 7.5GB limit (cached for 6 hours)."""
+    global _LAST_STORAGE_CHECK, _STORAGE_OK_CACHE
+    import time
+    now = time.time()
+    if now - _LAST_STORAGE_CHECK < 21600:  # 6 hours cache
+        return _STORAGE_OK_CACHE
+
     try:
         c1 = conn.execute("SELECT COUNT(local_photo) FROM pending_listings WHERE local_photo IS NOT NULL").fetchone()[0]
         c2 = conn.execute("SELECT COUNT(photo) FROM vehicles WHERE photo IS NOT NULL AND photo != ''").fetchone()[0]
         total_photos = c1 + c2
         # Estimate 20KB per photo (400px, 60% quality)
         estimated_gb = (total_photos * 20.0) / 1024 / 1024
-        if estimated_gb > 5.0:
-            print("WARNING: Storage exceeded 5GB limit!")
-        return estimated_gb < 7.5
+        _STORAGE_OK_CACHE = (estimated_gb < 7.5)
+        _LAST_STORAGE_CHECK = now
+        return _STORAGE_OK_CACHE
     except Exception:
         return True
 
@@ -846,6 +843,7 @@ def model_analytics():
             "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa A' OR v.model = 'A 45 AMG' OR v.model = 'A45 AMG') AND (v.variant LIKE '%W176%' OR v.variant LIKE '%A 45%' OR v.variant LIKE '%A45%' OR v.power_hp >= 360)"
         },
     ]
+    STANDARD_MODELS = sorted(STANDARD_MODELS, key=lambda m: m["name"])
 
     selected_id = request.args.get("model", "rs4_b85")
     current_model = next((m for m in STANDARD_MODELS if m["id"] == selected_id), STANDARD_MODELS[0])

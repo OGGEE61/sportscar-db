@@ -11,13 +11,14 @@ def resolve_market(vin: str, description: str, make: str = None) -> str:
     # ---------------------------------------------------------
     # STAGE 1: Sanitize description to prevent false positives
     # ---------------------------------------------------------
-    negations = [
-        "nie usa", "bez usa", "nie z usa", "nie ze stanow", 
-        "nie stany", "nie z ameryki", "to nie usa", "nie ameryka"
+    negation_patterns = [
+        r'\bnie\s+(?:jest\s+|pochodzi\s+|sprowadz\w*\s+)?(?:z\s+|ze\s+)?(?:usa|stan[oó]w|ameryk\w*)\b',
+        r'\b(?:bez|żadn\w+|to\s+nie)\s+(?:usa|stan[oó]w|ameryk\w*)\b',
+        r'\bnie\s+(?:z\s+|pochodzi\s+z\s+)?(?:kanad\w+|japoni\w+|szwajcari\w+)\b',
     ]
     desc_clean = desc
-    for n in negations:
-        desc_clean = desc_clean.replace(n, "")
+    for pat in negation_patterns:
+        desc_clean = re.sub(pat, " ", desc_clean)
         
     # ---------------------------------------------------------
     # STAGE 2: Strong VIN rules (Definitive)
@@ -38,8 +39,6 @@ def resolve_market(vin: str, description: str, make: str = None) -> str:
     # ---------------------------------------------------------
     # STAGE 3: Description Keyword Matching
     # ---------------------------------------------------------
-    import re
-    
     def has_keyword(words):
         pattern = r'\b(?:' + '|'.join(re.escape(w) for w in words) + r')\b'
         return bool(re.search(pattern, desc_clean))
