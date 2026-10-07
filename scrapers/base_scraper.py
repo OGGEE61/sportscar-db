@@ -40,10 +40,13 @@ try:
 except ImportError:
     _CRYPTO_OK = False
 
+from dotenv import load_dotenv
+load_dotenv()
+
 API_BASE     = os.environ.get("BASE_URL") or os.environ.get("VERCEL_URL") or "http://127.0.0.1:5555"
 API_URL      = f"{API_BASE}/api/ingest_pending"
 LOG_URL      = f"{API_BASE}/api/log_run"
-API_TOKEN    = os.environ.get("API_TOKEN")
+API_TOKEN    = os.environ.get("API_TOKEN") or os.environ.get("CRON_SECRET", "dev-secret")
 API_HEADERS  = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 
 def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0):
@@ -790,6 +793,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     results  = []
     seen_ids = set()
     total_processed = 0
+    new_count = 0
+    dup_count = 0
 
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
@@ -954,6 +959,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         rj   = resp.json()
                         tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
                         print(f"    > SID {payload.get('source_listing_id')} API {resp.status_code} [{tag}]")
+                        
+                        if tag in ("new", "pending"):
+                            new_count += 1
+                        else:
+                            dup_count += 1
+                            
                     except Exception as e:
                         print(f"    > API error: {_safe(str(e))}")
     
@@ -972,8 +983,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
         except Exception:
             pass
 
-    msg = f"Processed '{cfg.variant or cfg.model}' successfully."
-    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched.")
+    msg = f"Processed '{cfg.variant or cfg.model}' successfully. (New: {new_count}, Dup: {dup_count})"
+    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched (New: {new_count}, Dup: {dup_count}).")
     if post_to_api:
         _log_run("success", msg, total_processed, str(cfg.list_url), len(results))
     return results
