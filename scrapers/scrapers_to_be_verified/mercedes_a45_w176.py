@@ -1,4 +1,4 @@
-"""Mercedes GLA45 AMG X156 (2014-2019).
+"""Mercedes A45 AMG W176 (2013-2018).
 2.0L inline-4 turbo, 360-381 HP, AWD 4MATIC.
 """
 import sys, os
@@ -7,16 +7,17 @@ from base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(
     make    = "Mercedes-Benz",
-    model   = "GLA",
-    variant = "GLA45 AMG X156",
+    model   = "Klasa A",
+    variant = "A45 AMG W176",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/mercedes-benz/gla"
-        "?search%5Bfilter_enum_generation%5D=gen-x156-2014"
+        "https://www.otomoto.pl/osobowe/mercedes-benz/klasa-a"
+        "?search%5Bfilter_float_year%3Ato%5D=2018"
         "&search%5Bfilter_float_engine_power%3Afrom%5D=350"
         "&page={page}"
     ),
-    title_must_contain = None,
+    title_must_contain = ["a45", "a 45", "amg 45"],
+    title_must_not_contain = ["cla", "gla"],
     defaults = {
         "power_hp":     381,
         "engine_cc":    1991,
@@ -24,7 +25,7 @@ CONFIG = ScraperConfig(
         "fuel_type":    "petrol",
         "transmission": "automatic",
         "drivetrain":   "AWD",
-        "body_type":    "SUV",
+        "body_type":    "Hatchback",
     }
 )
 

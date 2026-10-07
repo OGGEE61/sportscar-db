@@ -11,7 +11,7 @@ CONFIG = ScraperConfig(
     source  = "otomoto",
     list_url = (
         "https://www.otomoto.pl/osobowe/porsche/macan"
-        "?search%5Bfilter_float_year%3Ato%5D=2020"
+        "?search%5Bfilter_float_year%3Ato%5D=2018"
         "&search%5Bfilter_float_engine_power%3Afrom%5D=350"
         "&page={page}"
     ),

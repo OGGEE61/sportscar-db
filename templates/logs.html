@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Scraper Logs - SportsCar DB{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Scraper Logs</h2>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Run Date</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                    <th>Processed</th>
+                    <th>Found</th>
+                    <th>URL</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr class="{% if log.is_read == 0 %}table-warning{% endif %}">
+                    <td class="text-nowrap">{{ log.run_date }}</td>
+                    <td>
+                        {% if log.status == 'success' %}
+                        <span class="badge bg-success">Success</span>
+                        {% elif log.status == 'error' %}
+                        <span class="badge bg-danger">Error</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ log.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ log.message }}</td>
+                    <td>{{ log.processed_count }}</td>
+                    <td>{{ log.found_count }}</td>
+                    <td>
+                        {% if log.list_url %}
+                        <a href="{{ log.list_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-link-45deg"></i> Link</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No logs recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

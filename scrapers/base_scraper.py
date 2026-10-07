@@ -46,11 +46,11 @@ LOG_URL      = f"{API_BASE}/api/log_run"
 API_TOKEN    = os.environ.get("API_TOKEN")
 API_HEADERS  = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 
-def _log_run(status: str, message: str, processed: int = 0):
+def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0):
     try:
         requests.post(
             LOG_URL,
-            json={"status": status, "message": message, "processed_count": processed},
+            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count},
             headers=API_HEADERS,
             timeout=5
         )
@@ -789,6 +789,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
 
     results  = []
     seen_ids = set()
+    total_processed = 0
 
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
@@ -821,6 +822,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 print("  No cards found -- stopping.")
                 break
     
+            total_processed += len(cards)
             page_ids = {c["listing_id"] for c in cards}
             if page_ids and page_ids.issubset(seen_ids):
                 print(f"  All {len(cards)} cards already seen -- stopping.")
@@ -971,7 +973,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             pass
 
     msg = f"Processed '{cfg.variant or cfg.model}' successfully."
-    print(f"\nDone. {len(results)} listings processed.")
+    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched.")
     if post_to_api:
-        _log_run("success", msg, len(results))
+        _log_run("success", msg, total_processed, str(cfg.list_url), len(results))
     return results

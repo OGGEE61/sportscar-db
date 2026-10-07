@@ -42,6 +42,18 @@
         <li class="nav-item"><a class="nav-link text-danger" href="/logout">Logout</a></li>
         {% endif %}
       </ul>
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item">
+          <a class="nav-link position-relative" href="/logs">
+            <i class="bi bi-bell-fill fs-5"></i>
+            {% if unread_notifications_count and unread_notifications_count > 0 %}
+            <span class="position-absolute top-25 start-75 translate-middle badge rounded-pill bg-danger" style="font-size: 0.6rem;">
+              {{ unread_notifications_count }}
+            </span>
+            {% endif %}
+          </a>
+        </li>
+      </ul>
     </div>
   </div>
 </nav>

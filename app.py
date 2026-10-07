@@ -14,6 +14,16 @@ app.secret_key = os.environ.get("SECRET_KEY", "fallback-dev-secret-key")
 app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
+@app.context_processor
+def inject_notifications():
+    try:
+        conn = get_db()
+        row = conn.execute("SELECT COUNT(*) FROM scraper_logs WHERE is_read = 0").fetchone()
+        count = row[0] if row else 0
+    except Exception:
+        count = 0
+    return dict(unread_notifications_count=count)
+
 def is_plausible_vin(vin: str) -> bool:
     """Basic sanity check — see base_scraper.py for rationale."""
     if not vin or len(vin) != 17:
@@ -512,6 +522,15 @@ def serve_media(filename):
 # DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route("/logs")
+def logs():
+    conn = get_db()
+    logs_data = conn.execute("SELECT * FROM scraper_logs ORDER BY run_date DESC").fetchall()
+    # Mark as read
+    conn.execute("UPDATE scraper_logs SET is_read = 1 WHERE is_read = 0")
+    conn.commit()
+    return render_template("logs.html", logs=logs_data)
+
 @app.route("/")
 def dashboard():
     conn = get_db()
@@ -611,7 +630,7 @@ def dashboard():
                 WHEN price_pln <  500000 THEN '350–500k'
                 WHEN price_pln <  750000 THEN '500–750k'
                 ELSE '>750k'
-            END AS rng, COUNT(*) AS cnt
+            END AS rng, COUNT(DISTINCT vin) AS cnt
         FROM listing_observations
         WHERE price_pln > 0 AND removed_at IS NULL
         GROUP BY rng ORDER BY MIN(price_pln)
@@ -1498,8 +1517,8 @@ def api_log_run():
 
     conn = get_db()
     conn.execute(
-        "INSERT INTO scraper_logs (status, message, processed_count) VALUES (?, ?, ?)",
-        (status, message, processed)
+        "INSERT INTO scraper_logs (status, message, processed_count, list_url, found_count) VALUES (?, ?, ?, ?, ?)",
+        (status, message, processed, p.get("list_url", ""), int(p.get("found_count", 0)))
     )
     conn.commit()
     conn.close()
