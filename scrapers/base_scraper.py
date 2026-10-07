@@ -49,11 +49,11 @@ LOG_URL      = f"{API_BASE}/api/log_run"
 API_TOKEN    = os.environ.get("API_TOKEN") or os.environ.get("CRON_SECRET", "dev-secret")
 API_HEADERS  = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 
-def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0):
+def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0):
     try:
         requests.post(
             LOG_URL,
-            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count},
+            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count},
             headers=API_HEADERS,
             timeout=5
         )
@@ -795,6 +795,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     total_processed = 0
     new_count = 0
     dup_count = 0
+    rej_count = 0
 
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
@@ -962,6 +963,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         
                         if tag in ("new", "pending"):
                             new_count += 1
+                        elif tag == "rejected":
+                            rej_count += 1
                         else:
                             dup_count += 1
                             
@@ -983,8 +986,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
         except Exception:
             pass
 
-    msg = f"Processed '{cfg.variant or cfg.model}' successfully. (New: {new_count}, Dup: {dup_count})"
-    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched (New: {new_count}, Dup: {dup_count}).")
+    msg = f"Processed '{cfg.variant or cfg.model}' successfully. (New: {new_count}, Dup: {dup_count}, Rej: {rej_count})"
+    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched (New: {new_count}, Dup: {dup_count}, Rej: {rej_count}).")
     if post_to_api:
-        _log_run("success", msg, total_processed, str(cfg.list_url), len(results))
+        _log_run("success", msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count)
     return results

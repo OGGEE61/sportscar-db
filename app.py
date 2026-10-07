@@ -1517,8 +1517,8 @@ def api_log_run():
 
     conn = get_db()
     conn.execute(
-        "INSERT INTO scraper_logs (status, message, processed_count, list_url, found_count) VALUES (?, ?, ?, ?, ?)",
-        (status, message, processed, p.get("list_url", ""), int(p.get("found_count", 0)))
+        "INSERT INTO scraper_logs (status, message, processed_count, list_url, found_count, new_count, dup_count, rej_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (status, message, processed, p.get("list_url", ""), int(p.get("found_count", 0)), int(p.get("new_count", 0)), int(p.get("dup_count", 0)), int(p.get("rej_count", 0)))
     )
     conn.commit()
     conn.close()
@@ -1644,6 +1644,10 @@ def api_ingest_pending():
                     tag = "price_updated" if (new_price and old_price and abs(safe_float(new_price, 0) - safe_float(old_price, 0)) > 500) else "seen_again"
                     return jsonify({"status": "ok", "id": existing["id"], "tag": tag})
             
+            if existing and existing["status"] == "rejected":
+                conn.close()
+                return jsonify({"status": "ok", "id": existing["id"], "tag": "rejected"})
+
             conn.close()
             return jsonify({"status": "ok", "id": 0, "tag": "duplicate"})
 
