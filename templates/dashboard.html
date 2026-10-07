@@ -11,34 +11,7 @@
   {% endif %}
 </div>
 
-{% if scraper_logs %}
-<div class="mb-4">
-  {% for log in scraper_logs %}
-    {% set alert_class = "alert-info" %}
-    {% set icon = "bi-info-circle-fill" %}
-    
-    {% if log.status == "error" %}
-      {% set alert_class = "alert-danger" %}
-      {% set icon = "bi-exclamation-triangle-fill" %}
-    {% elif log.status == "success" %}
-      {% set alert_class = "alert-success" %}
-      {% set icon = "bi-check-circle-fill" %}
-    {% elif log.status == "warning" %}
-      {% set alert_class = "alert-warning" %}
-      {% set icon = "bi-exclamation-circle-fill" %}
-    {% endif %}
 
-    <div class="alert {{ alert_class }} alert-dismissible fade show d-flex align-items-center mb-2 shadow-sm" role="alert">
-      <i class="bi {{ icon }} me-2 fs-5"></i>
-      <div>
-        <strong>Scraper Run ({{ log.run_date[:16] }}):</strong> {{ log.message }}
-        <span class="badge bg-secondary ms-2">{{ log.processed_count }} listings processed</span>
-      </div>
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-  {% endfor %}
-</div>
-{% endif %}
 
 <!-- Stat cards -->
 <div class="row g-3 mb-4">
