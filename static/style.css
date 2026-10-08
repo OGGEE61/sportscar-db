@@ -62,14 +62,14 @@ body {
 .app-navbar {
   background: #ffffff !important;
   border-bottom: 1px solid var(--border-default);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
 }
 
 .app-navbar .navbar-brand {
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   color: var(--text-primary) !important;
   letter-spacing: -0.02em;
   display: flex;
@@ -79,26 +79,27 @@ body {
 
 .app-navbar .navbar-brand i {
   color: var(--primary);
-  font-size: 1.25rem;
+  font-size: 1.35rem;
 }
 
 .app-navbar .nav-link {
-  color: var(--text-secondary) !important;
-  font-size: 0.9rem;
+  color: #475569 !important;
+  font-size: 1.05rem;
   font-weight: 500;
-  padding: 0.45rem 0.85rem !important;
+  padding: 0.55rem 1rem !important;
   border-radius: 8px;
-  transition: all 0.15s ease;
+  transition: all 0.15s ease-in-out;
 }
 
 .app-navbar .nav-link:hover {
-  color: var(--text-primary) !important;
-  background-color: var(--bg-subtle);
+  color: #1d4ed8 !important;
+  background-color: #eff6ff !important;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
 }
 
 .app-navbar .nav-link.active {
-  color: var(--primary) !important;
-  background-color: var(--primary-light);
+  color: #1d4ed8 !important;
+  background-color: #dbeafe !important;
   font-weight: 600;
 }
 
@@ -178,25 +179,22 @@ body {
   letter-spacing: 0.01em;
 }
 
-.badge-verified,
-.badge-success-subtle {
-  background-color: var(--success-light) !important;
-  color: var(--success-text) !important;
-  border: 1px solid #a7f3d0 !important;
+.badge-verified {
+  background-color: #198754 !important;
+  color: #ffffff !important;
+  font-weight: 600;
 }
 
-.badge-placeholder,
-.badge-warning-subtle {
-  background-color: var(--warning-light) !important;
-  color: var(--warning-text) !important;
-  border: 1px solid #fde68a !important;
+.badge-unverified {
+  background-color: #6c757d !important;
+  color: #ffffff !important;
+  font-weight: 600;
 }
 
-.badge-unverified,
-.badge-secondary-subtle {
-  background-color: var(--bg-subtle) !important;
-  color: var(--text-secondary) !important;
-  border: 1px solid var(--border-default) !important;
+.badge-placeholder {
+  background-color: #ffc107 !important;
+  color: #000000 !important;
+  font-weight: 600;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
