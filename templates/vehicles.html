@@ -90,10 +90,10 @@
           <span class="text-muted fw-normal ms-1">{{ v.variant }}</span>
           {% endif %}
           {% if v.origin_market %}
-          <span class="badge bg-info text-dark ms-1" style="font-size: 0.7em;">{{ v.origin_market }}</span>
+          <span class="badge border ms-1" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe !important; font-size: 0.72em;">{{ v.origin_market }}</span>
           {% endif %}
         </a>
-        <span class="fs-5 fw-bold text-success text-nowrap ms-2">
+        <span class="fs-5 fw-bold text-nowrap ms-2" style="color: #1d4ed8;">
           {% if v.min_price and v.max_price and v.min_price != v.max_price %}
             {{ "{:,.0f}".format(v.min_price) }} - {{ "{:,.0f} PLN".format(v.max_price) }}
           {% elif v.min_price %}

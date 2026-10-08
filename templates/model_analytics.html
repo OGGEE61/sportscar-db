@@ -104,25 +104,25 @@
 <!-- KPI Cards Row -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="kpi-card p-3 h-100 border-start border-primary border-4">
+    <div class="kpi-card p-3 h-100" style="border-left: 3px solid #1e40af !important;">
       <div class="small text-muted mb-1">Active Listings</div>
       <div class="fs-4 fw-bold text-dark">{{ stats.count }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="kpi-card p-3 h-100 border-start border-success border-4">
+    <div class="kpi-card p-3 h-100" style="border-left: 3px solid #1d4ed8 !important;">
       <div class="small text-muted mb-1">Average Price</div>
-      <div class="fs-4 fw-bold text-success">{{ "{:,.0f} zł".format(stats.avg_price) if stats.avg_price else "—" }}</div>
+      <div class="fs-4 fw-bold" style="color: #1d4ed8;">{{ "{:,.0f} zł".format(stats.avg_price) if stats.avg_price else "—" }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="kpi-card p-3 h-100 border-start border-info border-4">
+    <div class="kpi-card p-3 h-100" style="border-left: 3px solid #2563eb !important;">
       <div class="small text-muted mb-1">Median Price</div>
-      <div class="fs-4 fw-bold text-info">{{ "{:,.0f} zł".format(stats.median_price) if stats.median_price else "—" }}</div>
+      <div class="fs-4 fw-bold" style="color: #2563eb;">{{ "{:,.0f} zł".format(stats.median_price) if stats.median_price else "—" }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="kpi-card p-3 h-100 border-start border-warning border-4">
+    <div class="kpi-card p-3 h-100" style="border-left: 3px solid #60a5fa !important;">
       <div class="small text-muted mb-1">Price Range</div>
       <div class="fs-5 fw-bold text-dark">
         {% if stats.min_price and stats.max_price %}
@@ -132,13 +132,13 @@
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="kpi-card p-3 h-100 border-start border-secondary border-4">
+    <div class="kpi-card p-3 h-100" style="border-left: 3px solid #93c5fd !important;">
       <div class="small text-muted mb-1">Avg Mileage</div>
       <div class="fs-4 fw-bold text-dark">{{ "{:,.0f} km".format(stats.avg_mileage) if stats.avg_mileage else "—" }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="kpi-card p-3 h-100 border-start border-dark border-4">
+    <div class="kpi-card p-3 h-100" style="border-left: 3px solid #cbd5e1 !important;">
       <div class="small text-muted mb-1">Median Mileage</div>
       <div class="fs-4 fw-bold text-dark">{{ "{:,.0f} km".format(stats.median_mileage) if stats.median_mileage else "—" }}</div>
     </div>
@@ -389,7 +389,7 @@ if (histLabels.length && document.getElementById('chartHist')) {
       labels: histLabels,
       datasets: [{
         data: histCounts,
-        backgroundColor: '#198754',
+        backgroundColor: '#2563eb',
         borderRadius: 4
       }]
     },
@@ -421,7 +421,7 @@ if (yearData.length && document.getElementById('chartYears')) {
       labels: yearData.map(d => d.year),
       datasets: [{
         data: yearData.map(d => d.cnt),
-        backgroundColor: '#6f42c1',
+        backgroundColor: '#3b82f6',
         borderRadius: 4
       }]
     },

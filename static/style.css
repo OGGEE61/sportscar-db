@@ -125,30 +125,29 @@ body {
   color: var(--text-primary);
 }
 
-/* Stat Cards */
+/* Stat & KPI Cards */
 .stat-card {
   border: 1px solid var(--border-default) !important;
   background: #ffffff;
   border-radius: 12px;
   position: relative;
   overflow: hidden;
+  transition: all 0.15s ease;
 }
 
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
+.stat-card:hover, .kpi-card:hover {
+  border-color: #cbd5e1 !important;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
-.stat-card.border-primary::before { background-color: var(--primary); }
-.stat-card.border-warning::before { background-color: var(--warning); }
-.stat-card.border-info::before    { background-color: #06b6d4; }
-.stat-card.border-success::before { background-color: var(--success); }
-.stat-card.border-secondary::before { background-color: var(--text-muted); }
-.stat-card.border-dark::before    { background-color: var(--text-primary); }
+.kpi-card {
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+}
 
 .stat-card .card-body {
   padding: 1.1rem 1.25rem;
