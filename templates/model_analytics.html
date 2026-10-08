@@ -51,11 +51,15 @@
 
   <!-- Model selector dropdown -->
   <div class="pb-2">
-    <select class="form-select shadow-sm" style="max-width: 400px; font-weight: 500;" onchange="window.location.href='/models?model='+this.value">
-      {% for m in models %}
-      <option value="{{ m.id }}" {% if m.id == selected_model.id %}selected{% endif %}>
-        {{ m.name }} ({{ m.years }})
-      </option>
+    <select class="form-select shadow-sm" style="max-width: 450px; font-weight: 500;" onchange="window.location.href='/models?model='+this.value">
+      {% for make, group in models|groupby('make') %}
+      <optgroup label="── {{ make }} ──">
+        {% for m in group %}
+        <option value="{{ m.id }}" {% if m.id == selected_model.id %}selected{% endif %}>
+          {{ m.name }} ({{ m.years }})
+        </option>
+        {% endfor %}
+      </optgroup>
       {% endfor %}
     </select>
   </div>

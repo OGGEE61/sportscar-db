@@ -33,8 +33,8 @@ class TestSportsCarDB(unittest.TestCase):
         with open(os.path.join(os.path.dirname(__file__), "../schema.sql"), "r") as f:
             conn.executescript(f.read())
         
-        # Run db.py's internal migrations (like adding columns)
-        db.get_db().close()
+        # Run db.py's internal schema initialization and migrations
+        db.init_db()
 
     def tearDown(self):
         if os.path.exists(TEST_DB_PATH):

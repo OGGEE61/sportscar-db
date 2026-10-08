@@ -1,7 +1,10 @@
 """Porsche Macan Gen 1 (2014-2020) - S / GTS / Turbo.
 """
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
+_dir = os.path.dirname(__file__)
+sys.path.insert(0, _dir)
+sys.path.insert(0, os.path.dirname(_dir))
+sys.path.insert(0, os.path.join(os.path.dirname(_dir), "scrapers"))
 from base_scraper import ScraperConfig, run
 
 CONFIG = ScraperConfig(

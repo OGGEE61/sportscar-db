@@ -27,12 +27,15 @@ import random
 import hashlib
 import base64
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Callable
 
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
-from scrapers.market_resolver import resolve_market
+try:
+    from scrapers.market_resolver import resolve_market
+except ImportError:
+    from market_resolver import resolve_market
 
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM as _AESGCM
@@ -121,6 +124,32 @@ def is_plausible_vin(vin: str) -> bool:
     return True
 
 
+def is_valid_registration_plate(plate: str) -> bool:
+    """Validate a Polish / EU registration plate string.
+
+    Rules:
+      - 4 to 8 characters max after removing whitespace, hyphens, dots
+      - Pure uppercase ASCII alphanumeric [A-Z0-9] (no special chars or Polish diacritics)
+      - Must contain at least one letter and at least one digit
+      - Reject dummy text, blacklisted placeholders, and all-identical characters
+    """
+    if not plate or not isinstance(plate, str):
+        return False
+    cleaned = re.sub(r"[\s\-\.]", "", plate).upper()
+    if not (4 <= len(cleaned) <= 8):
+        return False
+    if not re.fullmatch(r"[A-Z0-9]+", cleaned):
+        return False
+    if not (re.search(r"[A-Z]", cleaned) and re.search(r"[0-9]", cleaned)):
+        return False
+    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX", "ALEJA", "STAN", "NOWY", "DEALER", "BEZWYP"]
+    if any(bad in cleaned for bad in blacklist):
+        return False
+    if len(set(cleaned)) <= 1:
+        return False
+    return True
+
+
 # ── config ────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -141,6 +170,7 @@ class ScraperConfig:
     title_must_not_contain: list[str] = field(default_factory=list)
     min_year: Optional[int] = None
     max_year: Optional[int] = None
+    validator: Optional[Callable[[dict], bool]] = None
 
 
     detail_delay: float = 1.0
@@ -514,8 +544,8 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         advert_id      = advert.get("id", "")
         has_vin        = bool((pd).get("has_vin"))
 
-        # Tier 1: decrypt the encrypted value in params["vin"]
-        enc_vin = params.get("vin", "")
+        # Tier 1: decrypt the encrypted value in params["vin"] or pd["vin"]
+        enc_vin = params.get("vin") or _pd_val("vin") or ""
         if enc_vin and advert_id:
             plain = _decrypt_vin(enc_vin, advert_id)
             if plain and is_plausible_vin(plain):
@@ -536,22 +566,15 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
 
         # Registration plate — encrypted with same AES-GCM algorithm as VIN
         registration_plate = None
-        enc_reg = params.get("registration", "")
+        enc_reg = params.get("registration") or params.get("nr_rejestracyjny") or _pd_val("registration") or _pd_val("nr_rejestracyjny") or ""
         if enc_reg and advert_id:
             raw_plate = _decrypt_vin(enc_reg, advert_id)  # same decrypt fn
-            if raw_plate:
-                # Basic validation: remove whitespace and hyphens
-                cleaned_plate = re.sub(r"[\s\-]", "", raw_plate).upper()
-                # Reject known dummy values and ensure it looks like a real plate
-                # Typically 4-8 alphanumeric chars
-                if len(cleaned_plate) >= 4 and len(cleaned_plate) <= 10:
-                    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX"]
-                    if not any(bad in cleaned_plate for bad in blacklist) and not re.fullmatch(r"X+", cleaned_plate):
-                        registration_plate = raw_plate.strip().upper()
+            if raw_plate and is_valid_registration_plate(raw_plate):
+                registration_plate = re.sub(r"\s+", " ", raw_plate).strip().upper()
 
         # First registration date — encrypted the same way
         first_registration_date = None
-        enc_date = params.get("date_registration", "")
+        enc_date = params.get("date_registration") or _pd_val("date_registration") or ""
         if enc_date and advert_id:
             first_registration_date = _decrypt_vin(enc_date, advert_id)
 
@@ -889,6 +912,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         if cfg.max_year and detail['year'] > cfg.max_year:
                             print(f"  [skip] Year {detail['year']} > max {cfg.max_year}")
                             continue
+
+                    if cfg.validator and not cfg.validator(detail):
+                        continue
     
                 photo         = detail.get("photo_url") or thumbnail
                 final_price   = detail.get("price_from_detail") or price_pln

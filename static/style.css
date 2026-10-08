@@ -1,0 +1,429 @@
+/* =============================================================================
+   SportsCar DB - Modern Aesthetic Light/White Design System
+   ============================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  
+  /* Palette - Clean White / Slate */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f1f5f9;
+  
+  --border-subtle: #f1f5f9;
+  --border-default: #e2e8f0;
+  --border-strong: #cbd5e1;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  
+  /* Brand & Accents */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  
+  --success: #10b981;
+  --success-light: #ecfdf5;
+  --success-text: #065f46;
+  
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+  --warning-text: #92400e;
+  
+  --danger: #ef4444;
+  --danger-light: #fef2f2;
+  --danger-text: #991b1b;
+  
+  --purple: #8b5cf6;
+  --purple-light: #f5f3ff;
+  --purple-text: #6d28d9;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Navbar
+   ───────────────────────────────────────────────────────────────────────────── */
+.app-navbar {
+  background: #ffffff !important;
+  border-bottom: 1px solid var(--border-default);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+.app-navbar .navbar-brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--text-primary) !important;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-navbar .navbar-brand i {
+  color: var(--primary);
+  font-size: 1.25rem;
+}
+
+.app-navbar .nav-link {
+  color: var(--text-secondary) !important;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.45rem 0.85rem !important;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.app-navbar .nav-link:hover {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-subtle);
+}
+
+.app-navbar .nav-link.active {
+  color: var(--primary) !important;
+  background-color: var(--primary-light);
+  font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Cards & Surfaces
+   ───────────────────────────────────────────────────────────────────────────── */
+.card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.card-header {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  font-weight: 600;
+  padding: 0.9rem 1.25rem;
+  color: var(--text-primary);
+}
+
+/* Stat Cards */
+.stat-card {
+  border: 1px solid var(--border-default) !important;
+  background: #ffffff;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+}
+
+.stat-card.border-primary::before { background-color: var(--primary); }
+.stat-card.border-warning::before { background-color: var(--warning); }
+.stat-card.border-info::before    { background-color: #06b6d4; }
+.stat-card.border-success::before { background-color: var(--success); }
+.stat-card.border-secondary::before { background-color: var(--text-muted); }
+.stat-card.border-dark::before    { background-color: var(--text-primary); }
+
+.stat-card .card-body {
+  padding: 1.1rem 1.25rem;
+}
+
+.stat-card .small {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stat-card .fs-4 {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 4px;
+  letter-spacing: -0.02em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Badges
+   ───────────────────────────────────────────────────────────────────────────── */
+.badge {
+  font-weight: 500;
+  padding: 0.35em 0.65em;
+  border-radius: 6px;
+  letter-spacing: 0.01em;
+}
+
+.badge-verified,
+.badge-success-subtle {
+  background-color: var(--success-light) !important;
+  color: var(--success-text) !important;
+  border: 1px solid #a7f3d0 !important;
+}
+
+.badge-placeholder,
+.badge-warning-subtle {
+  background-color: var(--warning-light) !important;
+  color: var(--warning-text) !important;
+  border: 1px solid #fde68a !important;
+}
+
+.badge-unverified,
+.badge-secondary-subtle {
+  background-color: var(--bg-subtle) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-default) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   AI Summary Box (Bielik AI)
+   ───────────────────────────────────────────────────────────────────────────── */
+.ai-summary-box {
+  background: #ffffff;
+  border: 1px solid #e0e7ff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-summary-box::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, #6366f1 0%, #a855f7 100%);
+}
+
+.ai-summary-header {
+  background: #faf5ff;
+  border-bottom: 1px solid #ede9fe;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+}
+
+.ai-summary-body {
+  padding: 1.15rem 1.25rem;
+}
+
+.ai-sparkle-pill {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-text {
+  font-size: 0.925rem;
+  line-height: 1.6;
+  color: #1e293b;
+}
+
+.ai-reasoning-callout {
+  background-color: #f8fafc;
+  border-left: 3px solid #6366f1;
+  border-radius: 6px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.85rem;
+  color: #334155;
+  margin-top: 0.75rem;
+}
+
+.ai-eq-badge {
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Forms & Controls
+   ───────────────────────────────────────────────────────────────────────────── */
+.form-control, .form-select {
+  border-color: var(--border-strong);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  padding: 0.48rem 0.75rem;
+  background-color: #ffffff;
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+.btn {
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn-outline-secondary {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--bg-subtle);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tables
+   ───────────────────────────────────────────────────────────────────────────── */
+.table-container {
+  background: #ffffff;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table {
+  margin-bottom: 0;
+  font-size: 0.885rem;
+}
+
+.table > :not(caption) > * > * {
+  padding: 0.75rem 1rem;
+  border-bottom-color: var(--border-subtle);
+  vertical-align: middle;
+}
+
+.table > thead > tr > th {
+  background-color: #f8fafc;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.table-hover > tbody > tr:hover > * {
+  background-color: #f8fafc;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tooltips and misc
+   ───────────────────────────────────────────────────────────────────────────── */
+.google-visualization-tooltip {
+  pointer-events: none !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-md) !important;
+  border: 1px solid var(--border-default) !important;
+}
+
+.section-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.raw-desc {
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Vehicle Lists & Photos
+   ───────────────────────────────────────────────────────────────────────────── */
+.list-group {
+  gap: 8px;
+}
+
+.list-group-item {
+  background: #ffffff !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+}
+
+.list-group-item:hover {
+  border-color: #cbd5e1 !important;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.photo-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.photo-strip img {
+  height: 160px;
+  width: 240px;
+  object-fit: cover;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  border: 1px solid var(--border-default);
+}
+
+.photo-strip img:hover {
+  opacity: 0.9;
+  transform: scale(1.01);
+}

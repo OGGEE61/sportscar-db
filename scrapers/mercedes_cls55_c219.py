@@ -14,7 +14,7 @@ CONFIG = ScraperConfig(
     variant = "C219 CLS 55 AMG",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/mercedes-benz/cls"
+        "https://www.otomoto.pl/osobowe/mercedes-benz/cls-klasa"
         "?search%5Bfilter_float_year%3Afrom%5D=2004"
         "&search%5Bfilter_float_year%3Ato%5D=2006"
         "&search%5Bfilter_float_engine_power%3Afrom%5D=460"

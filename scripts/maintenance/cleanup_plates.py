@@ -2,24 +2,27 @@ import re
 from db import get_db
 
 def is_valid_plate(plate):
-    if not plate:
+    if not plate or not isinstance(plate, str):
         return False
         
-    cleaned_plate = re.sub(r"[\s\-]", "", plate).upper()
+    cleaned_plate = re.sub(r"[\s\-\.]", "", plate).upper()
     
-    if len(cleaned_plate) < 4 or len(cleaned_plate) > 10:
+    # Polish plates have between 4 and 8 characters max
+    if len(cleaned_plate) < 4 or len(cleaned_plate) > 8:
         return False
         
-    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX", "ALEJAAUT"]
+    if not re.fullmatch(r"[A-Z0-9]+", cleaned_plate):
+        return False
+
+    # Must contain at least one letter and at least one digit
+    if not (re.search(r"[A-Z]", cleaned_plate) and re.search(r"[0-9]", cleaned_plate)):
+        return False
+        
+    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX", "ALEJAAUT", "STAN", "NOWY", "DEALER", "BEZWYP"]
     if any(bad in cleaned_plate for bad in blacklist):
         return False
         
-    if re.fullmatch(r"X+", cleaned_plate):
-        return False
-        
-    # Must have at least one letter and one number to be realistic (mostly)
-    # Actually some vanity plates might be just letters, let's just reject if it doesn't match basic alphanumeric
-    if not re.match(r"^[A-Z0-9]+$", cleaned_plate):
+    if len(set(cleaned_plate)) <= 1:
         return False
         
     return True

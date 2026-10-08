@@ -64,7 +64,33 @@ def is_plausible_vin(vin: str) -> bool:
 
     return True
 
+def is_valid_registration_plate(plate: str) -> bool:
+    """Validate a Polish / EU registration plate string.
+
+    Rules:
+      - 4 to 8 characters max after removing whitespace, hyphens, dots
+      - Pure uppercase ASCII alphanumeric [A-Z0-9] (no special chars or Polish diacritics)
+      - Must contain at least one letter and at least one digit
+      - Reject dummy text, blacklisted placeholders, and all-identical characters
+    """
+    if not plate or not isinstance(plate, str):
+        return False
+    cleaned = re.sub(r"[\s\-\.]", "", plate).upper()
+    if not (4 <= len(cleaned) <= 8):
+        return False
+    if not re.fullmatch(r"[A-Z0-9]+", cleaned):
+        return False
+    if not (re.search(r"[A-Z]", cleaned) and re.search(r"[0-9]", cleaned)):
+        return False
+    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX", "ALEJA", "STAN", "NOWY", "DEALER", "BEZWYP"]
+    if any(bad in cleaned for bad in blacklist):
+        return False
+    if len(set(cleaned)) <= 1:
+        return False
+    return True
+
 app.jinja_env.tests["plausible_vin"] = is_plausible_vin
+app.jinja_env.tests["valid_plate"]   = is_valid_registration_plate
 
 def safe_int(val, default=None):
     try:
@@ -146,7 +172,54 @@ CITY_TO_REGION = {
     'Balice': 'PL-MA', 'Dobrzań': 'PL-ZP', 'Góra': 'PL-DS', 'Halinów': 'PL-MZ',
     'Golęczewo': 'PL-WP', 'Aleksandrów': 'PL-LD', 'Aleksandrów Łódzki': 'PL-LD',
     'Czarna': 'PL-PK', 'Stanisławów Pierwszy': 'PL-MZ', 'Garwolin': 'PL-MZ',
-    'Węgrzce': 'PL-MA', 'Sochaczew': 'PL-MZ'
+    'Węgrzce': 'PL-MA', 'Sochaczew': 'PL-MZ',
+    'Miastko': 'PL-PM', 'Stare Bielice': 'PL-ZP', 'Ozimek': 'PL-OP', 'Sokołów Podlaski': 'PL-MZ',
+    'Świdwin': 'PL-ZP', 'Trzebiesławice': 'PL-SL', 'Kamionki': 'PL-WP', 'Gowidlino': 'PL-PM',
+    'Tłuszcz': 'PL-MZ', 'Góra Kalwaria': 'PL-MZ', 'Przygodzice': 'PL-WP', 'Parsęcko': 'PL-ZP',
+    'Wieruszów': 'PL-LD', 'Staszów': 'PL-SK', 'Radzymin': 'PL-MZ', 'Jawczyce': 'PL-MZ',
+    'Nowy Secymin': 'PL-MZ', 'Luboń': 'PL-WP', 'Suchożebry': 'PL-MZ', 'Bielewo': 'PL-WP',
+    'Nowy Targ': 'PL-MA', 'Nowe Miasto nad Pilicą': 'PL-MZ', 'Bieruń': 'PL-SL',
+    'Ciężkowice': 'PL-MA', 'Zwoleń': 'PL-MZ', 'Podkowa Leśna': 'PL-MZ',
+    'Czeladź': 'PL-SL', 'Straszyn': 'PL-PM', 'Wróblew': 'PL-LD', 'Syców': 'PL-DS',
+    'Trzebinia': 'PL-MA', 'Świdnik': 'PL-LU', 'Opatów': 'PL-SK', 'Księżyno': 'PL-PD',
+    'Skoczów': 'PL-SL', 'Izabelin C': 'PL-MZ', 'Dulowa': 'PL-MA', 'Dębica': 'PL-PK',
+    'Kobiele Wielkie': 'PL-LD', 'Raków Duży': 'PL-LD', 'Krapkowice': 'PL-OP', 'Kobyłka': 'PL-MZ',
+    'Międzyrzecz': 'PL-LB', 'Śrem': 'PL-WP', 'Jawiszowice': 'PL-MA', 'Rąbień': 'PL-LD',
+    'Czchów': 'PL-MA', 'Michałowice': 'PL-MZ', 'Płońsk': 'PL-MZ', 'Słupca': 'PL-WP',
+    'Trzebnica': 'PL-DS', 'Lipka': 'PL-WP', 'Medynia Głogowska': 'PL-PK', 'Nowe Arciszewo': 'PL-MZ',
+    'Bochnia': 'PL-MA', 'Koło': 'PL-WP', 'Szczytno': 'PL-WN', 'Chwaszczyno': 'PL-PM',
+    'Rabka-Zdrój': 'PL-MA', 'Czernica': 'PL-DS', 'Kosakowo': 'PL-PM', 'Lubliniec': 'PL-SL',
+    'Lubicz Dolny': 'PL-KP', 'Kępno': 'PL-WP', 'Szubin': 'PL-KP', 'Magdalenka': 'PL-MZ',
+    'Lutomiersk': 'PL-LD', 'Duszniki-Zdrój': 'PL-DS', 'Grodzisk Mazowiecki': 'PL-MZ', 'Świebodzice': 'PL-DS',
+    'Sieradz': 'PL-LD', 'Kamieniec Wrocławski': 'PL-DS', 'Jedlińsk': 'PL-MZ', 'Stryków': 'PL-LD',
+    'Brzeszcze': 'PL-MA', 'Skawina': 'PL-MA', 'Zgorzelec': 'PL-DS', 'Dąbrowa Tarnowska': 'PL-MA',
+    'Bezrzecze': 'PL-ZP', 'Mińsk Mazowiecki': 'PL-MZ', 'Janikowo': 'PL-KP', 'Słupno': 'PL-MZ',
+    'Limanowa': 'PL-MA', 'Ołtarzew': 'PL-MZ', 'Aleksandrów Kujawski': 'PL-KP', 'Pleszew': 'PL-WP',
+    'Skórzewo': 'PL-WP', 'Koluszki': 'PL-LD', 'Lębork': 'PL-PM', 'Falenty': 'PL-MZ',
+    'Białka Tatrzańska': 'PL-MA', 'Libertów': 'PL-MA', 'Borkowo Kościelne': 'PL-MZ', 'Lubartów': 'PL-LU',
+    'Leżajsk': 'PL-PK', 'Choszczno': 'PL-ZP', 'Mysłakowice': 'PL-DS', 'Skuły': 'PL-MZ',
+    'Kościelna Wieś': 'PL-WP', 'Wysokie Mazowieckie': 'PL-PD', 'Przystajń': 'PL-SL', 'Kolbudy': 'PL-PM',
+    'Wadowice': 'PL-MA', 'Kęty': 'PL-MA', 'Czerwionka-Leszczyny': 'PL-SL', 'Maków Nowy': 'PL-MZ',
+    'Nowiny': 'PL-SK', 'Jarkowice': 'PL-DS', 'Dobrzejewice': 'PL-KP', 'Bądkowo': 'PL-KP',
+    'Wsola': 'PL-MZ', 'Kłodzko': 'PL-DS', 'Baranowo': 'PL-WP', 'Gąbin': 'PL-MZ',
+    'Koniecpol': 'PL-SL', 'Ropczyce': 'PL-PK', 'Wojnicz': 'PL-MA', 'Jurgów': 'PL-MA',
+    'Opole Lubelskie': 'PL-LU', 'Nowy Dwór Mazowiecki': 'PL-MZ', 'Ustroń': 'PL-SL', 'Wieliczka': 'PL-MA',
+    'Gnojnik': 'PL-MA', 'Węgrzce Wielkie': 'PL-MA', 'Tyniec Mały': 'PL-DS', 'Głubczyce': 'PL-OP',
+    'Golub-Dobrzyń': 'PL-KP', 'Gryfino': 'PL-ZP', 'Wieluń': 'PL-LD', 'Kowary': 'PL-DS',
+    'Radziechowy': 'PL-SL', 'Konstantynów Łódzki': 'PL-LD', 'Słotwina': 'PL-SL', 'Zielonka': 'PL-MZ',
+    'Kobiór': 'PL-SL', 'Strzelce Opolskie': 'PL-OP', 'Jawor': 'PL-DS', 'Stare Babice': 'PL-MZ',
+    'Piotrków Kujawski': 'PL-KP', 'Przeźmierowo': 'PL-WP', 'Zieleniewo': 'PL-ZP', 'Radwanice': 'PL-DS',
+    'Falenty Nowe': 'PL-MZ', 'Baryczka': 'PL-PK',
+    'Bierwiecka Wola': 'PL-MZ', 'Bieniewice': 'PL-MZ', 'Raciąż': 'PL-MZ', 'Postomino': 'PL-ZP',
+    'Ścinawa': 'PL-DS', 'Myślenice': 'PL-MA', 'Żernica': 'PL-SL', 'Paszkówka': 'PL-MA',
+    'Stara Iwiczna': 'PL-MZ', 'Podlesie': 'PL-SL', 'Kalwaria Zebrzydowska': 'PL-MA',
+    'Miejsce Piastowe': 'PL-PK', 'Kamyk': 'PL-SL',
+    'Babiak': 'PL-WP', 'Klus': 'PL-WN', 'Przytyk': 'PL-MZ', 'Wilkowice': 'PL-SL',
+    'Ludwinów': 'PL-MZ', 'Gdów': 'PL-MA', 'Żory': 'PL-SL', 'Ostrołęka': 'PL-MZ',
+    'Jędrzejów': 'PL-SK', 'Nowodworce': 'PL-PD', 'Niechanowo': 'PL-WP',
+    'Starowa Góra': 'PL-LD', 'Głogoczów': 'PL-MA', 'Buczkowice': 'PL-SL',
+    'Krosno Odrzańskie': 'PL-LB', 'Żyrardów': 'PL-MZ', 'Kopanica': 'PL-WP',
+    'Krotoszyn': 'PL-WP', 'Mory': 'PL-MZ', 'Piasek': 'PL-SL'
 }
 
 REGION_NAMES = {
@@ -166,6 +239,25 @@ REGION_NAMES = {
     'PL-WN': 'Warmińsko-mazurskie',
     'PL-WP': 'Wielkopolskie',
     'PL-ZP': 'Zachodniopomorskie'
+}
+
+REGION_NAME_TO_CODE = {
+    'dolnośląskie': 'PL-DS',
+    'kujawsko-pomorskie': 'PL-KP',
+    'lubelskie': 'PL-LU',
+    'lubuskie': 'PL-LB',
+    'łódzkie': 'PL-LD',
+    'małopolskie': 'PL-MA',
+    'mazowieckie': 'PL-MZ',
+    'opolskie': 'PL-OP',
+    'podkarpackie': 'PL-PK',
+    'podlaskie': 'PL-PD',
+    'pomorskie': 'PL-PM',
+    'śląskie': 'PL-SL',
+    'świętokrzyskie': 'PL-SK',
+    'warmińsko-mazurskie': 'PL-WN',
+    'wielkopolskie': 'PL-WP',
+    'zachodniopomorskie': 'PL-ZP'
 }
 
 
@@ -264,7 +356,10 @@ def _enrich_otomoto_ad(url):
             txt = el.get_text(strip=True)
             if txt == "Numer rejestracyjny pojazdu":
                 nxt = el.find_next_sibling()
-                if nxt: reg_plate = nxt.get_text(strip=True)
+                if nxt:
+                    candidate = nxt.get_text(strip=True)
+                    if is_valid_registration_plate(candidate):
+                        reg_plate = candidate.upper()
             elif txt == "Pierwsza rejestracja":
                 nxt = el.find_next_sibling()
                 if nxt: reg_date = nxt.get_text(strip=True)
@@ -318,11 +413,15 @@ def _approve_listing(conn, listing, overrides=None):
     
     # Store these in variables so we can inject them into the DB later
     final_reg_plate = _get("registration_plate")
+    if final_reg_plate and not is_valid_registration_plate(final_reg_plate):
+        final_reg_plate = None
     final_first_reg = _get("first_registration_date")
 
-    # Enrich location with Nominatim
+    # Enrich location with CITY_TO_REGION or Nominatim
     loc_city = _get("location_city")
     loc_region = listing.get("location_region")
+    if not loc_region and loc_city:
+        loc_region = CITY_TO_REGION.get(loc_city)
     if loc_city and (not loc_region or len(loc_region) != 5):
         best_region = _enrich_location_with_nominatim(loc_city)
         if best_region: loc_region = best_region
@@ -559,7 +658,7 @@ def dashboard():
 
     recent_sql = """
         SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
-               o.price_pln, o.mileage_km, o.location_city, o.source, o.source_method, o.observed_at, o.source_url
+               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.source, o.source_method, o.observed_at, o.source_url
         FROM listing_observations o
         JOIN vehicles v ON o.vin = v.vin
     """
@@ -590,10 +689,12 @@ def dashboard():
         cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == filter_region]
         if cities_in_region:
             placeholders = ",".join("?" for _ in cities_in_region)
-            wheres.append(f"o.location_city IN ({placeholders})")
+            wheres.append(f"(o.location_region = ? OR o.location_city IN ({placeholders}))")
+            params.append(filter_region)
             params.extend(cities_in_region)
         else:
-            wheres.append("1=0")
+            wheres.append("o.location_region = ?")
+            params.append(filter_region)
         reg_name = REGION_NAMES.get(filter_region, filter_region)
         active_filter = {"type": "region", "val": filter_region, "label": f"Voivodeship: {reg_name} ({filter_region})"}
 
@@ -607,7 +708,9 @@ def dashboard():
     recent = []
     for r in recent_rows:
         d = dict(r)
-        reg = CITY_TO_REGION.get(d.get("location_city"), "")
+        reg = d.get("location_region")
+        if not reg or len(reg) != 5:
+            reg = CITY_TO_REGION.get(d.get("location_city"), "")
         d["region"] = reg
         d["region_name"] = REGION_NAMES.get(reg, "")
         recent.append(d)
@@ -683,13 +786,43 @@ def model_analytics():
 
     STANDARD_MODELS = [
         {
+            "id": "alpina_bmw",
+            "name": "Alpina BMW (B3 / B5 / D3 / D5)",
+            "make": "Alpina",
+            "model": "Alpina",
+            "variant": "B3 / B5 / D3 / D5",
+            "years": "2005–",
+            "engine": "Biturbo / D-Turbo · 350-600 HP · RWD/AWD",
+            "where": "(v.make = 'Alpina' OR v.variant LIKE '%Alpina%' OR v.model LIKE '%Alpina%')"
+        },
+        {
+            "id": "audi_r8_v8",
+            "name": "Audi R8 V8 (Type 42)",
+            "make": "Audi",
+            "model": "R8",
+            "variant": "Type 42 V8",
+            "years": "2007–2015",
+            "engine": "4.2L V8 FSI · 420-430 HP · Quattro",
+            "where": "v.make = 'Audi' AND v.model = 'R8' AND (v.variant LIKE '%V8%' OR v.power_hp < 500)"
+        },
+        {
+            "id": "audi_r8_v10",
+            "name": "Audi R8 V10 (Type 42 / 4S)",
+            "make": "Audi",
+            "model": "R8",
+            "variant": "Type 42 / 4S V10",
+            "years": "2009–2023",
+            "engine": "5.2L V10 FSI · 525-620 HP · Quattro",
+            "where": "v.make = 'Audi' AND v.model = 'R8' AND (v.variant LIKE '%V10%' OR v.power_hp >= 500)"
+        },
+        {
             "id": "rs3_8v",
             "name": "Audi RS3 (8V)",
             "make": "Audi",
             "model": "RS3",
             "variant": "8V",
             "years": "2015–2020",
-            "engine": "2.5L TFSI · 400 HP · Quattro",
+            "engine": "2.5L TFSI · 367-400 HP · Quattro",
             "where": "v.make = 'Audi' AND (v.model = 'RS3' OR v.variant LIKE '%8V%')"
         },
         {
@@ -708,69 +841,9 @@ def model_analytics():
             "make": "Audi",
             "model": "RS4",
             "variant": "B9 Avant",
-            "years": "2017–2019",
-            "engine": "2.9L V6 Biturbo · 450 HP · Quattro",
-            "where": "v.make = 'Audi' AND v.model = 'RS4' AND (v.variant LIKE '%B9%' OR (v.year >= 2017 AND v.year <= 2020)) AND (v.variant NOT LIKE '%B8%' AND (v.year >= 2017 OR v.year IS NULL))"
-        },
-        {
-            "id": "c63_w204",
-            "name": "Mercedes C63 AMG",
-            "make": "Mercedes-Benz",
-            "model": "Klasa C",
-            "variant": "W204 C63 AMG",
-            "years": "2008–2015",
-            "engine": "6.2L V8 M156 · 457 HP · RWD",
-            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W204%' OR v.variant LIKE '%C63%' OR v.variant LIKE '%C 63%' OR (v.model = 'Klasa C' AND (v.power_hp >= 450 OR v.engine_cc > 6000)))"
-        },
-        {
-            "id": "e55_w211",
-            "name": "Mercedes E55 AMG",
-            "make": "Mercedes-Benz",
-            "model": "Klasa E",
-            "variant": "W211 E55 AMG",
-            "years": "2003–2006",
-            "engine": "5.4L V8 Kompressor · 476 HP · RWD",
-            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W211%' OR v.variant LIKE '%E55%' OR v.variant LIKE '%E 55%' OR (v.model = 'Klasa E' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
-        },
-        {
-            "id": "m4_f82",
-            "name": "BMW M4 (F82)",
-            "make": "BMW",
-            "model": "M4",
-            "variant": "F82",
-            "years": "2014–2020",
-            "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD",
-            "where": "v.make = 'BMW' AND (v.model = 'M4' OR v.variant LIKE '%F82%') AND (v.year >= 2014 AND v.year <= 2020)"
-        },
-        {
-            "id": "x3_m_f97",
-            "name": "BMW X3 M (F97)",
-            "make": "BMW",
-            "model": "X3 M",
-            "variant": "F97",
-            "years": "2019–2024",
-            "engine": "3.0L Twin-Turbo S58 · 510 HP · AWD",
-            "where": "v.make = 'BMW' AND (v.model = 'X3 M' OR v.model = 'X3M' OR (v.model = 'X3' AND (v.variant LIKE '%M%' OR v.variant LIKE '%F97%'))) AND (v.year >= 2019 AND v.year <= 2024)"
-        },
-        {
-            "id": "m3_f80",
-            "name": "BMW M3 (F80)",
-            "make": "BMW",
-            "model": "M3",
-            "variant": "F80",
-            "years": "2014–2020",
-            "engine": "3.0L Twin-Turbo S55 · 431 HP · RWD",
-            "where": "v.make = 'BMW' AND (v.model = 'M3' OR v.variant LIKE '%F80%') AND (v.year >= 2014 AND v.year <= 2020)"
-        },
-        {
-            "id": "x3_m40i_g01",
-            "name": "BMW X3 M40i (G01)",
-            "make": "BMW",
-            "model": "X3",
-            "variant": "M40i G01",
             "years": "2017–2024",
-            "engine": "3.0L Turbo B58 · 360 HP · AWD",
-            "where": "v.make = 'BMW' AND (v.model = 'X3 M40i' OR (v.model = 'X3' AND (v.variant LIKE '%M40i%' OR v.variant LIKE '%G01%'))) AND (v.year >= 2017 AND v.year <= 2024)"
+            "engine": "2.9L V6 Biturbo · 450 HP · Quattro",
+            "where": "v.make = 'Audi' AND v.model = 'RS4' AND (v.variant LIKE '%B9%' OR (v.year >= 2017 AND v.year <= 2024)) AND (v.variant NOT LIKE '%B8%' AND (v.year >= 2017 OR v.year IS NULL))"
         },
         {
             "id": "ttrs",
@@ -783,14 +856,34 @@ def model_analytics():
             "where": "v.make = 'Audi' AND (v.model = 'TT RS' OR (v.model = 'TT' AND (v.variant LIKE '%RS%' OR v.power_hp >= 340)))"
         },
         {
+            "id": "bmw_135i_e82",
+            "name": "BMW 135i (E82/E88)",
+            "make": "BMW",
+            "model": "Seria 1",
+            "variant": "135i E82/E88",
+            "years": "2007–2013",
+            "engine": "3.0L Turbo N54/N55 · 306 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'Seria 1' OR v.model = '135i') AND (v.variant LIKE '%135i%' OR v.notes LIKE '%135i%')"
+        },
+        {
+            "id": "bmw_1m_e82",
+            "name": "BMW 1M Coupe (E82)",
+            "make": "BMW",
+            "model": "Seria 1",
+            "variant": "1M E82",
+            "years": "2011–2012",
+            "engine": "3.0L Twin-Turbo N54 · 340 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'Seria 1' OR v.model = '1M') AND (v.variant LIKE '%1M%' OR v.notes LIKE '%1M%')"
+        },
+        {
             "id": "m2_f87",
             "name": "BMW M2 (F87)",
             "make": "BMW",
             "model": "M2",
             "variant": "F87",
             "years": "2016–2021",
-            "engine": "3.0L N55/S55 · 370-410 HP · RWD",
-            "where": "v.make = 'BMW' AND (v.model = 'M2' OR v.variant LIKE '%F87%') AND (v.year >= 2015 AND v.year <= 2021)"
+            "engine": "3.0L N55/S55 · 370-450 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M2' OR v.variant LIKE '%F87%') AND (v.variant LIKE '%F87%' OR (v.year >= 2015 AND v.year <= 2021))"
         },
         {
             "id": "m2_g87",
@@ -798,39 +891,89 @@ def model_analytics():
             "make": "BMW",
             "model": "M2",
             "variant": "G87",
-            "years": "2022–",
-            "engine": "3.0L Twin-Turbo S58 · 460 HP · RWD",
-            "where": "v.make = 'BMW' AND (v.model = 'M2' OR v.variant LIKE '%G87%') AND v.year >= 2022"
+            "years": "2023–",
+            "engine": "3.0L Twin-Turbo S58 · 460-480 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M2' OR v.variant LIKE '%G87%') AND (v.variant LIKE '%G87%' OR v.year >= 2022)"
         },
         {
-            "id": "cls55_c219",
-            "name": "Mercedes CLS55 AMG",
-            "make": "Mercedes-Benz",
-            "model": "CLS",
-            "variant": "C219 CLS 55 AMG",
-            "years": "2004–2006",
-            "engine": "5.4L V8 Kompressor · 476 HP · RWD",
-            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%C219%' OR v.variant LIKE '%CLS 55%' OR v.variant LIKE '%CLS55%' OR (v.model = 'CLS' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
+            "id": "bmw_m3_e46",
+            "name": "BMW M3 (E46)",
+            "make": "BMW",
+            "model": "M3",
+            "variant": "E46 M3",
+            "years": "2000–2006",
+            "engine": "3.2L NA S54 · 343 HP · RWD",
+            "where": "v.make = 'BMW' AND v.model = 'M3' AND (v.variant LIKE '%E46%' OR (v.year >= 2000 AND v.year <= 2006))"
         },
         {
-            "id": "cayman_gt4_981",
-            "name": "Porsche Cayman GT4 (981)",
-            "make": "Porsche",
-            "model": "Cayman",
-            "variant": "GT4 981",
-            "years": "2015–2016",
-            "engine": "3.8L Flat-6 NA · 385 HP · RWD",
-            "where": "v.make = 'Porsche' AND (v.model = 'Cayman' OR v.model = '718 Cayman') AND (v.variant LIKE '%GT4%' OR v.variant LIKE '%981%') AND v.year <= 2016"
+            "id": "m3_f80",
+            "name": "BMW M3 (F80)",
+            "make": "BMW",
+            "model": "M3",
+            "variant": "F80",
+            "years": "2014–2018",
+            "engine": "3.0L Twin-Turbo S55 · 431-460 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M3' OR v.variant LIKE '%F80%') AND (v.variant LIKE '%F80%' OR (v.year >= 2014 AND v.year <= 2019))"
         },
         {
-            "id": "gr_yaris",
-            "name": "Toyota GR Yaris",
-            "make": "Toyota",
-            "model": "Yaris",
-            "variant": "GR",
-            "years": "2020–",
-            "engine": "1.6L 3-cyl Turbo · 261 HP · AWD",
-            "where": "v.make = 'Toyota' AND (v.model = 'GR Yaris' OR (v.model = 'Yaris' AND (v.variant LIKE '%GR%' OR v.power_hp >= 250)))"
+            "id": "m4_f82",
+            "name": "BMW M4 (F82)",
+            "make": "BMW",
+            "model": "M4",
+            "variant": "F82",
+            "years": "2014–2020",
+            "engine": "3.0L Twin-Turbo S55 · 431-500 HP · RWD",
+            "where": "v.make = 'BMW' AND (v.model = 'M4' OR v.variant LIKE '%F82%' OR v.variant LIKE '%F83%') AND (v.year >= 2014 AND v.year <= 2020)"
+        },
+        {
+            "id": "bmw_m5_e39",
+            "name": "BMW M5 (E39)",
+            "make": "BMW",
+            "model": "M5",
+            "variant": "E39 M5",
+            "years": "1998–2003",
+            "engine": "4.9L V8 NA S62 · 400 HP · RWD",
+            "where": "v.make = 'BMW' AND v.model = 'M5' AND (v.variant LIKE '%E39%' OR (v.year >= 1998 AND v.year <= 2003))"
+        },
+        {
+            "id": "x3_m_f97",
+            "name": "BMW X3 M (F97)",
+            "make": "BMW",
+            "model": "X3 M",
+            "variant": "F97",
+            "years": "2019–2024",
+            "engine": "3.0L Twin-Turbo S58 · 480-510 HP · AWD",
+            "where": "v.make = 'BMW' AND (v.model = 'X3 M' OR (v.model = 'X3' AND v.variant LIKE '%F97%')) AND (v.variant NOT LIKE '%M40i%' AND v.model NOT LIKE '%M40i%')"
+        },
+        {
+            "id": "x3_m40i_g01",
+            "name": "BMW X3 M40i (G01)",
+            "make": "BMW",
+            "model": "X3",
+            "variant": "M40i G01",
+            "years": "2017–2024",
+            "engine": "3.0L Turbo B58 · 360 HP · AWD",
+            "where": "v.make = 'BMW' AND (v.model = 'X3' OR v.model = 'X3 M40i') AND (v.variant LIKE '%M40i%' OR v.variant LIKE '%G01%') AND (v.model != 'X3 M' AND v.variant NOT LIKE '%F97%')"
+        },
+        {
+            "id": "bmw_z3_m",
+            "name": "BMW Z3 M (Coupe / Roadster)",
+            "make": "BMW",
+            "model": "Z3",
+            "variant": "Z3 M",
+            "years": "1997–2002",
+            "engine": "3.2L NA S50/S54 · 321-325 HP · RWD",
+            "where": "v.make = 'BMW' AND v.model = 'Z3' AND (v.variant LIKE '%Z3 M%' OR v.power_hp >= 300)"
+        },
+        {
+            "id": "honda_s2000",
+            "name": "Honda S2000",
+            "make": "Honda",
+            "model": "S2000",
+            "variant": "AP1 / AP2",
+            "years": "1999–2009",
+            "engine": "2.0L VTEC F20C · 240 HP · RWD",
+            "where": "v.make = 'Honda' AND v.model = 'S2000'"
         },
         {
             "id": "a45_w176",
@@ -839,11 +982,151 @@ def model_analytics():
             "model": "Klasa A",
             "variant": "W176 A45 AMG",
             "years": "2013–2018",
-            "engine": "2.0L Turbo · 360-381 HP · AWD",
-            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa A' OR v.model = 'A 45 AMG' OR v.model = 'A45 AMG') AND (v.variant LIKE '%W176%' OR v.variant LIKE '%A 45%' OR v.variant LIKE '%A45%' OR v.power_hp >= 360)"
+            "engine": "2.0L Turbo M133 · 360-381 HP · 4MATIC",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa A' OR v.model LIKE '%A 45%' OR v.model LIKE '%A45%') AND (v.variant LIKE '%W176%' OR v.variant LIKE '%A45%' OR v.power_hp >= 360)"
+        },
+        {
+            "id": "c63_w204",
+            "name": "Mercedes C63 AMG (W204)",
+            "make": "Mercedes-Benz",
+            "model": "Klasa C",
+            "variant": "W204 C63 AMG",
+            "years": "2008–2015",
+            "engine": "6.2L V8 M156 · 457-507 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W204%' OR v.variant LIKE '%C63%' OR v.variant LIKE '%C 63%' OR (v.model = 'Klasa C' AND (v.power_hp >= 450 OR v.engine_cc > 6000)))"
+        },
+        {
+            "id": "cl55_c215",
+            "name": "Mercedes CL55 AMG (C215)",
+            "make": "Mercedes-Benz",
+            "model": "CL",
+            "variant": "CL55 AMG C215",
+            "years": "2002–2006",
+            "engine": "5.4L V8 Kompressor M113K · 500 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'CL' OR v.variant LIKE '%CL55%' OR v.variant LIKE '%C215%') AND (v.variant LIKE '%CL55%' OR v.power_hp >= 490)"
+        },
+        {
+            "id": "clk63_w209",
+            "name": "Mercedes CLK63 AMG (W209)",
+            "make": "Mercedes-Benz",
+            "model": "Klasa CLK",
+            "variant": "W209 CLK 63 AMG",
+            "years": "2006–2009",
+            "engine": "6.2L V8 M156 · 481 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa CLK' OR v.variant LIKE '%CLK 63%' OR v.variant LIKE '%CLK63%')"
+        },
+        {
+            "id": "cls55_c219",
+            "name": "Mercedes CLS55 AMG (C219)",
+            "make": "Mercedes-Benz",
+            "model": "CLS",
+            "variant": "C219 CLS 55 AMG",
+            "years": "2004–2006",
+            "engine": "5.4L V8 Kompressor M113K · 476 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%C219%' OR v.variant LIKE '%CLS 55%' OR v.variant LIKE '%CLS55%' OR (v.model = 'CLS' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
+        },
+        {
+            "id": "e55_w211",
+            "name": "Mercedes E55 AMG (W211)",
+            "make": "Mercedes-Benz",
+            "model": "Klasa E",
+            "variant": "W211 E55 AMG",
+            "years": "2003–2006",
+            "engine": "5.4L V8 Kompressor M113K · 476 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W211%' OR v.variant LIKE '%E55%' OR v.variant LIKE '%E 55%' OR (v.model = 'Klasa E' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
+        },
+        {
+            "id": "g55_w463",
+            "name": "Mercedes G55 AMG (W463)",
+            "make": "Mercedes-Benz",
+            "model": "Klasa G",
+            "variant": "G55 AMG W463",
+            "years": "2004–2012",
+            "engine": "5.4L V8 Kompressor M113K · 476-507 HP · 4WD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa G' OR v.variant LIKE '%G55%' OR v.variant LIKE '%W463%') AND (v.variant LIKE '%G55%' OR v.power_hp >= 470)"
+        },
+        {
+            "id": "gla45_x156",
+            "name": "Mercedes GLA45 AMG (X156)",
+            "make": "Mercedes-Benz",
+            "model": "GLA",
+            "variant": "GLA45 AMG X156",
+            "years": "2014–2019",
+            "engine": "2.0L Turbo M133 · 360-381 HP · 4MATIC",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'GLA' OR v.variant LIKE '%GLA45%' OR v.variant LIKE '%X156%') AND (v.variant LIKE '%GLA45%' OR v.power_hp >= 360)"
+        },
+        {
+            "id": "s55_w220",
+            "name": "Mercedes S55 AMG (W220)",
+            "make": "Mercedes-Benz",
+            "model": "Klasa S",
+            "variant": "S55 AMG W220",
+            "years": "2002–2005",
+            "engine": "5.4L V8 Kompressor M113K · 500 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa S' OR v.variant LIKE '%S55%' OR v.variant LIKE '%W220%') AND (v.variant LIKE '%S55%' OR v.power_hp >= 490)"
+        },
+        {
+            "id": "sl55_r230",
+            "name": "Mercedes SL55 AMG (R230)",
+            "make": "Mercedes-Benz",
+            "model": "SL",
+            "variant": "SL55 AMG R230",
+            "years": "2001–2008",
+            "engine": "5.4L V8 Kompressor M113K · 476-517 HP · RWD",
+            "where": "v.make = 'Mercedes-Benz' AND (v.model = 'SL' OR v.variant LIKE '%SL55%' OR v.variant LIKE '%R230%') AND (v.variant LIKE '%SL55%' OR v.power_hp >= 470)"
+        },
+        {
+            "id": "cayman_987",
+            "name": "Porsche Cayman (987)",
+            "make": "Porsche",
+            "model": "Cayman",
+            "variant": "Cayman 987",
+            "years": "2005–2012",
+            "engine": "3.4L Flat-6 NA · 295-330 HP · RWD",
+            "where": "v.make = 'Porsche' AND v.model = 'Cayman' AND (v.variant LIKE '%987%' OR (v.year >= 2005 AND v.year <= 2012))"
+        },
+        {
+            "id": "cayman_981",
+            "name": "Porsche Cayman (981)",
+            "make": "Porsche",
+            "model": "Cayman",
+            "variant": "Cayman 981 / GT4",
+            "years": "2013–2016",
+            "engine": "3.4L / 3.8L Flat-6 NA · 325-385 HP · RWD",
+            "where": "v.make = 'Porsche' AND v.model = 'Cayman' AND (v.variant LIKE '%981%' OR (v.year >= 2013 AND v.year <= 2016))"
+        },
+        {
+            "id": "cayman_718",
+            "name": "Porsche 718 Cayman",
+            "make": "Porsche",
+            "model": "718 Cayman",
+            "variant": "718 Cayman",
+            "years": "2016–",
+            "engine": "2.5L Turbo / 4.0L NA · 350-500 HP · RWD",
+            "where": "v.make = 'Porsche' AND (v.model = '718' OR v.model = 'Cayman' OR v.model = '718 Cayman') AND (v.variant LIKE '%718%' OR v.year >= 2016)"
+        },
+        {
+            "id": "macan_gen1",
+            "name": "Porsche Macan Gen 1",
+            "make": "Porsche",
+            "model": "Macan",
+            "variant": "Macan Gen 1 (S/GTS/Turbo)",
+            "years": "2014–2018",
+            "engine": "3.0L / 3.6L V6 Biturbo · 340-440 HP · AWD",
+            "where": "v.make = 'Porsche' AND v.model = 'Macan' AND (v.variant LIKE '%Macan%' OR (v.year >= 2014 AND v.year <= 2018))"
+        },
+        {
+            "id": "gr_yaris",
+            "name": "Toyota GR Yaris",
+            "make": "Toyota",
+            "model": "GR Yaris",
+            "variant": "GR Yaris",
+            "years": "2020–",
+            "engine": "1.6L 3-cyl Turbo · 261-280 HP · AWD",
+            "where": "v.make = 'Toyota' AND (v.model = 'GR Yaris' OR (v.model = 'Yaris' AND (v.variant LIKE '%GR%' OR v.power_hp >= 250)))"
         },
     ]
-    STANDARD_MODELS = sorted(STANDARD_MODELS, key=lambda m: m["name"])
+    STANDARD_MODELS = sorted(STANDARD_MODELS, key=lambda m: (m["make"], m["name"]))
 
     selected_id = request.args.get("model", "rs4_b85")
     current_model = next((m for m in STANDARD_MODELS if m["id"] == selected_id), STANDARD_MODELS[0])
@@ -868,7 +1151,11 @@ def model_analytics():
     region_counts = {}
     for v in vehicles:
         reg = v.get("location_region")
-        if not reg or len(reg) != 5:
+        if reg and reg in REGION_NAMES:
+            pass
+        elif reg and reg.lower() in REGION_NAME_TO_CODE:
+            reg = REGION_NAME_TO_CODE[reg.lower()]
+        else:
             city = v.get("location_city")
             if city and city in CITY_TO_REGION:
                 reg = CITY_TO_REGION[city]
@@ -1070,7 +1357,8 @@ def vehicle_detail(vin):
 
     # Fetch original data for rich view
     orig = conn.execute("""
-        SELECT photos, equipment, raw_description
+        SELECT photos, equipment, raw_description,
+               ai_summary, ai_equipment, ai_reasoning, ai_suggested_market, ai_interior_color, ai_conflict
         FROM pending_listings
         WHERE vin=?
         ORDER BY scraped_at DESC LIMIT 1
@@ -1079,11 +1367,31 @@ def vehicle_detail(vin):
     photos = []
     equipment = []
     raw_desc = ""
+    ai_data = {
+        "summary": vehicle["ai_summary"] if "ai_summary" in vehicle.keys() else None,
+        "equipment": [],
+        "reasoning": None,
+        "market": None,
+        "interior": vehicle["color_int"] if "color_int" in vehicle.keys() else None,
+        "has_conflict": False,
+    }
     if orig:
         import json
         photos = json.loads(orig["photos"]) if orig["photos"] else []
         equipment = json.loads(orig["equipment"]) if orig["equipment"] else []
         raw_desc = orig["raw_description"]
+        if orig["ai_summary"]:
+            ai_data["summary"] = orig["ai_summary"]
+        if orig["ai_equipment"]:
+            try:
+                ai_data["equipment"] = json.loads(orig["ai_equipment"]) if isinstance(orig["ai_equipment"], str) else orig["ai_equipment"]
+            except Exception:
+                ai_data["equipment"] = []
+        ai_data["reasoning"] = orig["ai_reasoning"]
+        ai_data["market"] = orig["ai_suggested_market"]
+        if orig["ai_interior_color"]:
+            ai_data["interior"] = orig["ai_interior_color"]
+        ai_data["has_conflict"] = bool(orig["ai_conflict"])
 
     conn.close()
     return render_template("vehicle.html",
@@ -1098,6 +1406,7 @@ def vehicle_detail(vin):
         photos=photos,
         equipment=equipment,
         raw_desc=raw_desc,
+        ai_data=ai_data,
     )
 
 
@@ -1194,7 +1503,7 @@ def add_observation(vin):
         safe_float(data.get("price_eur")),
         safe_int(data.get("mileage_km")),
         data.get("location_city")  or None,
-        data.get("location_region")or None,
+        data.get("location_region") or (CITY_TO_REGION.get(data.get("location_city")) if data.get("location_city") else None),
         data.get("seller_type","private"),
         data.get("seller_name")    or None,
         data.get("first_seen_at")  or NOW(),
@@ -1427,7 +1736,8 @@ def api_ingest():
         p.get("source_url"), p.get("title"),
         safe_float(p.get("price_pln")), safe_float(p.get("price_eur")),
         safe_int(p.get("mileage_km")),
-        p.get("location_city"), p.get("location_region"),
+        p.get("location_city"),
+        p.get("location_region") or (CITY_TO_REGION.get(p.get("location_city")) if p.get("location_city") else None),
         p.get("seller_type"), p.get("seller_name"),
         p.get("first_seen_at") or NOW(),
         p.get("observed_at")   or NOW(),
@@ -1543,6 +1853,10 @@ def api_ingest_pending():
     vin    = (p.get("vin") or "").strip().upper()
     vc     = p.get("vin_confidence", "none")
 
+    reg_plate = p.get("registration_plate")
+    if reg_plate and not is_valid_registration_plate(reg_plate):
+        reg_plate = None
+
     conn = get_db()
     try:
         cur = conn.execute("""
@@ -1569,10 +1883,11 @@ def api_ingest_pending():
             p.get("drivetrain"), p.get("transmission"),
             p.get("color_ext"), p.get("color_int"), p.get("equipment"), safe_int(p.get("doors")),
             safe_float(p.get("price_pln")), safe_float(p.get("price_eur")), safe_int(p.get("mileage_km")),
-            p.get("location_city"), p.get("location_region"),
+            p.get("location_city"),
+            p.get("location_region") or (CITY_TO_REGION.get(p.get("location_city")) if p.get("location_city") else None),
             p.get("seller_type"), p.get("seller_name"),
             vin or None, vc,
-            p.get("registration_plate"), p.get("first_registration_date"), p.get("origin_market"),
+            reg_plate, p.get("first_registration_date"), p.get("origin_market"),
             1,
         ))
         conn.commit()
@@ -1594,7 +1909,10 @@ def api_ingest_pending():
                 updates_pending = {}
                 for field in fields_to_check:
                     if not existing[field] and p.get(field):
-                        updates_pending[field] = p[field]
+                        val = p[field]
+                        if field == "registration_plate" and not is_valid_registration_plate(val):
+                            continue
+                        updates_pending[field] = val
                 
                 if updates_pending:
                     set_clause = ", ".join(f"{k}=?" for k in updates_pending.keys())
@@ -1688,7 +2006,8 @@ def api_ingest_pending():
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     vin, source, sid, p.get("source_url"), p.get("raw_title"),
-                    p.get("price_pln"), p.get("mileage_km"), p.get("location_city"), p.get("location_region"),
+                    p.get("price_pln"), p.get("mileage_km"), p.get("location_city"),
+                    p.get("location_region") or (CITY_TO_REGION.get(p.get("location_city")) if p.get("location_city") else None),
                     p.get("seller_type") or "private", p.get("seller_name"), p.get("registration_plate"),
                     NOW(), NOW(), f"scraper-{source}",
                 ))
@@ -1749,7 +2068,13 @@ def review_detail(pid):
         return "Not found", 404
     photos = json.loads(listing["photos"]) if listing["photos"] else []
     equipment = json.loads(listing["equipment"]) if listing["equipment"] else []
-    return render_template("review_detail.html", listing=listing, photos=photos, equipment=equipment)
+    ai_equipment = []
+    if listing["ai_equipment"]:
+        try:
+            ai_equipment = json.loads(listing["ai_equipment"]) if isinstance(listing["ai_equipment"], str) else listing["ai_equipment"]
+        except Exception:
+            ai_equipment = []
+    return render_template("review_detail.html", listing=listing, photos=photos, equipment=equipment, ai_equipment=ai_equipment)
 
 
 @app.route("/review/<int:pid>/approve", methods=["POST"])

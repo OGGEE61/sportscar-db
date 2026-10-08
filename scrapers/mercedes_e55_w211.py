@@ -14,7 +14,7 @@ CONFIG = ScraperConfig(
     variant = "W211 E55 AMG",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/mercedes-benz/klasa-e"
+        "https://www.otomoto.pl/osobowe/mercedes-benz/e-klasa"
         "?search%5Bfilter_float_year%3Afrom%5D=2003"
         "&search%5Bfilter_float_year%3Ato%5D=2006"
         "&search%5Bfilter_float_engine_power%3Afrom%5D=460"

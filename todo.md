@@ -1,0 +1,6 @@
+[x] 1. Poprawić przypisywanie województw do miejscowości, aby mapa lepiej działała (Zrobione - 100% zmapowane, dodany fallback do CITY_TO_REGION)
+[x] 2. Dodać przetwarzanie danych z ogłoszenia przy pomocy LLM w celu dopisania elementów wyposażenia do ogłoszenia (Zrobione - enrich_with_bielik.py + drugie okienko "Podsumowanie przez AI" pod opisem ogłoszenia na podstronie pojazdu i w kolejce review)
+[x] 3. Zweryfikować nowe scrappery (Zrobione - Mercedes Kompressor, A45/GLA45 roczniki 2016-2020, Porsche Cayman wersje S/GTS/GT4 przeniesione do scrapers/)
+[x] 4. W model analytics, na drop downie nie ma wszystkich modeli z naszej bazy (Zrobione - dodano wszystkie 34 modele pogrupowane według marek z optgroup)
+[x] 5. W model analytics w x3m, wyświetla też ogłoszenie od x3 m40i (Zrobione - ścisłe rozdzielenie X3 M F97 [18 szt.] od X3 M40i G01 [39 szt.])
+[x] 6. Nowa, estetyczna szata graficzna w stylu czystej bieli / light theme (Zrobione - czysty biały navbar, karty z miękkim cieniem i delikatną ramką, nowoczesna typografia Inter, estetyczne pigułki AI i wyposażenia)

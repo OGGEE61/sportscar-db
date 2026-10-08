@@ -13,10 +13,10 @@ CONFIG = ScraperConfig(
     variant = "W204 C63 AMG",
     source  = "otomoto",
     list_url = (
-        "https://www.otomoto.pl/osobowe/mercedes-benz/klasa-c"
-        "?search%5Bfilter_float_year%3Afrom%5D=2008"
-        "&search%5Bfilter_float_year%3Ato%5D=2015"
+        "https://www.otomoto.pl/osobowe/mercedes-benz/c-klasa/od-2008"
+        "?search%5Bfilter_float_engine_capacity%3Afrom%5D=6000"
         "&search%5Bfilter_float_engine_power%3Afrom%5D=450"
+        "&search%5Bfilter_float_year%3Ato%5D=2015"
         "&page={page}"
     ),
     title_must_contain = "C 63",
