@@ -246,7 +246,10 @@ def load_cookies() -> dict:
     return {}
 
 
+_token_error_logged = False
+
 def refresh_session(cookies: dict) -> dict:
+    global _token_error_logged
     """Try to get a fresh id_token using the Cognito refresh_token.
 
     The id_token expires after 15 minutes. The refresh_token lasts ~30 days.
@@ -296,13 +299,17 @@ def refresh_session(cookies: dict) -> dict:
         )
         if r.status_code != 200:
             print(f"[auth] Token refresh failed: HTTP {r.status_code} -- {r.text[:120]}")
-            _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.")
+            if not _token_error_logged:
+                _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.")
+                _token_error_logged = True
             return cookies
         tokens       = r.json().get("AuthenticationResult", {})
         new_id_token = tokens.get("IdToken")
         if not new_id_token:
             print("[auth] Token refresh: no IdToken in response")
-            _log_run("error", "Token refresh failed: No IdToken in response.")
+            if not _token_error_logged:
+                _log_run("error", "Token refresh failed: No IdToken in response.")
+                _token_error_logged = True
             return cookies
         updated = dict(cookies)
         updated["id_token"] = new_id_token

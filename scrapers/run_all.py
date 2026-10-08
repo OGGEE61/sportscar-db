@@ -28,7 +28,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run
+from base_scraper import run, _log_run
 
 from audi_rs3_8v          import CONFIG    as RS3
 from audi_rs4_b85         import CONFIG    as RS4_B85
@@ -164,6 +164,8 @@ if __name__ == "__main__":
         time.sleep(jitter)
 
     totals = {"total": 0}
+    failed_models = []
+    success_count = 0
 
     for i, cfg in enumerate(scrapers_to_run):
         label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
@@ -173,8 +175,12 @@ if __name__ == "__main__":
         try:
             results = run(cfg)
             totals["total"] += len(results)
+            success_count += 1
         except Exception as e:
-            print(f"  [ERROR running scraper {label}]: {e}")
+            err_msg = str(e)
+            print(f"  [ERROR running scraper {label}]: {err_msg}")
+            failed_models.append((label, err_msg))
+            _log_run("error", f"Scraper '{label}' failed: {err_msg}")
 
         # If running 'all', take a long 2-minute break every 10 models to protect cookies
         if target in ("all", "fleet") and (i + 1) % 10 == 0 and (i + 1) < len(scrapers_to_run):
@@ -186,5 +192,15 @@ if __name__ == "__main__":
             time.sleep(pause)
 
     print(f"\n{'='*60}")
-    print(f"  ALL DONE — {totals['total']} listings processed across {len(scrapers_to_run)} scrapers")
+    print(f"  ALL DONE — {totals['total']} listings processed across {len(scrapers_to_run)} scrapers ({success_count} succeeded, {len(failed_models)} failed)")
     print(f"{'='*60}")
+
+    # Post batch summary log to database
+    summary_status = "error" if failed_models else "success"
+    if failed_models:
+        failed_names = ", ".join([name for name, _ in failed_models])
+        summary_msg = f"Scheduled run finished with errors: {len(failed_models)}/{len(scrapers_to_run)} failed ({failed_names}). Processed {totals['total']} listings."
+    else:
+        summary_msg = f"Scheduled run completed successfully: all {len(scrapers_to_run)} scrapers finished. Processed {totals['total']} listings."
+    _log_run(summary_status, summary_msg, processed=totals["total"])
+

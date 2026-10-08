@@ -92,3 +92,14 @@ jobs:
         
         # Run scrapers (target controlled by SCRAPER_TARGET env var)
         python scrapers/run_all.py
+
+    - name: Notify failure to SportsCar-DB
+      if: failure()
+      env:
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        BASE_URL: ${{ secrets.API_BASE }}
+      run: |
+        curl -s -X POST "$BASE_URL/api/log_run" \
+          -H "Authorization: Bearer $API_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{\"status\": \"error\", \"message\": \"GitHub Actions runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true
