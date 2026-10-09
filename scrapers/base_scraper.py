@@ -1130,7 +1130,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     
                 if post_to_api:
                     try:
-                        resp = requests.post(API_URL, json=payload, timeout=5,
+                        resp = requests.post(API_URL, json=payload, timeout=15,
                                              headers=API_HEADERS, impersonate="chrome")
                         rj   = resp.json()
                         tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
