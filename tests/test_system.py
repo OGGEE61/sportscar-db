@@ -1,7 +1,10 @@
 import os
+import sys
 import unittest
 import json
 import sqlite3
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Force sqlite backend and test DB
 os.environ["DB_BACKEND"] = "sqlite"
