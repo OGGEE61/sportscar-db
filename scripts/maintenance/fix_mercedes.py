@@ -1,6 +1,6 @@
 import os, glob
 
-for file in glob.glob("/Users/gustaw/Documents/Projects/sportscar-db/scrapers/mercedes_*.py"):
+for file in glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "scrapers/otomoto/mercedes_*.py")):
     with open(file, 'r') as f:
         content = f.read()
     

@@ -48,7 +48,13 @@ python app.py
 
 Then run any scraper in a second terminal:
 ```bash
-python scrapers/audi_rs3_8v.py
+# Otomoto:
+python scrapers/otomoto/audi_rs3_8v.py
+python scrapers/run_all.py single
+
+# OLX:
+python scrapers/olx/bmw_alpina.py
+python scrapers/run_olx.py all
 ```
 
 ---
