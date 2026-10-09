@@ -1,8 +1,9 @@
 """Run scrapers in sequence or selectively with rotation schedule.
 
 Usage:
-    python scrapers/run_all.py              # runs today's scheduled rotation (~2-3 models)
-    python scrapers/run_all.py rotation     # runs today's scheduled rotation
+    python scrapers/run_all.py              # runs scheduled single model for current 2h slot
+    python scrapers/run_all.py single       # runs scheduled single model for current 2h slot
+    python scrapers/run_all.py batch        # runs today's scheduled weekday batch
     python scrapers/run_all.py all          # runs all fleet scrapers
     python scrapers/run_all.py c63          # runs only C63 W204
     python scrapers/run_all.py e55          # runs only E55 W211
@@ -141,6 +142,16 @@ def get_today_rotation():
     day_name = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][weekday]
     return day_name, WEEKDAY_SCHEDULE.get(weekday, ALL_FLEET)
 
+def get_scheduled_single_model(interval_hours: int = 2):
+    """Deterministically pick 1 model based on the current 2-hour time slot.
+    Rotates continuously across ALL_FLEET (35 models every ~70 hours).
+    """
+    slot = int(time.time() // (interval_hours * 3600))
+    index = slot % len(ALL_FLEET)
+    cfg = ALL_FLEET[index]
+    label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
+    return cfg, index, label
+
 if __name__ == "__main__":
     target = os.environ.get("SCRAPER_TARGET", "").lower().strip()
     if len(sys.argv) > 1:
@@ -148,18 +159,22 @@ if __name__ == "__main__":
 
     if target in ("all", "fleet"):
         scrapers_to_run = ALL_FLEET
-        print(f"Target selected: ALL FLEET ({len(scrapers_to_run)} scrapers: C63, E55, RS4 B8.5, RS4 B9, M4)")
-    elif target in SCRAPER_MAP and target not in ("", "rotation"):
+        print(f"Target selected: ALL FLEET ({len(scrapers_to_run)} scrapers)")
+    elif target in ("batch", "daily_batch"):
+        day_name, scrapers_to_run = get_today_rotation()
+        print(f"Target selected: daily batch for {day_name} ({len(scrapers_to_run)} scrapers)")
+    elif target in SCRAPER_MAP and target not in ("", "single", "rotation", "next"):
         scrapers_to_run = SCRAPER_MAP[target]
         print(f"Target selected: {target} ({len(scrapers_to_run)} scraper(s))")
     else:
-        day_name, scrapers_to_run = get_today_rotation()
-        print(f"Running scheduled rotation for {day_name} ({len(scrapers_to_run)} scrapers)")
+        cfg, index, label = get_scheduled_single_model(interval_hours=2)
+        scrapers_to_run = [cfg]
+        print(f"Target selected: scheduled slot #{index + 1}/{len(ALL_FLEET)} -> {label}")
 
-    # Anti-bot jitter: random delay between 5 to 60 seconds before kicking off
+    # Anti-bot jitter: random delay between 5 to 45 seconds before kicking off
     # when running unattended in CI/CD
     if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
-        jitter = random.randint(5, 60)
+        jitter = random.randint(5, 45)
         print(f"Applying startup jitter of {jitter}s...")
         time.sleep(jitter)
 
@@ -170,7 +185,7 @@ if __name__ == "__main__":
     for i, cfg in enumerate(scrapers_to_run):
         label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
         print(f"\n{'='*60}")
-        print(f"  {label}")
+        print(f"  [{i+1}/{len(scrapers_to_run)}] {label}")
         print(f"{'='*60}")
         try:
             results = run(cfg)
@@ -186,7 +201,7 @@ if __name__ == "__main__":
         if target in ("all", "fleet") and (i + 1) % 10 == 0 and (i + 1) < len(scrapers_to_run):
             print("\n[CHUNKING] Taking a 120s cooldown break to protect session cookies...")
             time.sleep(120)
-        else:
+        elif len(scrapers_to_run) > 1 and (i + 1) < len(scrapers_to_run):
             # Standard random pause between 3 to 8 seconds between scrapers
             pause = random.uniform(3.0, 8.0)
             time.sleep(pause)
@@ -195,12 +210,14 @@ if __name__ == "__main__":
     print(f"  ALL DONE — {totals['total']} listings processed across {len(scrapers_to_run)} scrapers ({success_count} succeeded, {len(failed_models)} failed)")
     print(f"{'='*60}")
 
-    # Post batch summary log to database
-    summary_status = "error" if failed_models else "success"
-    if failed_models:
-        failed_names = ", ".join([name for name, _ in failed_models])
-        summary_msg = f"Scheduled run finished with errors: {len(failed_models)}/{len(scrapers_to_run)} failed ({failed_names}). Processed {totals['total']} listings."
-    else:
-        summary_msg = f"Scheduled run completed successfully: all {len(scrapers_to_run)} scrapers finished. Processed {totals['total']} listings."
-    _log_run(summary_status, summary_msg, processed=totals["total"])
+    # Post batch summary log to database only if running multiple models
+    if len(scrapers_to_run) > 1:
+        summary_status = "error" if failed_models else "success"
+        if failed_models:
+            failed_names = ", ".join([name for name, _ in failed_models])
+            summary_msg = f"Scheduled run finished with errors: {len(failed_models)}/{len(scrapers_to_run)} failed ({failed_names}). Processed {totals['total']} listings."
+        else:
+            summary_msg = f"Scheduled run completed successfully: all {len(scrapers_to_run)} scrapers finished. Processed {totals['total']} listings."
+        _log_run(summary_status, summary_msg, processed=totals["total"])
+
 
