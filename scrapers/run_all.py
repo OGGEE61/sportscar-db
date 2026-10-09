@@ -3,6 +3,8 @@
 Usage:
     python scrapers/run_all.py              # runs scheduled single model for current 2h slot
     python scrapers/run_all.py single       # runs scheduled single model for current 2h slot
+    python scrapers/run_all.py next_2       # runs next 2 scheduled models in sequence
+    python scrapers/run_all.py next_3       # runs next 3 scheduled models in sequence
     python scrapers/run_all.py batch        # runs today's scheduled weekday batch
     python scrapers/run_all.py all          # runs all fleet scrapers
     python scrapers/run_all.py c63          # runs only C63 W204
@@ -142,15 +144,18 @@ def get_today_rotation():
     day_name = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][weekday]
     return day_name, WEEKDAY_SCHEDULE.get(weekday, ALL_FLEET)
 
-def get_scheduled_single_model(interval_hours: int = 2):
-    """Deterministically pick 1 model based on the current 2-hour time slot.
+def get_scheduled_models(count: int = 1, interval_hours: int = 2):
+    """Deterministically pick `count` consecutive models based on current time slot.
     Rotates continuously across ALL_FLEET (35 models every ~70 hours).
     """
     slot = int(time.time() // (interval_hours * 3600))
-    index = slot % len(ALL_FLEET)
-    cfg = ALL_FLEET[index]
-    label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
-    return cfg, index, label
+    selected = []
+    for offset in range(count):
+        idx = (slot + offset) % len(ALL_FLEET)
+        cfg = ALL_FLEET[idx]
+        label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
+        selected.append((cfg, idx, label))
+    return selected
 
 if __name__ == "__main__":
     target = os.environ.get("SCRAPER_TARGET", "").lower().strip()
@@ -163,13 +168,23 @@ if __name__ == "__main__":
     elif target in ("batch", "daily_batch"):
         day_name, scrapers_to_run = get_today_rotation()
         print(f"Target selected: daily batch for {day_name} ({len(scrapers_to_run)} scrapers)")
-    elif target in SCRAPER_MAP and target not in ("", "single", "rotation", "next"):
+    elif target in ("next_2", "2", "two", "slot_2", "2_models", "two_models"):
+        selected = get_scheduled_models(count=2, interval_hours=2)
+        scrapers_to_run = [cfg for cfg, _, _ in selected]
+        labels = ", ".join([f"#{idx+1} {label}" for _, idx, label in selected])
+        print(f"Target selected: next 2 scheduled slots -> {labels}")
+    elif target in ("next_3", "3", "three", "slot_3", "3_models", "three_models"):
+        selected = get_scheduled_models(count=3, interval_hours=2)
+        scrapers_to_run = [cfg for cfg, _, _ in selected]
+        labels = ", ".join([f"#{idx+1} {label}" for _, idx, label in selected])
+        print(f"Target selected: next 3 scheduled slots -> {labels}")
+    elif target in SCRAPER_MAP and target not in ("", "single", "rotation", "next", "1"):
         scrapers_to_run = SCRAPER_MAP[target]
         print(f"Target selected: {target} ({len(scrapers_to_run)} scraper(s))")
     else:
-        cfg, index, label = get_scheduled_single_model(interval_hours=2)
-        scrapers_to_run = [cfg]
-        print(f"Target selected: scheduled slot #{index + 1}/{len(ALL_FLEET)} -> {label}")
+        selected = get_scheduled_models(count=1, interval_hours=2)
+        scrapers_to_run = [selected[0][0]]
+        print(f"Target selected: scheduled slot #{selected[0][1] + 1}/{len(ALL_FLEET)} -> {selected[0][2]}")
 
     # Anti-bot jitter: random delay between 5 to 45 seconds before kicking off
     # when running unattended in CI/CD

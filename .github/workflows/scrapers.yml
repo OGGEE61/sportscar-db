@@ -13,6 +13,8 @@ on:
         type: choice
         options:
           - single
+          - next_2
+          - next_3
           - batch
           - all
           - m2
