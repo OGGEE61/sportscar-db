@@ -426,16 +426,145 @@ def extract_description(nd: dict) -> str:
     return best
 
 
+def _fetch_olx_detail(html: str, url: str) -> dict:
+    """Extract structured vehicle data from a native OLX listing page."""
+    m = re.search(r'window\.__PRERENDERED_STATE__\s*=\s*"(.*?)";', html, re.S)
+    if not m:
+        return {}
+    try:
+        inner = json.loads(f'"{m.group(1)}"')
+        data = json.loads(inner)
+    except Exception:
+        try:
+            data = json.loads(m.group(1).replace(r'\"', '"').replace(r'\\', '\\'))
+        except Exception:
+            return {}
+
+    ad = data.get("ad", {}).get("ad") or data.get("ad") or {}
+    if not ad:
+        return {}
+
+    params = {p["key"]: p.get("value") for p in ad.get("params", []) if "key" in p}
+
+    # Price
+    price_val = (ad.get("price") or {}).get("regularPrice", {}).get("value")
+
+    # Photos
+    photos = ad.get("photos", [])
+    photo_url = photos[0] if photos else None
+
+    # Description (clean HTML tags)
+    desc_raw = ad.get("description", "")
+    desc_clean = re.sub(r"<[^>]+>", " ", desc_raw).strip()
+
+    # Location
+    loc = ad.get("location") or {}
+    city = loc.get("cityName")
+    region = loc.get("regionName")
+    location_str = f"{city}, {region}" if city and region else (city or region)
+
+    # VIN
+    vin_found = None
+    vin_confidence = "none"
+    invalid_vin = None
+    raw_vin = params.get("vin")
+    if raw_vin:
+        clean_v = re.sub(r"[^A-Za-z0-9]", "", str(raw_vin)).upper()
+        if is_plausible_vin(clean_v):
+            vin_found = clean_v
+            vin_confidence = "found_in_schema"
+        else:
+            invalid_vin = clean_v
+            vin_confidence = "invalid_vin"
+
+    if not vin_found:
+        for candidate in VIN_RE.findall(desc_clean):
+            if not re.fullmatch(r"[0-9A-F]{17}", candidate) and is_plausible_vin(candidate):
+                vin_found = candidate
+                vin_confidence = "found_in_description"
+                break
+
+    # Year
+    year = int(params["year"]) if params.get("year") and str(params["year"]).isdigit() else None
+
+    # Mileage
+    milage_raw = str(params.get("milage") or "")
+    mileage_km = int(re.sub(r"[^\d]", "", milage_raw)) if re.search(r"\d", milage_raw) else None
+
+    # Power
+    power_raw = str(params.get("enginepower") or "")
+    power_hp = int(re.sub(r"[^\d]", "", power_raw)) if re.search(r"\d", power_raw) else None
+
+    # Engine cc
+    cc_raw = str(params.get("enginesize") or "")
+    engine_cc = int(re.sub(r"[^\d]", "", cc_raw)) if re.search(r"\d", cc_raw) else None
+
+    # Fuel
+    fuel_raw = str(params.get("petrol") or "").lower()
+    if "benzyn" in fuel_raw or "petrol" in fuel_raw:   fuel_type = "petrol"
+    elif "diesel" in fuel_raw or "olej" in fuel_raw:   fuel_type = "diesel"
+    elif "hybryd" in fuel_raw or "hybrid" in fuel_raw: fuel_type = "hybrid"
+    elif "elektr" in fuel_raw or "electric" in fuel_raw: fuel_type = "electric"
+    else:                                              fuel_type = fuel_raw or None
+
+    # Transmission
+    trans_raw = str(params.get("transmission") or "").lower()
+    if "automat" in trans_raw: transmission = "automatic"
+    elif "manual" in trans_raw: transmission = "manual"
+    else:                      transmission = trans_raw or None
+
+    # Body type
+    body_raw = str(params.get("car_body") or "").lower()
+    if "coupe" in body_raw:       body_type = "Coupe"
+    elif "sedan" in body_raw:     body_type = "Sedan"
+    elif "kombi" in body_raw:     body_type = "Kombi"
+    elif "kabrio" in body_raw:    body_type = "Kabriolet"
+    elif "suv" in body_raw:       body_type = "SUV"
+    elif "hatchback" in body_raw: body_type = "Hatchback"
+    else:                         body_type = body_raw.capitalize() if body_raw else None
+
+    # Drivetrain
+    drive_raw = str(params.get("drive") or "").lower()
+    if any(x in drive_raw for x in ["4x4", "all", "awd", "cztery"]): drivetrain = "AWD"
+    elif any(x in drive_raw for x in ["tyl", "rear", "rwd"]):        drivetrain = "RWD"
+    elif any(x in drive_raw for x in ["przód", "front", "fwd"]):     drivetrain = "FWD"
+    else:                                                            drivetrain = None
+
+    # Origin market
+    origin_market = resolve_market(vin_found, desc_clean, make=ad.get("title", ""))
+
+    return {
+        "year":                    year,
+        "mileage_km":              mileage_km,
+        "power_hp":                power_hp,
+        "engine_cc":               engine_cc,
+        "body_type":               body_type,
+        "drivetrain":              drivetrain,
+        "doors":                   None,
+        "fuel_type":               fuel_type,
+        "transmission":            transmission,
+        "color_ext":               params.get("color"),
+        "color_int":               None,
+        "equipment":               None,
+        "vin":                     vin_found,
+        "vin_confidence":          vin_confidence,
+        "invalid_vin":             invalid_vin,
+        "registration_plate":      None,
+        "first_registration_date": None,
+        "photo_url":               photo_url,
+        "raw_description":         desc_clean,
+        "price_from_detail":       price_val,
+        "location_from_detail":    location_str,
+        "origin_market":           origin_market,
+    }
+
+
 # ── detail page ───────────────────────────────────────────────────────────────
 
 def fetch_detail(url: str, cookies: dict = None) -> dict:
-    """Fetch an otomoto listing detail page and extract structured data.
+    """Fetch an otomoto or OLX listing detail page and extract structured data.
 
-    Data lives in __NEXT_DATA__ -> props -> pageProps -> advert:
-      advert.details          : [{key, value}, ...]  — year, mileage, power, vin…
-      advert.description      : full ad text (plain-text VIN search)
-      advert.images.photos[0] : first photo URL (the "id" field IS the URL)
-      advert.price.value      : price string ("149900")
+    Data lives in __NEXT_DATA__ (Otomoto) or __PRERENDERED_STATE__ (OLX).
     """
     try:
         r = requests.get(
@@ -446,6 +575,9 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         if r.status_code != 200:
             print(f"    [detail] HTTP {r.status_code}")
             return {}
+
+        if "olx.pl" in url:
+            return _fetch_olx_detail(r.text, url)
 
         nd_m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
         if not nd_m:
@@ -947,8 +1079,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     if resolved:
                         final_origin_market = resolved
 
+                actual_source = "otomoto" if "otomoto.pl" in (source_url or "") else cfg.source
                 payload = {
-                    "source":            cfg.source,
+                    "source":            actual_source,
                     "source_listing_id": listing_id,
                     "source_url":        source_url,
                     "raw_title":         title,
