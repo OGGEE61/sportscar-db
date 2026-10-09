@@ -1,0 +1,59 @@
+name: Run OLX Scrapers
+
+on:
+  schedule:
+    # Run twice daily at 07:45 and 19:45 UTC
+    - cron: '45 7,19 * * *'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'OLX Cars to scrape'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - alpina
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run OLX Scrapers
+      env:
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        BASE_URL: ${{ secrets.API_BASE }}
+        OTOMOTO_COOKIES: ${{ secrets.OTOMOTO_COOKIES }}
+        SCRAPER_TARGET: ${{ github.event.inputs.target || 'all' }}
+      run: |
+        if [ -n "$OTOMOTO_COOKIES" ]; then
+          echo "$OTOMOTO_COOKIES" > scrapers/otomoto_cookies.json
+        fi
+        python scrapers/run_olx.py
+
+    - name: Notify failure to SportsCar-DB
+      if: failure()
+      env:
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        BASE_URL: ${{ secrets.API_BASE }}
+      run: |
+        curl -s -X POST "$BASE_URL/api/log_run" \
+          -H "Authorization: Bearer $API_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{\"status\": \"error\", \"message\": \"OLX Scrapers runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true

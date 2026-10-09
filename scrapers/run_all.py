@@ -23,6 +23,7 @@ import random
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "otomoto"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 try:
@@ -50,7 +51,6 @@ from mercedes_clk63_w209  import CONFIG    as CLK63
 from porsche_cayman_gt4_981 import CONFIG  as CAYMAN_GT4
 from toyota_gr_yaris      import CONFIG    as GR_YARIS
 from bmw_alpina           import CONFIG    as ALPINA
-from olx_bmw_alpina       import CONFIG    as OLX_ALPINA
 
 from bmw_m3_e46           import CONFIG    as M3_E46
 from bmw_1m_e82           import CONFIG    as M1_E82
@@ -100,7 +100,6 @@ for i, scraper in enumerate(_all_runs):
 
 SCRAPER_MAP = {
     "alpina": [ALPINA],
-    "olx_alpina": [OLX_ALPINA],
     "c63": [C63],
     "e55": [E55],
     "cls55": [CLS55],
