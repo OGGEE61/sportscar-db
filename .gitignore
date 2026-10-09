@@ -4,6 +4,7 @@ __pycache__/
 *.db-shm
 *.db-wal
 *.sqlite
+*.sqlite3
 .venv/
 venv/
 files.zip
