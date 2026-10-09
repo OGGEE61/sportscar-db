@@ -548,6 +548,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         # 3. has_vin flag — confirms VIN exists but we couldn't extract it
         vin_found      = None
         vin_confidence = "none"
+        invalid_vin    = None
         advert_id      = advert.get("id", "")
         has_vin        = bool((pd).get("has_vin"))
 
@@ -555,9 +556,12 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         enc_vin = params.get("vin") or _pd_val("vin") or ""
         if enc_vin and advert_id:
             plain = _decrypt_vin(enc_vin, advert_id)
-            if plain and is_plausible_vin(plain):
-                vin_found      = plain
-                vin_confidence = "found_in_schema"
+            if plain:
+                if is_plausible_vin(plain):
+                    vin_found      = plain
+                    vin_confidence = "found_in_schema"
+                else:
+                    invalid_vin    = plain
 
         # Tier 2: seller typed VIN in description text
         if not vin_found:
@@ -569,7 +573,10 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
 
         # Tier 3: flag only
         if not vin_found and has_vin:
-            vin_confidence = "found_in_schema"
+            if invalid_vin:
+                vin_confidence = "invalid_vin"
+            else:
+                vin_confidence = "found_in_schema"
 
         # Registration plate — encrypted with same AES-GCM algorithm as VIN
         registration_plate = None
@@ -635,6 +642,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "equipment":               equipment_json,
             "vin":                     vin_found,
             "vin_confidence":          vin_confidence,
+            "invalid_vin":             invalid_vin,
             "registration_plate":      registration_plate,
             "first_registration_date": first_registration_date,
             "photo_url":               photo_url,
@@ -896,19 +904,20 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     vc = detail.get("vin_confidence", "none")
                     if detail.get("vin") and vc == "found_in_description":
                         print(f"    VIN (desc):   {detail['vin']}")
-                    elif detail.get("vin") and vc == "found_in_schema":
-                        print(f"    VIN (login):  {detail['vin']}")
+                    elif detail.get("vin"):
+                        print(f"    VIN (schema): {detail['vin']}")
+                    elif vc == "invalid_vin":
+                        print(f"    VIN (niepoprawny/fejk): {detail.get('invalid_vin')} — odrzucony przez walidator")
                     elif vc == "found_in_schema" and logged_in:
-                        # VIN exists but was encrypted in page — try the GraphQL reveal endpoint
                         revealed = reveal_vin(listing_id, cookies)
                         if revealed:
                             detail["vin"]            = revealed
                             detail["vin_confidence"] = "found_in_schema"
                             print(f"    VIN (api):    {revealed}")
                         else:
-                            print(f"    VIN: encrypted — reveal endpoint not matched yet")
+                            print(f"    VIN: brak poprawnego numeru w ogłoszeniu")
                     elif vc == "found_in_schema":
-                        print(f"    VIN: exists but encrypted -- not logged in")
+                        print(f"    VIN: brak poprawnego numeru w ogłoszeniu")
                     if detail.get("year"):
                         print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
                               f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
