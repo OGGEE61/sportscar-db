@@ -179,21 +179,24 @@ body {
   letter-spacing: 0.01em;
 }
 
-.badge-verified {
-  background-color: #198754 !important;
+.badge-verified,
+.badge.bg-success {
+  background-color: #10b981 !important;
   color: #ffffff !important;
   font-weight: 600;
 }
 
-.badge-unverified {
-  background-color: #6c757d !important;
+.badge-unverified,
+.badge.bg-secondary {
+  background-color: #64748b !important;
   color: #ffffff !important;
   font-weight: 600;
 }
 
-.badge-placeholder {
-  background-color: #ffc107 !important;
-  color: #000000 !important;
+.badge-placeholder,
+.badge.bg-warning {
+  background-color: #f59e0b !important;
+  color: #0f172a !important;
   font-weight: 600;
 }
 

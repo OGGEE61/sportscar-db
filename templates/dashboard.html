@@ -143,7 +143,13 @@
           <td><span class="badge bg-secondary">{{ r.source_method }}</span></td>
           <td class="text-nowrap small text-muted">{{ r.observed_at[:16] }}</td>
           <td>
-            <span class="badge badge-{{ r.vin_status }}">{{ r.vin_status }}</span>
+            {% if r.vin_status == 'verified' %}
+            <span class="badge bg-success text-white">verified</span>
+            {% elif r.vin_status == 'placeholder' %}
+            <span class="badge bg-warning text-dark">placeholder</span>
+            {% else %}
+            <span class="badge bg-secondary text-white">unverified</span>
+            {% endif %}
           </td>
         </tr>
         {% else %}
