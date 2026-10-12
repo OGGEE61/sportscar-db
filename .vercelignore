@@ -1,0 +1,9 @@
+.venv/
+models/
+*.pt
+*.pth
+static/plate_crops/
+tests/
+scrapers/
+.git/
+.github/

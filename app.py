@@ -672,6 +672,7 @@ def dashboard():
     filter_region = request.args.get("region", "").strip()
     filter_make = request.args.get("make", "").strip()
     filter_price = request.args.get("price", "").strip()
+    filter_ai_plates = request.args.get("ai_plates", "").strip()
 
     recent_sql = """
         SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
@@ -684,7 +685,10 @@ def dashboard():
     params = []
     active_filter = None
 
-    if filter_make:
+    if filter_ai_plates == "1":
+        wheres.append("(SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag = 'AI extracted plate') IS NOT NULL")
+        active_filter = {"type": "ai_plates", "val": "1", "label": "Tablice odczytane przez AI"}
+    elif filter_make:
         wheres.append("v.make = ?")
         params.append(filter_make)
         active_filter = {"type": "make", "val": filter_make, "label": f"Make: {filter_make}"}
@@ -2254,6 +2258,9 @@ def review_reject(pid):
 @app.route("/plates")
 def plates_review():
     conn = get_db()
+    status_filter = request.args.get("status", "pending")
+    if status_filter not in ("pending", "approved", "rejected"):
+        status_filter = "pending"
     
     # Ensure table exists
     conn.execute("""
@@ -2276,13 +2283,18 @@ def plates_review():
 
     candidates = conn.execute("""
         SELECT q.id, q.listing_id, q.vin, q.source_url, q.photo_url, q.crop_path, 
-               q.detected_plate, q.confidence, q.status, q.created_at,
-               p.make, p.model, p.variant, p.year, p.price_pln, p.location_city, p.raw_title
+               q.detected_plate, q.confidence, q.status, q.reviewed_plate, q.reviewed_at, q.created_at,
+               COALESCE(v.make, p.make) as make,
+               COALESCE(v.model, p.model) as model,
+               COALESCE(v.variant, p.variant) as variant,
+               COALESCE(v.year, p.year) as year,
+               p.price_pln, p.location_city, p.raw_title
         FROM plate_review_queue q
+        LEFT JOIN vehicles v ON v.vin = q.vin
         LEFT JOIN pending_listings p ON (p.id = q.listing_id OR p.vin = q.vin)
-        WHERE q.status = 'pending'
-        ORDER BY q.confidence DESC, q.id DESC
-    """).fetchall()
+        WHERE q.status = ?
+        ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
+    """, (status_filter,)).fetchall()
 
     stats = {
         "pending": conn.execute("SELECT COUNT(*) FROM plate_review_queue WHERE status='pending'").fetchone()[0],
@@ -2291,7 +2303,7 @@ def plates_review():
         "missing_plates": conn.execute("SELECT COUNT(*) FROM pending_listings WHERE (registration_plate IS NULL OR registration_plate='') AND photos IS NOT NULL AND photos != '[]'").fetchone()[0],
     }
     conn.close()
-    return render_template("plates.html", candidates=candidates, stats=stats)
+    return render_template("plates.html", candidates=candidates, stats=stats, status_filter=status_filter)
 
 
 @app.route("/api/plates/review", methods=["POST"])
@@ -2351,6 +2363,11 @@ def api_plates_scan_batch():
         from scripts.detect_plates import run_plate_detection_batch
         res = run_plate_detection_batch(limit=limit)
         return jsonify({"status": "ok", "scanned": res["scanned_count"], "found": res["found_plates"]})
+    except ImportError:
+        return jsonify({
+            "status": "error",
+            "message": "Skanowanie AI za pomocą YOLOv8/EasyOCR uruchamia się lokalnie na Twoim komputerze (skrypt scripts/detect_plates.py), ponieważ silnik CV wymaga bibliotek PyTorch."
+        }), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

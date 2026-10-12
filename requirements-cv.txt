@@ -1,0 +1,4 @@
+# Lokalne zależności dla Computer Vision (detekcja tablic i OCR)
+# Uruchamiane lokalnie na Macu (scripts/detect_plates.py)
+ultralytics>=8.3.0
+easyocr>=1.7.0
