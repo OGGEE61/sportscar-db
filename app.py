@@ -522,6 +522,16 @@ def _approve_listing(conn, listing, overrides=None):
             (local_photo, vin)
         )
 
+    # Jeśli tablica pochodzi z weryfikacji AI (plate_review_queue), dodaj tag 'AI extracted plate'
+    try:
+        lid_str = str(listing.get("id") or "")
+        pq = conn.execute("SELECT id FROM plate_review_queue WHERE (vin=? OR listing_id=?) AND status='approved'", (vin, lid_str)).fetchone()
+        if pq:
+            conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
+            conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'AI extracted plate', 'cv-yolo')", (vin,))
+    except Exception:
+        pass
+
     return vin
 
 
@@ -665,7 +675,8 @@ def dashboard():
 
     recent_sql = """
         SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
-               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.source, o.source_method, o.observed_at, o.source_url
+               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.source, o.source_method, o.observed_at, o.source_url,
+               (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag = 'AI extracted plate') AS has_ai_plate
         FROM listing_observations o
         JOIN vehicles v ON o.vin = v.vin
     """
@@ -1141,6 +1152,7 @@ def model_analytics():
     # Strict query matching this exact generation - NO loose cross-model fallback!
     sql = f"""
         SELECT v.*, 
+               (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag = 'AI extracted plate') as has_ai_plate,
                o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title
         FROM vehicles v
         LEFT JOIN (
@@ -2315,6 +2327,11 @@ def api_plates_review():
             conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=?", (final_plate, vin))
             conn.execute("UPDATE vehicles SET registration_plate=? WHERE vin=?", (final_plate, vin))
             conn.execute("UPDATE listing_observations SET registration_plate=? WHERE vin=?", (final_plate, vin))
+            try:
+                conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
+                conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'AI extracted plate', 'cv-yolo')", (vin,))
+            except Exception:
+                pass
     else:
         conn.execute("""
             UPDATE plate_review_queue
