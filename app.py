@@ -2291,8 +2291,9 @@ def plates_review():
                p.price_pln, p.location_city, p.raw_title
         FROM plate_review_queue q
         LEFT JOIN vehicles v ON v.vin = q.vin
-        LEFT JOIN pending_listings p ON (p.id = q.listing_id OR p.vin = q.vin)
+        LEFT JOIN pending_listings p ON (p.id = q.listing_id OR (q.listing_id IS NULL AND p.vin = q.vin))
         WHERE q.status = ?
+        GROUP BY q.id
         ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
     """, (status_filter,)).fetchall()
 

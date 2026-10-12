@@ -9,6 +9,7 @@ import os
 import re
 import io
 import json
+import base64
 import sqlite3
 import urllib.request
 from typing import List, Dict, Optional, Tuple
@@ -140,17 +141,20 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         if not norm_text or len(norm_text) < 4:
             continue
 
-        # Zapisz wycięty fragment do pliku statycznego
+        # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI (aby działało na Vercelu i w chmurze)
         crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
         crop_save_path = os.path.join(CROPS_DIR, crop_filename)
-        crop.save(crop_save_path, "JPEG", quality=92)
-        web_crop_path = f"/static/plate_crops/{crop_filename}"
+        crop.save(crop_save_path, "JPEG", quality=85)
+
+        buf = io.BytesIO()
+        crop.save(buf, format="JPEG", quality=85)
+        crop_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
         candidates.append({
             "detected_plate": norm_text,
             "raw_text": joined,
             "confidence": round(conf, 3),
-            "crop_path": web_crop_path,
+            "crop_path": crop_b64,
             "bbox": [x1, y1, x2, y2],
             "is_standard_format": is_valid_plate_format(norm_text),
         })
