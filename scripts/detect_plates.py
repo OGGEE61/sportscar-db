@@ -136,7 +136,7 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         cx = (xyxy[0] + xyxy[2]) / (2.0 * max(1, w))
         center_score = 1.0 - min(1.0, abs(cx - 0.5) * 1.8)
 
-        shot_quality_score = (aspect_score * 0.45) + (area_score * 0.35) + (conf * 0.20)
+        shot_quality_score = (aspect_score * 0.40) + (area_score * 0.25) + (center_score * 0.15) + (conf * 0.20)
 
         # Marginesy dla pełnego cropa do UI
         pad_x = max(4, int(bw * 0.05))
@@ -240,6 +240,53 @@ def download_image(url: str, timeout: int = 10) -> Optional[Image.Image]:
         return None
 
 
+def fetch_listing_gallery_photos(source_url: str) -> List[str]:
+    """Pobiera pełną listę zdjęć z ogłoszenia (np. z Otomoto __NEXT_DATA__ lub OLX), gdy w bazie jest tylko 1 miniatura."""
+    if not source_url or not source_url.startswith("http"):
+        return []
+    try:
+        req = urllib.request.Request(
+            source_url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/146.0.0.0 Safari/537.36"
+                )
+            }
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # Otomoto NEXT_DATA
+        m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+        if m:
+            data = json.loads(m.group(1))
+            advert = data.get("props", {}).get("pageProps", {}).get("advert", {})
+            photos = advert.get("images", {}).get("photos", [])
+            urls = []
+            for p in photos:
+                u = p.get("id") or p.get("url") if isinstance(p, dict) else (p if isinstance(p, str) else None)
+                if u:
+                    urls.append(u)
+            if urls:
+                return urls
+
+        # OLX fallback / apollo cdn regex
+        urls = re.findall(r'https://ireland\.apollo\.olxcdn\.com/v1/files/[a-zA-Z0-9_\-]+/image', html)
+        if urls:
+            seen = set()
+            clean_urls = []
+            for u in urls:
+                if u not in seen:
+                    seen.add(u)
+                    clean_urls.append(u)
+            return clean_urls
+    except Exception as e:
+        print(f"    [gallery fetch error] {source_url}: {e}")
+    return []
+
+
 def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
     """Skanuje zdjęcia ogłoszenia, znajduje najlepsze ujęcie przód/tył i zapisuje optymalnego kandydata."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
@@ -263,11 +310,24 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
                 if photos_raw.startswith("http"):
                     photo_urls = [photos_raw]
 
+    # Jeśli w bazie mamy tylko 1 zdjęcie (lub brak), a mamy link do ogłoszenia,
+    # dynamicznie pobieramy całą galerię (do kilkunastu zdjęć) i aktualizujemy bazę!
+    if len(photo_urls) <= 1 and source_url:
+        gallery = fetch_listing_gallery_photos(source_url)
+        if gallery:
+            photo_urls = gallery
+            try:
+                db_conn.execute("UPDATE pending_listings SET photos = ? WHERE id = ?", (json.dumps(gallery), lid))
+                db_conn.commit()
+                print(f"    [gallery fetched] Pobrano {len(gallery)} zdjęć z ogłoszenia dla ID: {lid}")
+            except Exception:
+                pass
+
     if not photo_urls:
         return []
 
-    # Sprawdź do 10 zdjęć w poszukiwaniu najlepszego ujęcia
-    photo_urls = photo_urls[:10]
+    # Sprawdź do 12 zdjęć w poszukiwaniu najlepszego ujęcia (przód / tył)
+    photo_urls = photo_urls[:12]
     all_candidates = []
 
     for idx, purl in enumerate(photo_urls):
