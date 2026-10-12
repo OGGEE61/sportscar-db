@@ -149,13 +149,31 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
 
         full_crop = img_pil.crop((x1, y1, x2, y2))
 
+        # Weryfikacja tła: polska tablica musi mieć jasne (białe) tło.
+        # Sprawdzamy średnią jasność i odrzucamy czarne elementy (grille, wloty, zderzaki)
+        crop_arr = np.array(full_crop)
+        ch, cw = crop_arr.shape[:2]
+        center_area = crop_arr[int(ch * 0.2):int(ch * 0.8), int(cw * 0.2):int(cw * 0.8)]
+        if center_area.size > 0:
+            mean_brightness = float(np.mean(center_area))
+            # Ciemne kratki chłodnicy lub czarny lakier mają jasność < 65
+            if mean_brightness < 60:
+                continue
+
         # Przygotowanie wycinka pod OCR:
-        # Odetnij dolne 16% ramki reklamowej (telefony, adresy www dealerów)
+        # 1. Odetnij dolne 16% ramki reklamowej (telefony, adresy www dealerów)
         ocr_bh = max(10, int(bh * 0.84))
-        ocr_crop = img_pil.crop((xyxy[0], xyxy[1], xyxy[2], xyxy[1] + ocr_bh))
+        
+        # 2. Dla poziomych tablic unijnych (AR > 3.0) odetnij lewy niebieski pasek (Euroband ~11% szerokości),
+        # aby EasyOCR nie mylił gwiazdek UE i flagi z literami 'PL', '1', 'I', '['.
+        ocr_x1 = xyxy[0]
+        if aspect_ratio >= 3.0:
+            ocr_x1 = xyxy[0] + max(4, int(bw * 0.11))
+
+        ocr_crop = img_pil.crop((ocr_x1, xyxy[1], xyxy[2], xyxy[1] + ocr_bh))
 
         # Skaluj do znormalizowanej wysokości 70px
-        scale = 70.0 / float(ocr_crop.size[1])
+        scale = 70.0 / float(max(1, ocr_crop.size[1]))
         ocr_scaled = ocr_crop.resize((int(ocr_crop.size[0] * scale), 70), Image.Resampling.LANCZOS)
 
         # Zwiększ kontrast
