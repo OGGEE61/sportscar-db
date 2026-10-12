@@ -263,12 +263,19 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
     """, (vin,)).fetchone()
 
     listing_mileage = None
-    if listing_obs and listing_obs["max_mileage"]:
-        listing_mileage = listing_obs["max_mileage"]
-    else:
+    if listing_obs:
+        try:
+            listing_mileage = listing_obs["max_mileage"]
+        except (TypeError, IndexError):
+            listing_mileage = listing_obs[1] if len(listing_obs) > 1 else None
+
+    if not listing_mileage:
         pending_obs = conn.execute("SELECT mileage_km FROM pending_listings WHERE vin = ? AND mileage_km > 0 LIMIT 1", (vin,)).fetchone()
-        if pending_obs and pending_obs["mileage_km"]:
-            listing_mileage = pending_obs["mileage_km"]
+        if pending_obs:
+            try:
+                listing_mileage = pending_obs["mileage_km"]
+            except (TypeError, IndexError):
+                listing_mileage = pending_obs[0] if len(pending_obs) > 0 else None
 
     odometer_rollback = 0
     rollback_diff_km = 0
@@ -356,19 +363,43 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
     else:
         # Pobierz auta, które mają komplet danych i nie były jeszcze sprawdzone
         rows = conn.execute("""
-            SELECT DISTINCT p.vin, p.registration_plate, p.first_registration_date, p.make, p.model
-            FROM pending_listings p
-            LEFT JOIN cepik_reports c ON c.vin = p.vin
-            WHERE p.vin IS NOT NULL
-              AND p.vin != ''
-              AND p.registration_plate IS NOT NULL
-              AND p.registration_plate != ''
-              AND p.first_registration_date IS NOT NULL
-              AND p.first_registration_date != ''
+            SELECT DISTINCT 
+                v.vin, 
+                v.registration_plate, 
+                COALESCE(v.first_registration_date, p.first_registration_date) as first_registration_date, 
+                v.make, 
+                v.model
+            FROM vehicles v
+            LEFT JOIN pending_listings p ON p.vin = v.vin
+            LEFT JOIN cepik_reports c ON c.vin = v.vin
+            WHERE v.vin IS NOT NULL
+              AND v.vin != ''
+              AND v.vin NOT LIKE 'PLH%'
+              AND v.registration_plate IS NOT NULL
+              AND v.registration_plate != ''
+              AND COALESCE(v.first_registration_date, p.first_registration_date) IS NOT NULL
+              AND COALESCE(v.first_registration_date, p.first_registration_date) != ''
               AND c.vin IS NULL
-            ORDER BY p.id DESC
             LIMIT ?
         """, (limit,)).fetchall()
+
+        # Jeśli brak w vehicles, sprawdź dodatkowo pending_listings
+        if not rows:
+            rows = conn.execute("""
+                SELECT DISTINCT p.vin, p.registration_plate, p.first_registration_date, p.make, p.model
+                FROM pending_listings p
+                LEFT JOIN cepik_reports c ON c.vin = p.vin
+                WHERE p.vin IS NOT NULL
+                  AND p.vin != ''
+                  AND p.vin NOT LIKE 'PLH%'
+                  AND p.registration_plate IS NOT NULL
+                  AND p.registration_plate != ''
+                  AND p.first_registration_date IS NOT NULL
+                  AND p.first_registration_date != ''
+                  AND c.vin IS NULL
+                ORDER BY p.id DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
 
     print(f"\n=== CEPiK Sync: Znaleziono {len(rows)} aut do weryfikacji w rejestrze państwowym ===")
 

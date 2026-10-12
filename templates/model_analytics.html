@@ -263,7 +263,7 @@
                 {% if not v.registration_plate %}
                 <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;" title="Registration plate is missing">Missing plates</span>
                 {% elif v.has_ai_plate %}
-                <span class="badge bg-light text-dark border font-monospace ms-1" style="font-size: 0.65rem;" title="Numer rejestracyjny odczytany przez model AI"><i class="bi bi-robot text-secondary me-1"></i>AI extracted plate</span>
+                <span class="badge bg-light text-dark border font-monospace ms-1" style="font-size: 0.65rem;" title="Numer rejestracyjny odczytany ze zdjęcia"><i class="bi bi-camera text-secondary me-1"></i>photo extracted</span>
                 {% endif %}
               </div>
             </div>

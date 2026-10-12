@@ -343,8 +343,8 @@
     {% endfor %}
     {% if not vehicle.registration_plate %}
     <span class="badge bg-warning text-dark me-1 align-middle" title="Registration plate is missing">Missing plates</span>
-    {% elif tags and (tags | selectattr('tag', 'equalto', 'AI extracted plate') | list) %}
-    <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany przez model AI (YOLOv8 + EasyOCR)"><i class="bi bi-robot text-secondary me-1"></i>AI extracted plate</span>
+    {% elif tags and (tags | selectattr('tag', 'in', ['photo extracted', 'AI extracted plate']) | list) %}
+    <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany ze zdjęcia"><i class="bi bi-camera text-secondary me-1"></i>photo extracted</span>
     {% endif %}
     {% if not tags and vehicle.registration_plate %}
     <span class="text-muted">No tags</span>
