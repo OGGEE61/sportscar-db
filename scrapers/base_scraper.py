@@ -449,9 +449,17 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
     # Price
     price_val = (ad.get("price") or {}).get("regularPrice", {}).get("value")
 
-    # Photos
+    # Photos (extract up to 10 photos for license plate detection and gallery)
     photos = ad.get("photos", [])
-    photo_url = photos[0] if photos else None
+    photo_urls = []
+    for p in photos:
+        if isinstance(p, str):
+            photo_urls.append(p)
+        elif isinstance(p, dict):
+            u = p.get("url") or p.get("link") or p.get("id")
+            if u: photo_urls.append(u)
+    photo_urls = photo_urls[:10]
+    photo_url = photo_urls[0] if photo_urls else None
 
     # Description (clean HTML tags)
     desc_raw = ad.get("description", "")
@@ -552,6 +560,7 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
         "registration_plate":      None,
         "first_registration_date": None,
         "photo_url":               photo_url,
+        "photo_urls":              photo_urls,
         "raw_description":         desc_clean,
         "price_from_detail":       price_val,
         "location_from_detail":    location_str,
@@ -724,9 +733,17 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         if enc_date and advert_id:
             first_registration_date = _decrypt_vin(enc_date, advert_id)
 
-        # Photo — images.photos[0].id IS the CDN URL on otomoto
-        photos    = advert.get("images", {}).get("photos", [])
-        photo_url = photos[0].get("id") if photos else None
+        # Photos — images.photos[i].id IS the CDN URL on otomoto (extract up to 10)
+        photos = advert.get("images", {}).get("photos", [])
+        photo_urls = []
+        for p in photos:
+            if isinstance(p, dict):
+                u = p.get("id") or p.get("url")
+                if u: photo_urls.append(u)
+            elif isinstance(p, str):
+                photo_urls.append(p)
+        photo_urls = photo_urls[:10]
+        photo_url = photo_urls[0] if photo_urls else None
 
         # Price
         price_from_detail = None
@@ -778,6 +795,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "registration_plate":      registration_plate,
             "first_registration_date": first_registration_date,
             "photo_url":               photo_url,
+            "photo_urls":              photo_urls,
             "raw_description":         description_text,
             "price_from_detail":       price_from_detail,
             "location_from_detail":    location_from_detail,
@@ -1101,7 +1119,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "price_pln":         final_price,
                     "mileage_km":        detail.get("mileage_km"),
                     "location_city":     final_loc,
-                    "photos":            [photo] if photo else [],
+                    "photos":            detail.get("photo_urls") or ([photo] if photo else []),
                     "vin":               detail.get("vin"),
                     "vin_confidence":    detail.get("vin_confidence", "none"),
                     "registration_plate":      detail.get("registration_plate"),
