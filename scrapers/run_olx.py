@@ -24,11 +24,13 @@ from base_scraper import run, _log_run
 from bmw_alpina import CONFIG as ALPINA_OLX
 from bmw_x3_m_f97 import CONFIG as X3_M_OLX
 from bmw_x3_m40i_g01 import CONFIG as X3_M40I_OLX
+from audi_rs3_8v import CONFIG as RS3_8V_OLX
 
 ALL_OLX_FLEET = [
     ALPINA_OLX,
     X3_M_OLX,
     X3_M40I_OLX,
+    RS3_8V_OLX,
 ]
 
 SCRAPER_MAP = {
@@ -37,6 +39,8 @@ SCRAPER_MAP = {
     "x3_m":     [X3_M_OLX],
     "x3_m40i":  [X3_M40I_OLX],
     "m40i":     [X3_M40I_OLX],
+    "rs3":      [RS3_8V_OLX],
+    "rs3_8v":   [RS3_8V_OLX],
     "all":      ALL_OLX_FLEET,
 }
 

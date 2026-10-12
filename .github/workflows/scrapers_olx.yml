@@ -16,6 +16,7 @@ on:
           - alpina
           - x3m
           - x3_m40i
+          - rs3
 
 jobs:
   scrape:
