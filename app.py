@@ -1417,14 +1417,17 @@ def vehicle_detail(vin):
         ai_data["has_conflict"] = bool(orig["ai_conflict"])
 
     # CEPiK report
-    cepik_row = conn.execute("SELECT * FROM cepik_reports WHERE vin=?", (vin,)).fetchone()
     cepik_data = None
-    if cepik_row:
-        import json
-        c_dict = dict(cepik_row)
-        c_dict["odometer_history"] = json.loads(c_dict["odometer_history_json"]) if c_dict.get("odometer_history_json") else []
-        c_dict["events"] = json.loads(c_dict["events_json"]) if c_dict.get("events_json") else []
-        cepik_data = c_dict
+    try:
+        cepik_row = conn.execute("SELECT * FROM cepik_reports WHERE vin=?", (vin,)).fetchone()
+        if cepik_row:
+            import json
+            c_dict = dict(cepik_row)
+            c_dict["odometer_history"] = json.loads(c_dict["odometer_history_json"]) if c_dict.get("odometer_history_json") else []
+            c_dict["events"] = json.loads(c_dict["events_json"]) if c_dict.get("events_json") else []
+            cepik_data = c_dict
+    except Exception:
+        cepik_data = None
 
     # Check if vehicle is eligible to fetch CEPiK
     first_reg = conn.execute("""

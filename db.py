@@ -420,6 +420,53 @@ def init_db():
         db.execute("ALTER TABLE pending_listings ADD COLUMN equipment TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(8,'color_int_equipment')")
 
+    # Migration v9: plate_review_queue & cepik_reports
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS plate_review_queue (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        listing_id          TEXT,
+        vin                 TEXT,
+        source_url          TEXT,
+        photo_url           TEXT,
+        crop_path           TEXT,
+        detected_plate      TEXT,
+        confidence          REAL,
+        status              TEXT NOT NULL DEFAULT 'pending',
+        reviewed_plate      TEXT,
+        reviewed_at         TEXT,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    )""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_plate_queue_status ON plate_review_queue(status)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_plate_queue_vin ON plate_review_queue(vin)")
+
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS cepik_reports (
+        vin                     TEXT PRIMARY KEY,
+        registration_plate      TEXT,
+        first_registration_date TEXT,
+        make                    TEXT,
+        model                   TEXT,
+        type                    TEXT,
+        subtype                 TEXT,
+        registration_status     TEXT,
+        tech_inspection_status  TEXT,
+        tech_inspection_until   TEXT,
+        has_current_oc          INTEGER,
+        insurance_expiry_date   TEXT,
+        is_stolen               INTEGER DEFAULT 0,
+        total_owners            INTEGER,
+        last_odometer_km        INTEGER,
+        last_odometer_date      TEXT,
+        odometer_history_json   TEXT,
+        events_json             TEXT,
+        odometer_rollback       INTEGER DEFAULT 0,
+        rollback_diff_km        INTEGER DEFAULT 0,
+        fetched_at              TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(vin) REFERENCES vehicles(vin)
+    )""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_cepik_reports_plate ON cepik_reports(registration_plate)")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(9,'plate_queue_and_cepik')")
+
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
     db.execute("""
