@@ -19,3 +19,4 @@ static/photos/
 advert_dump.json
 test.html
 scrapers/otomoto_cookies.txt
+static/plate_crops/*.jpg

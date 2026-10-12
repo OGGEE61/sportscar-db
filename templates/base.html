@@ -29,6 +29,14 @@
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/add') %}active{% endif %}" href="/add">Add Vehicle</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/corrections') %}active{% endif %}" href="/corrections">Corrections</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/review') %}active{% endif %}" href="/review">Review Queue</a></li>
+        <li class="nav-item">
+          <a class="nav-link position-relative {% if request.path.startswith('/plates') %}active{% endif %}" href="/plates">
+            Tablice (AI)
+            {% if pending_plates_count and pending_plates_count > 0 %}
+            <span class="badge rounded-pill bg-primary ms-1" style="font-size: 0.65rem;">{{ pending_plates_count }}</span>
+            {% endif %}
+          </a>
+        </li>
         {% if session.get('logged_in') %}
         <li class="nav-item"><a class="nav-link text-danger" href="/logout">Logout</a></li>
         {% endif %}

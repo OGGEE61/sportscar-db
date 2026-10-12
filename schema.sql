@@ -172,3 +172,22 @@ AFTER UPDATE ON vehicles
 BEGIN
     UPDATE vehicles SET updated_at = datetime('now') WHERE vin = NEW.vin;
 END;
+
+-- ── plate_review_queue (Human-in-the-Loop for CV License Plate Recognition) ─
+CREATE TABLE IF NOT EXISTS plate_review_queue (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id          TEXT,
+    vin                 TEXT,
+    source_url          TEXT,
+    photo_url           TEXT,
+    crop_path           TEXT,
+    detected_plate      TEXT,
+    confidence          REAL,
+    status              TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+    reviewed_plate      TEXT,
+    reviewed_at         TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_plate_queue_status ON plate_review_queue(status);
+CREATE INDEX IF NOT EXISTS idx_plate_queue_vin    ON plate_review_queue(vin);

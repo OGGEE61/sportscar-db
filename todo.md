@@ -4,3 +4,4 @@
 [x] 4. W model analytics, na drop downie nie ma wszystkich modeli z naszej bazy (Zrobione - dodano wszystkie 34 modele pogrupowane według marek z optgroup)
 [x] 5. W model analytics w x3m, wyświetla też ogłoszenie od x3 m40i (Zrobione - ścisłe rozdzielenie X3 M F97 [18 szt.] od X3 M40i G01 [39 szt.])
 [x] 6. Nowa, estetyczna szata graficzna w stylu czystej bieli / light theme (Zrobione - czysty biały navbar, karty z miękkim cieniem i delikatną ramką, nowoczesna typografia Inter, estetyczne pigułki AI i wyposażenia)
+[x] 7. Moduł Computer Vision (YOLOv8 + EasyOCR) do odczytywania tablic rejestracyjnych ze zdjęć + podstrona Human-in-the-Loop /plates (Zrobione - pobieranie do 10 zdjęć w scraperze, lokalny model detekcji i OCR w scripts/detect_plates.py, podstrona /plates ze skrótami klawiszowymi i automatycznym przypisywaniem numeru do pojazdu)

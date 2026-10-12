@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Weryfikacja Tablic (AI) – SportsCar DB{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+  <div>
+    <h2 class="h3 fw-bold mb-1 d-flex align-items-center gap-2">
+      <i class="bi bi-camera text-primary"></i> Weryfikacja Tablic Rejestracyjnych
+      <span class="badge bg-primary fs-6 fw-normal">Human-in-the-Loop</span>
+    </h2>
+    <p class="text-muted small mb-0">
+      Lokalny model CV (YOLOv8 + EasyOCR) wykrywa tablice na zdjęciach. Zatwierdź lub popraw numer w 2 sekundy.
+    </p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <button type="button" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1" id="scan-btn" onclick="runBatchScan()">
+      <i class="bi bi-cpu" id="scan-icon"></i>
+      <span id="scan-text">Skanuj kolejne ogłoszenia (AI)</span>
+    </button>
+  </div>
+</div>
+
+<!-- Statystyki -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border shadow-sm p-3 bg-white rounded-3">
+      <div class="text-muted small text-uppercase fw-semibold">Oczekujące weryfikacji</div>
+      <div class="fs-3 fw-bold text-primary" id="stat-pending">{{ stats.pending }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border shadow-sm p-3 bg-white rounded-3">
+      <div class="text-muted small text-uppercase fw-semibold">Zatwierdzone</div>
+      <div class="fs-3 fw-bold text-success">{{ stats.approved }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border shadow-sm p-3 bg-white rounded-3">
+      <div class="text-muted small text-uppercase fw-semibold">Odrzucone</div>
+      <div class="fs-3 fw-bold text-secondary">{{ stats.rejected }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border shadow-sm p-3 bg-white rounded-3">
+      <div class="text-muted small text-uppercase fw-semibold">Bez tablic w bazie</div>
+      <div class="fs-3 fw-bold text-warning">{{ stats.missing_plates }}</div>
+    </div>
+  </div>
+</div>
+
+<div id="scan-alert" class="alert alert-info d-none align-items-center gap-2 py-2 mb-3">
+  <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+  <span id="scan-msg">Trwa lokalna analiza zdjęć modelem YOLOv8 i EasyOCR... Może to zająć kilka sekund.</span>
+</div>
+
+{% if not candidates %}
+<div class="card border shadow-sm p-5 text-center bg-white rounded-4 my-4" id="empty-state">
+  <div class="display-6 text-muted mb-3"><i class="bi bi-check2-circle text-success"></i></div>
+  <h4 class="fw-bold">Wszystkie wykryte tablice zweryfikowane!</h4>
+  <p class="text-muted mx-auto" style="max-width: 500px;">
+    Kolejka jest pusta. Kliknij przycisk poniżej, aby przeskanować zdjęcia kolejnych samochodów bez tablic w bazie.
+  </p>
+  <div>
+    <button class="btn btn-primary px-4" onclick="runBatchScan()">
+      <i class="bi bi-play-circle me-1"></i> Uruchom skanowanie 10 kolejnych aut
+    </button>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4" id="candidates-container">
+  {% for c in candidates %}
+  <div class="col-12 col-lg-6 candidate-card" id="card-{{ c.id }}">
+    <div class="card border shadow-sm h-100 rounded-3 overflow-hidden bg-white">
+      <!-- Nagłówek karty -->
+      <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center py-2 px-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="fw-bold">{{ c.make or 'Samochód' }} {{ c.model or '' }}</span>
+          {% if c.year %}<span class="badge bg-secondary">{{ c.year }}</span>{% endif %}
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" title="Pewność detekcji YOLO">
+            Pewność: {{ (c.confidence * 100) | round(1) }}%
+          </span>
+          {% if c.source_url %}
+          <a href="{{ c.source_url }}" target="_blank" class="text-muted small text-decoration-none" title="Zobacz oryginalne ogłoszenie">
+            <i class="bi bi-box-arrow-up-right"></i>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-body p-3">
+        <!-- Zdjęcia: Crop tablicy + Pełne zdjęcie -->
+        <div class="row g-2 mb-3">
+          <!-- Crop tablicy (duży, wyrazisty) -->
+          <div class="col-7 d-flex flex-column justify-content-center align-items-center bg-light border rounded-3 p-2 text-center" style="min-height: 120px;">
+            <div class="text-muted small mb-1 fw-semibold"><i class="bi bi-crop"></i> Wycięcie z modelu (Crop)</div>
+            <img src="{{ c.crop_path }}" alt="Wycinek tablicy" class="img-fluid rounded border shadow-sm" style="max-height: 85px; object-fit: contain; background: #fff;" onclick="showImageModal('{{ c.crop_path }}', 'Zbliżenie na tablicę')">
+          </div>
+          <!-- Całe zdjęcie auta -->
+          <div class="col-5 d-flex flex-column justify-content-center align-items-center bg-light border rounded-3 p-2 text-center" style="min-height: 120px;">
+            <div class="text-muted small mb-1 fw-semibold"><i class="bi bi-image"></i> Zdjęcie auta</div>
+            <img src="{{ c.photo_url }}" alt="Zdjęcie pojazdu" class="img-fluid rounded border" style="max-height: 85px; object-fit: cover; cursor: pointer;" onclick="showImageModal('{{ c.photo_url }}', 'Pełne zdjęcie samochodu')">
+          </div>
+        </div>
+
+        <!-- Informacje o pojeździe -->
+        <div class="d-flex flex-wrap gap-2 text-muted small mb-3">
+          {% if c.vin %}
+          <div><i class="bi bi-upc-scan"></i> VIN: <span class="fw-semibold text-dark">{{ c.vin }}</span></div>
+          {% endif %}
+          {% if c.price_pln %}
+          <div><i class="bi bi-tag"></i> {{ "{:,.0f}".format(c.price_pln).replace(',', ' ') }} zł</div>
+          {% endif %}
+          {% if c.location_city %}
+          <div><i class="bi bi-geo-alt"></i> {{ c.location_city }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Formularz weryfikacji Human-in-the-Loop -->
+        <div class="bg-light p-2 rounded-3 border mb-3">
+          <label class="form-label small fw-bold text-uppercase text-muted mb-1 d-flex justify-content-between">
+            <span>Rozpoznany numer:</span>
+            <span class="text-muted fw-normal">Klawisz [Enter] zatwierdza</span>
+          </label>
+          <div class="input-group">
+            <span class="input-group-text bg-primary text-white fw-bold px-2" style="font-size: 0.85rem; letter-spacing: 1px;">PL</span>
+            <input type="text" 
+                   id="input-{{ c.id }}" 
+                   value="{{ c.detected_plate }}" 
+                   class="form-control form-control-lg fw-bold font-monospace text-uppercase plate-input"
+                   placeholder="np. KR 7VG22"
+                   data-id="{{ c.id }}"
+                   autocomplete="off">
+          </div>
+        </div>
+
+        <!-- Przyciski akcji -->
+        <div class="d-flex gap-2">
+          <button type="button" 
+                  class="btn btn-success flex-grow-1 fw-semibold d-flex align-items-center justify-content-center gap-2 py-2"
+                  onclick="reviewPlate({{ c.id }}, 'approve')">
+            <i class="bi bi-check-lg fs-5"></i> Zatwierdź numer
+          </button>
+          <button type="button" 
+                  class="btn btn-outline-danger px-3 d-flex align-items-center justify-content-center gap-1"
+                  onclick="reviewPlate({{ c.id }}, 'reject')"
+                  title="Odrzuć (np. nieczytelna, fejk lub ramka reklamowa)">
+            <i class="bi bi-x-lg"></i> Odrzuć
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Modal do powiększania zdjęć -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content bg-dark border-0">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title text-white" id="imageModalTitle">Powiększenie</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center p-3">
+        <img id="imageModalSrc" src="" alt="Powiększenie" class="img-fluid rounded" style="max-height: 80vh;">
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Obsługa Enter na inputach tablic
+document.querySelectorAll('.plate-input').forEach(input => {
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const id = this.getAttribute('data-id');
+      reviewPlate(id, 'approve');
+    }
+  });
+});
+
+// Zatwierdzenie lub odrzucenie kandydata tablicy
+async function reviewPlate(id, action) {
+  const card = document.getElementById(`card-${id}`);
+  const input = document.getElementById(`input-${id}`);
+  const plateValue = input ? input.value.trim().toUpperCase() : '';
+
+  if (action === 'approve' && !plateValue) {
+    alert('Proszę wpisać numer tablicy rejestracyjnej lub odrzucić propozycję.');
+    if (input) input.focus();
+    return;
+  }
+
+  // Efekt fade out
+  if (card) {
+    card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+    card.style.opacity = '0.5';
+    card.style.transform = 'scale(0.98)';
+  }
+
+  try {
+    const res = await fetch('/api/plates/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: id,
+        action: action,
+        plate: plateValue
+      })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      if (card) {
+        card.remove();
+      }
+      // Zaktualizuj licznik oczekujących
+      const pendingEl = document.getElementById('stat-pending');
+      if (pendingEl) {
+        let count = parseInt(pendingEl.innerText) || 0;
+        if (count > 0) pendingEl.innerText = count - 1;
+      }
+      // Jeśli brak kart, pokaż komunikat pusty
+      const container = document.getElementById('candidates-container');
+      if (container && container.children.length === 0) {
+        window.location.reload();
+      }
+    } else {
+      alert('Błąd podczas zapisywania: ' + (data.message || 'Nieznany błąd'));
+      if (card) {
+        card.style.opacity = '1';
+        card.style.transform = 'none';
+      }
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err);
+    if (card) {
+      card.style.opacity = '1';
+      card.style.transform = 'none';
+    }
+  }
+}
+
+// Uruchomienie skanowania partii ogłoszeń
+async function runBatchScan(limit = 10) {
+  const btn = document.getElementById('scan-btn');
+  const icon = document.getElementById('scan-icon');
+  const text = document.getElementById('scan-text');
+  const alertBox = document.getElementById('scan-alert');
+
+  if (btn) btn.disabled = true;
+  if (alertBox) alertBox.classList.remove('d-none');
+  if (icon) icon.className = 'spinner-border spinner-border-sm';
+  if (text) text.innerText = 'Skanowanie w toku...';
+
+  try {
+    const res = await fetch(`/api/plates/scan_batch?limit=${limit}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      window.location.reload();
+    } else {
+      alert('Błąd skanowania: ' + (data.message || 'Nieznany błąd'));
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (alertBox) alertBox.classList.add('d-none');
+    if (icon) icon.className = 'bi bi-cpu';
+    if (text) text.innerText = 'Skanuj kolejne ogłoszenia (AI)';
+  }
+}
+
+// Modal ze zdjęciem
+function showImageModal(src, title) {
+  document.getElementById('imageModalSrc').src = src;
+  document.getElementById('imageModalTitle').innerText = title || 'Powiększenie';
+  const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+  modal.show();
+}
+</script>
+{% endblock %}
