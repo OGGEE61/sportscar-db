@@ -294,6 +294,11 @@
             {% if c.year %}<span class="badge bg-light text-dark border">{{ c.year }}</span>{% endif %}
           </div>
           <div class="d-flex align-items-center gap-2">
+            {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}
+            <span class="badge bg-warning text-dark border fw-semibold" style="font-size: 0.72rem;" title="Możliwa ramka reklamowa lub numer telefonu">
+              <i class="bi bi-exclamation-triangle-fill text-dark me-1"></i>Podejrzany odczyt (>8 znaków)
+            </span>
+            {% endif %}
             <span class="badge bg-light text-muted border fw-normal" title="Pewność detekcji YOLO">
               Pewność: {{ (c.confidence * 100) | round(1) }}%
             </span>
@@ -335,6 +340,15 @@
 
           <!-- Formularz weryfikacji Human-in-the-Loop -->
           <div class="bg-light p-3 rounded-3 border mb-3">
+            {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}
+            <div class="alert alert-warning py-2 px-3 small d-flex align-items-center gap-2 mb-2 rounded-3 border border-warning-subtle text-dark">
+              <i class="bi bi-exclamation-triangle-fill fs-5 text-warning-emphasis"></i>
+              <div>
+                <div class="fw-bold">Potencjalnie błędny odczyt (>8 znaków)</div>
+                <div class="text-muted" style="font-size: 0.75rem;">Model mógł sczytać numer telefonu lub napis z ramki. Spójrz na wycinek powyżej i skoryguj numer przed zatwierdzeniem.</div>
+              </div>
+            </div>
+            {% endif %}
             <label class="form-label small fw-semibold text-uppercase text-muted mb-1 d-flex justify-content-between">
               <span>Rozpoznana tablica:</span>
               <span class="text-muted fw-normal" style="font-size: 0.75rem;">Klawisz [Enter] zatwierdza</span>
@@ -344,17 +358,17 @@
               <input type="text" 
                      id="input-{{ c.id }}" 
                      value="{{ c.detected_plate }}" 
-                     class="form-control form-control-lg fw-bold font-monospace text-uppercase plate-input bg-white"
+                     class="form-control form-control-lg fw-bold font-monospace text-uppercase plate-input bg-white {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}border-warning{% endif %}"
                      placeholder="np. KR 7VG22"
-                     maxlength="10"
+                     maxlength="20"
                      data-id="{{ c.id }}"
                      autocomplete="off">
             </div>
             <div class="d-flex justify-content-between align-items-center mt-1">
-              <span class="text-muted small" style="font-size: 0.75rem;">Standard PL: 4–8 znaków</span>
+              <span class="text-muted small" style="font-size: 0.75rem;">Standard PL: 4–8 znaków (bez spacji)</span>
               {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}
               <span class="badge bg-warning text-dark border small" style="font-size: 0.7rem;">
-                <i class="bi bi-exclamation-triangle"></i> >8 znaków (prawdopodobnie ramka)
+                <i class="bi bi-exclamation-triangle"></i> Wymaga skorygowania
               </span>
               {% endif %}
             </div>
@@ -514,16 +528,20 @@ async function submitModalAction(action) {
   const plateVal = input ? input.value.trim().toUpperCase() : '';
 
   const cleanLen = plateVal.replace(/[^A-Z0-9]/gi, '').length;
+  let forceSubmit = false;
   if (action === 'approve') {
-    if (!plateVal || cleanLen < 4) {
-      alert('Numer rejestracyjny musi mieć co najmniej 4 znaki.');
+    if (!plateVal || cleanLen < 3) {
+      alert('Numer rejestracyjny musi mieć co najmniej 3 znaki.');
       if (input) input.focus();
       return;
     }
     if (cleanLen > 8) {
-      alert(`Polska tablica rejestracyjna może mieć maksymalnie 8 znaków (wpisano ${cleanLen}: "${plateVal}"). Prawdopodobnie odczytano napis z ramki reklamowej.`);
-      if (input) input.focus();
-      return;
+      const ok = confirm(`Uwaga: wpisany numer ma ${cleanLen} znaków (standard PL to max 8).\nPrawdopodobnie model sczytał ramkę reklamową.\n\nCzy na pewno chcesz zatwierdzić ten numer bez zmian?`);
+      if (!ok) {
+        if (input) input.focus();
+        return;
+      }
+      forceSubmit = true;
     }
   }
 
@@ -539,7 +557,8 @@ async function submitModalAction(action) {
       body: JSON.stringify({
         id: currentEditId,
         action: action,
-        plate: plateVal
+        plate: plateVal,
+        force: forceSubmit
       })
     });
     const data = await res.json();
@@ -622,16 +641,20 @@ async function reviewPlate(id, action) {
   const plateValue = input ? input.value.trim().toUpperCase() : '';
 
   const cleanLen = plateValue.replace(/[^A-Z0-9]/gi, '').length;
+  let forceSubmit = false;
   if (action === 'approve') {
-    if (!plateValue || cleanLen < 4) {
-      alert('Proszę wpisać numer tablicy rejestracyjnej (min. 4 znaki).');
+    if (!plateValue || cleanLen < 3) {
+      alert('Proszę wpisać numer tablicy rejestracyjnej (min. 3 znaki).');
       if (input) input.focus();
       return;
     }
     if (cleanLen > 8) {
-      alert(`Polska tablica rejestracyjna może mieć maksymalnie 8 znaków (wpisano ${cleanLen}: "${plateValue}"). Prawdopodobnie odczytano napis z ramki reklamowej.`);
-      if (input) input.focus();
-      return;
+      const ok = confirm(`Uwaga: wpisany numer ma ${cleanLen} znaków (standard PL to max 8).\nPrawdopodobnie model sczytał ramkę reklamową.\n\nCzy na pewno chcesz zatwierdzić ten numer bez zmian?`);
+      if (!ok) {
+        if (input) input.focus();
+        return;
+      }
+      forceSubmit = true;
     }
   }
 
@@ -648,7 +671,8 @@ async function reviewPlate(id, action) {
       body: JSON.stringify({
         id: id,
         action: action,
-        plate: plateValue
+        plate: plateValue,
+        force: forceSubmit
       })
     });
     const data = await res.json();

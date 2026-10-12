@@ -2351,17 +2351,17 @@ def api_plates_review():
     if action == "approve":
         final_plate = plate or cand["detected_plate"]
         clean_plate = re.sub(r"[^A-Z0-9]", "", (final_plate or "").upper())
-        if len(clean_plate) > 8:
+        if len(clean_plate) < 3:
             conn.close()
             return jsonify({
                 "status": "error",
-                "message": f"Tablica rejestracyjna w Polsce może mieć maksymalnie 8 znaków (wprowadzono {len(clean_plate)}: '{final_plate}'). Prawdopodobnie odczytano napis reklamowy."
+                "message": "Tablica rejestracyjna musi mieć co najmniej 3 znaki."
             }), 400
-        if len(clean_plate) < 4:
+        if len(clean_plate) > 8 and not data.get("force"):
             conn.close()
             return jsonify({
-                "status": "error",
-                "message": "Tablica rejestracyjna musi mieć co najmniej 4 znaki."
+                "status": "needs_confirmation",
+                "message": f"Wpisany numer ma {len(clean_plate)} znaków (w Polsce standard to max 8). Jeśli na pewno chcesz zatwierdzić w tej formie, potwierdź."
             }), 400
 
         conn.execute("""
