@@ -146,9 +146,16 @@
               {% endif %}
             </td>
             <td>
-              <span class="badge bg-light text-dark border font-monospace px-2 py-1 fs-6">
-                <i class="bi bi-robot text-muted me-1"></i>{{ c.reviewed_plate or c.detected_plate }}
-              </span>
+              <div class="d-flex align-items-center gap-2">
+                <span id="plate-badge-{{ c.id }}" class="badge bg-light text-dark border font-monospace px-2 py-1 fs-6">
+                  <i class="bi bi-robot text-muted me-1"></i><span id="plate-val-{{ c.id }}">{{ c.reviewed_plate or c.detected_plate }}</span>
+                </span>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 border" 
+                        onclick="openEditPlateModal({{ c.id }}, '{{ c.reviewed_plate or c.detected_plate }}', '{{ c.make or '' }} {{ c.model or '' }}', '{{ c.vin or '' }}', '{{ c.crop_path or '' }}')" 
+                        title="Edytuj numer rejestracyjny">
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </div>
             </td>
             <td>
               <span class="small text-muted">{{ (c.confidence * 100) | round(1) }}%</span>
@@ -157,15 +164,27 @@
               {{ (c.reviewed_at or c.created_at)[:16] }}
             </td>
             <td class="text-end">
-              {% if c.vin %}
-              <a href="/vehicle/{{ c.vin }}" class="btn btn-outline-dark btn-sm">
-                Karta pojazdu <i class="bi bi-arrow-right"></i>
-              </a>
-              {% elif c.source_url %}
-              <a href="{{ c.source_url }}" target="_blank" class="btn btn-outline-secondary btn-sm">
-                Ogłoszenie <i class="bi bi-box-arrow-up-right"></i>
-              </a>
-              {% endif %}
+              <div class="d-inline-flex align-items-center gap-1">
+                <button type="button" class="btn btn-outline-dark btn-sm d-flex align-items-center gap-1"
+                        onclick="openEditPlateModal({{ c.id }}, '{{ c.reviewed_plate or c.detected_plate }}', '{{ c.make or '' }} {{ c.model or '' }}', '{{ c.vin or '' }}', '{{ c.crop_path or '' }}')"
+                        title="Zmień numer rejestracyjny">
+                  <i class="bi bi-pencil"></i> Edytuj
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm"
+                        onclick="quickRejectApproved({{ c.id }}, '{{ c.reviewed_plate or c.detected_plate }}')"
+                        title="Odrzuć tę tablicę (usuń z pojazdu)">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+                {% if c.vin %}
+                <a href="/vehicle/{{ c.vin }}" class="btn btn-dark btn-sm" title="Karta pojazdu">
+                  <i class="bi bi-arrow-right"></i>
+                </a>
+                {% elif c.source_url %}
+                <a href="{{ c.source_url }}" target="_blank" class="btn btn-outline-secondary btn-sm" title="Ogłoszenie">
+                  <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -194,6 +213,7 @@
             <th>Odrzucony tekst</th>
             <th>Pewność</th>
             <th>Data</th>
+            <th class="text-end">Akcja</th>
           </tr>
         </thead>
         <tbody>
@@ -222,6 +242,20 @@
             </td>
             <td class="text-muted small">{{ (c.confidence * 100) | round(1) }}%</td>
             <td class="text-muted small">{{ (c.reviewed_at or c.created_at)[:16] }}</td>
+            <td class="text-end">
+              <div class="d-inline-flex align-items-center gap-1">
+                <button type="button" class="btn btn-outline-dark btn-sm d-flex align-items-center gap-1"
+                        onclick="openEditPlateModal({{ c.id }}, '{{ c.detected_plate }}', '{{ c.make or '' }} {{ c.model or '' }}', '{{ c.vin or '' }}', '{{ c.crop_path or '' }}')"
+                        title="Skoryguj i zatwierdź">
+                  <i class="bi bi-pencil"></i> Wpisz i zatwierdź
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        onclick="revertToPending({{ c.id }})"
+                        title="Przywróć do kolejki oczekujących">
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+              </div>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -339,6 +373,61 @@
   {% endif %}
 {% endif %}
 
+<!-- Modal do edycji numeru tablicy (AI) -->
+<div class="modal fade" id="editPlateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-white border shadow rounded-3">
+      <div class="modal-header border-bottom py-2">
+        <h6 class="modal-title fw-bold text-dark d-flex align-items-center gap-2 mb-0">
+          <i class="bi bi-pencil-square text-secondary"></i> Edytuj tablicę rejestracyjną
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body p-3">
+        <div class="mb-3 text-muted small">
+          Pojazd: <span id="editModalVehicleName" class="fw-semibold text-dark"></span>
+          <span class="mx-1">·</span>
+          VIN: <span id="editModalVin" class="font-monospace fw-semibold text-dark"></span>
+        </div>
+
+        <div class="text-center bg-light border rounded-3 p-3 mb-3" style="min-height: 80px;">
+          <div class="text-muted small mb-1" style="font-size: 0.75rem;"><i class="bi bi-crop"></i> Wycinek AI tablicy rejestracyjnej:</div>
+          <img id="editModalCrop" src="" alt="Wycinek" class="img-fluid rounded border bg-white shadow-sm" style="max-height: 90px; object-fit: contain;">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small fw-semibold text-uppercase text-muted mb-1 d-flex justify-content-between">
+            <span>Poprawny numer rejestracyjny:</span>
+            <span class="text-muted fw-normal" style="font-size: 0.75rem;">[Enter] zapisuje</span>
+          </label>
+          <div class="input-group input-group-lg">
+            <span class="input-group-text bg-white text-dark fw-bold border-end-0 px-3 font-monospace" style="font-size: 0.9rem;">PL</span>
+            <input type="text" 
+                   id="editModalPlateInput" 
+                   class="form-control fw-bold font-monospace text-uppercase bg-white" 
+                   placeholder="np. OKR 9MM6"
+                   autocomplete="off">
+          </div>
+          <div class="form-text small text-muted mt-1">
+            Wpisz poprawny numer i naciśnij [Enter] lub kliknij "Zapisz i zatwierdź".
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-top py-2 d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-danger btn-sm" id="editModalRejectBtn" onclick="submitModalAction('reject')">
+          <i class="bi bi-x-circle me-1"></i> Odrzuć tablicę
+        </button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+          <button type="button" class="btn btn-dark btn-sm fw-semibold" id="editModalSaveBtn" onclick="submitModalAction('approve')">
+            <i class="bi bi-check-lg me-1"></i> Zapisz i zatwierdź
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal do powiększania zdjęć -->
 <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -357,7 +446,9 @@
 
 {% block scripts %}
 <script>
-// Obsługa Enter na inputach tablic
+let currentEditId = null;
+
+// Obsługa Enter na inputach tablic na kartach
 document.querySelectorAll('.plate-input').forEach(input => {
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
@@ -368,7 +459,144 @@ document.querySelectorAll('.plate-input').forEach(input => {
   });
 });
 
-// Zatwierdzenie lub odrzucenie kandydata tablicy
+// Obsługa Enter w modalu edycji tablicy
+const editInputEl = document.getElementById('editModalPlateInput');
+if (editInputEl) {
+  editInputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitModalAction('approve');
+    }
+  });
+}
+
+// Otwieranie modalu edycji
+function openEditPlateModal(id, currentPlate, vehicleName, vin, cropPath) {
+  currentEditId = id;
+  document.getElementById('editModalVehicleName').innerText = vehicleName || 'Pojazd';
+  document.getElementById('editModalVin').innerText = vin || '—';
+  const input = document.getElementById('editModalPlateInput');
+  input.value = currentPlate || '';
+  
+  const cropEl = document.getElementById('editModalCrop');
+  if (cropPath) {
+    cropEl.src = cropPath;
+    cropEl.parentElement.classList.remove('d-none');
+  } else {
+    cropEl.parentElement.classList.add('d-none');
+  }
+
+  const modalEl = document.getElementById('editPlateModal');
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+
+  modalEl.addEventListener('shown.bs.modal', function () {
+    input.focus();
+    input.select();
+  }, { once: true });
+}
+
+// Wysłanie akcji z modalu edycji (approve lub reject)
+async function submitModalAction(action) {
+  if (!currentEditId) return;
+  const input = document.getElementById('editModalPlateInput');
+  const plateVal = input ? input.value.trim().toUpperCase() : '';
+
+  if (action === 'approve' && !plateVal) {
+    alert('Proszę wpisać numer tablicy rejestracyjnej lub odrzucić propozycję.');
+    if (input) input.focus();
+    return;
+  }
+
+  const saveBtn = document.getElementById('editModalSaveBtn');
+  const rejectBtn = document.getElementById('editModalRejectBtn');
+  if (saveBtn) saveBtn.disabled = true;
+  if (rejectBtn) rejectBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/plates/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: currentEditId,
+        action: action,
+        plate: plateVal
+      })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      const modalEl = document.getElementById('editPlateModal');
+      const modalInstance = bootstrap.Modal.getInstance(modalEl);
+      if (modalInstance) modalInstance.hide();
+
+      const plateValEl = document.getElementById(`plate-val-${currentEditId}`);
+      if (plateValEl && action === 'approve') {
+        plateValEl.innerText = plateVal;
+        const badge = document.getElementById(`plate-badge-${currentEditId}`);
+        if (badge) {
+          badge.classList.remove('bg-light');
+          badge.classList.add('bg-dark', 'text-white');
+          setTimeout(() => {
+            badge.classList.remove('bg-dark', 'text-white');
+            badge.classList.add('bg-light');
+          }, 1500);
+        }
+      } else {
+        window.location.reload();
+      }
+    } else {
+      alert('Błąd podczas zapisywania: ' + (data.message || 'Nieznany błąd'));
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err);
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (rejectBtn) rejectBtn.disabled = false;
+  }
+}
+
+// Szybkie odrzucenie zatwierdzonej tablicy
+async function quickRejectApproved(id, plate) {
+  if (!confirm(`Czy na pewno chcesz odrzucić tablicę "${plate}" i usunąć ją z danych pojazdu?`)) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/plates/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, action: 'reject' })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      window.location.reload();
+    } else {
+      alert('Błąd: ' + (data.message || 'Nieznany'));
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err);
+  }
+}
+
+// Przywrócenie odrzuconej tablicy z powrotem do kolejki
+async function revertToPending(id) {
+  try {
+    const res = await fetch('/api/plates/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, action: 'revert' })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      window.location.reload();
+    } else {
+      alert('Błąd: ' + (data.message || 'Nieznany'));
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err);
+  }
+}
+
+// Zatwierdzenie lub odrzucenie kandydata tablicy (karty do weryfikacji)
 async function reviewPlate(id, action) {
   const card = document.getElementById(`card-${id}`);
   const input = document.getElementById(`input-${id}`);

@@ -70,28 +70,42 @@ def clean_plate_text(raw_text: str) -> str:
     return cleaned
 
 
+def format_polish_plate(raw_text: str) -> str:
+    """Formatuje standardową polską tablicę: rozdziela wyróżnik powiatu spacją (np. OKR 9MM6, KR 7VG22)."""
+    cleaned = clean_plate_text(raw_text)
+    if not cleaned:
+        return ""
+    if 4 <= len(cleaned) <= 8:
+        if len(cleaned) >= 5 and cleaned[:2].isalpha() and not cleaned[2].isalpha():
+            return f"{cleaned[:2]} {cleaned[2:]}"
+        elif len(cleaned) >= 6 and cleaned[:3].isalpha() and not cleaned[3].isalpha():
+            return f"{cleaned[:3]} {cleaned[3:]}"
+    return cleaned
+
+
 def is_likely_dealer_badge(norm_text: str) -> bool:
     """Sprawdza, czy odczytany tekst to napis reklamowy typu OTOMOTO / KOMIS."""
-    if norm_text in DEALER_WORDS:
+    cleaned = re.sub(r"[^A-Z0-9]", "", (norm_text or "").upper())
+    if cleaned in DEALER_WORDS:
         return True
     for dw in DEALER_WORDS:
-        if len(dw) >= 4 and dw in norm_text:
+        if len(dw) >= 4 and dw in cleaned:
             return True
     return False
 
 
 def is_valid_plate_format(norm_text: str) -> bool:
     """Sprawdza, czy długość i struktura przypomina tablicę rejestracyjną (PL: 4-8 znaków)."""
-    if not norm_text or len(norm_text) < 4 or len(norm_text) > 8:
+    cleaned = re.sub(r"[^A-Z0-9]", "", (norm_text or "").upper())
+    if not cleaned or len(cleaned) < 4 or len(cleaned) > 8:
         return False
-    # Musi zawierać przynajmniej jedną literę i przynajmniej jedną cyfrę (lub być tablicą zabytkową/indywidualną)
-    has_letter = any(c.isalpha() for c in norm_text)
-    has_digit = any(c.isdigit() for c in norm_text)
+    has_letter = any(c.isalpha() for c in cleaned)
+    has_digit = any(c.isdigit() for c in cleaned)
     return has_letter and has_digit
 
 
 def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
-    """Wykrywa tablice na pojedynczym obrazie PIL i zwraca znalezionych kandydatów."""
+    """Wykrywa tablice na obrazie PIL, ocenia jakość ujęcia (prostoliniowość przód/tył) i uruchamia zaawansowany OCR."""
     model, reader = get_models()
 
     results = model(img_pil, conf=0.30, verbose=False)
@@ -104,63 +118,102 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         xyxy = b.xyxy[0].cpu().numpy().astype(int)
         conf = float(b.conf[0])
 
-        # Dodaj delikatny margines (5% szerokości/wysokości) dla lepszego OCR
         bw = xyxy[2] - xyxy[0]
         bh = xyxy[3] - xyxy[1]
+        if bw < 30 or bh < 8:
+            continue
+
+        # Ocena ujęcia pod kątem prostoliniowości (przód / tył pojazdu)
+        # Standardowa tablica UE ma stosunek boków 520x114 mm (~4.56 : 1)
+        aspect_ratio = float(bw) / float(max(1, bh))
+        ar_diff = abs(aspect_ratio - 4.56)
+
+        # Ujęcia pod dużym kątem (3/4) mają aspect_ratio < 3.2 lub > 5.5
+        aspect_score = max(0.0, 1.0 - (ar_diff / 2.2))
+        area_score = min(1.0, float(bw * bh) / 14000.0)
+
+        # Środek kadru (zdjęcia prostopadłe przód/tył zwykle mają tablicę w centrum)
+        cx = (xyxy[0] + xyxy[2]) / (2.0 * max(1, w))
+        center_score = 1.0 - min(1.0, abs(cx - 0.5) * 1.8)
+
+        shot_quality_score = (aspect_score * 0.45) + (area_score * 0.35) + (conf * 0.20)
+
+        # Marginesy dla pełnego cropa do UI
         pad_x = max(4, int(bw * 0.05))
-        pad_y = max(4, int(bh * 0.08))
+        pad_y = max(4, int(bh * 0.06))
 
         x1 = max(0, xyxy[0] - pad_x)
         y1 = max(0, xyxy[1] - pad_y)
         x2 = min(w, xyxy[2] + pad_x)
         y2 = min(h, xyxy[3] + pad_y)
 
-        crop = img_pil.crop((x1, y1, x2, y2))
+        full_crop = img_pil.crop((x1, y1, x2, y2))
 
-        # Powiększ mały crop do min 200px wysokości dla lepszego OCR
-        cw, ch = crop.size
-        if ch < 120 and ch > 0:
-            scale = 120.0 / ch
-            crop = crop.resize((int(cw * scale), 120), Image.Resampling.LANCZOS)
+        # Przygotowanie wycinka pod OCR:
+        # Odetnij dolne 16% ramki reklamowej (telefony, adresy www dealerów)
+        ocr_bh = max(10, int(bh * 0.84))
+        ocr_crop = img_pil.crop((xyxy[0], xyxy[1], xyxy[2], xyxy[1] + ocr_bh))
 
-        # Zwiększ kontrast dla OCR
-        enhancer = ImageEnhance.Contrast(crop)
+        # Skaluj do znormalizowanej wysokości 70px
+        scale = 70.0 / float(ocr_crop.size[1])
+        ocr_scaled = ocr_crop.resize((int(ocr_crop.size[0] * scale), 70), Image.Resampling.LANCZOS)
+
+        # Zwiększ kontrast
+        enhancer = ImageEnhance.Contrast(ocr_scaled)
         enhanced_crop = enhancer.enhance(1.4)
 
         crop_np = np.array(enhanced_crop)
-        ocr_results = reader.readtext(crop_np)
+        ocr_results = reader.readtext(crop_np, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-        raw_parts = [r[1] for r in ocr_results]
-        joined = " ".join(raw_parts)
+        if not ocr_results:
+            continue
+
+        # Wybierz najlepszy fragment z OCR pasujący do tablicy
+        ocr_texts = []
+        for r in ocr_results:
+            t = r[1]
+            c = r[2] if len(r) > 2 else 0.5
+            ocr_texts.append((t, c))
+
+        # Spróbuj złożyć lub wybrać główny blok
+        joined = " ".join([t[0] for t in ocr_texts])
         norm_text = clean_plate_text(joined)
 
-        # Odrzuć napisy komisowe / reklamowe
-        if is_likely_dealer_badge(norm_text):
-            continue
+        if is_likely_dealer_badge(norm_text) or len(norm_text) < 4:
+            # Sprawdź poszczególne bloki tekstu
+            best_part = ""
+            for t, _ in ocr_texts:
+                cleaned_part = clean_plate_text(t)
+                if not is_likely_dealer_badge(cleaned_part) and is_valid_plate_format(cleaned_part):
+                    best_part = cleaned_part
+                    break
+            norm_text = best_part
 
         if not norm_text or len(norm_text) < 4:
             continue
 
-        # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI (aby działało na Vercelu i w chmurze)
+        formatted_plate = format_polish_plate(norm_text)
+
+        # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
         crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
         crop_save_path = os.path.join(CROPS_DIR, crop_filename)
-        crop.save(crop_save_path, "JPEG", quality=85)
+        full_crop.save(crop_save_path, "JPEG", quality=85)
 
         buf = io.BytesIO()
-        crop.save(buf, format="JPEG", quality=85)
+        full_crop.save(buf, format="JPEG", quality=85)
         crop_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
         candidates.append({
-            "detected_plate": norm_text,
+            "detected_plate": formatted_plate,
             "raw_text": joined,
             "confidence": round(conf, 3),
             "crop_path": crop_b64,
             "bbox": [x1, y1, x2, y2],
+            "aspect_ratio": round(aspect_ratio, 2),
+            "shot_quality_score": round(shot_quality_score, 3),
             "is_standard_format": is_valid_plate_format(norm_text),
         })
 
-    # Posortuj kandydatów: w pierwszej kolejności pasujące do formatu tablicy i z najwyższą pewnością
-    candidates.sort(key=lambda c: (c["is_standard_format"], c["confidence"]), reverse=True)
     return candidates
 
 
@@ -186,7 +239,7 @@ def download_image(url: str, timeout: int = 10) -> Optional[Image.Image]:
 
 
 def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
-    """Skanuje zdjęcia danego ogłoszenia i zapisuje wykryte tablice do kolejki review."""
+    """Skanuje zdjęcia ogłoszenia, znajduje najlepsze ujęcie przód/tył i zapisuje optymalnego kandydata."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
     vin = (listing.get("vin") or "").strip().upper()
     source_url = listing.get("source_url") or ""
@@ -206,9 +259,9 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     if not photo_urls:
         return []
 
-    # Ogranicz do pierwszych 8 zdjęć
-    photo_urls = photo_urls[:8]
-    found_candidates = []
+    # Sprawdź do 10 zdjęć w poszukiwaniu najlepszego ujęcia
+    photo_urls = photo_urls[:10]
+    all_candidates = []
 
     for idx, purl in enumerate(photo_urls):
         img_id_prefix = f"{lid}_{idx}"
@@ -218,26 +271,51 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
 
         cands = process_image(img, img_id_prefix)
         for c in cands:
-            plate_text = c["detected_plate"]
-            conf = c["confidence"]
-            crop_path = c["crop_path"]
+            c["photo_url"] = purl
+            all_candidates.append(c)
 
-            # Sprawdź, czy ta propozycja już istnieje w kolejce
-            exists = db_conn.execute("""
-                SELECT id FROM plate_review_queue 
-                WHERE (vin = ? OR listing_id = ?) AND detected_plate = ?
-            """, (vin or "NONE", lid, plate_text)).fetchone()
+    if not all_candidates:
+        return []
 
-            if not exists:
-                cur = db_conn.execute("""
-                    INSERT INTO plate_review_queue
-                    (listing_id, vin, source_url, photo_url, crop_path, detected_plate, confidence, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-                """, (lid, vin or None, source_url, purl, crop_path, plate_text, conf))
-                db_conn.commit()
-                c["id"] = getattr(cur, "lastrowid", None)
-                found_candidates.append(c)
-                print(f"    [plate found] {plate_text} (conf: {conf:.2f}) -> {crop_path}")
+    # Inteligentny wybór najlepszego zdjęcia (Best Shot Selection):
+    # Sortuj według:
+    # 1. Poprawny format tablicy rejestracyjnej (litery + cyfry)
+    # 2. Jakość ujęcia (prostopadłość przód/tył, wielkość kadru, brak skosu)
+    # 3. Pewność detekcji YOLO
+    all_candidates.sort(
+        key=lambda c: (c["is_standard_format"], c["shot_quality_score"], c["confidence"]),
+        reverse=True
+    )
+
+    best_candidate = all_candidates[0]
+
+    # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
+    if best_candidate["shot_quality_score"] < 0.28:
+        print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {best_candidate['shot_quality_score']})")
+        return []
+
+    plate_text = best_candidate["detected_plate"]
+    conf = best_candidate["confidence"]
+    crop_path = best_candidate["crop_path"]
+    purl = best_candidate["photo_url"]
+
+    # Sprawdź, czy ta tablica już istnieje w kolejce dla tego pojazdu
+    exists = db_conn.execute("""
+        SELECT id FROM plate_review_queue 
+        WHERE (vin = ? OR listing_id = ?) AND (detected_plate = ? OR status = 'approved')
+    """, (vin or "NONE", lid, plate_text)).fetchone()
+
+    found_candidates = []
+    if not exists:
+        cur = db_conn.execute("""
+            INSERT INTO plate_review_queue
+            (listing_id, vin, source_url, photo_url, crop_path, detected_plate, confidence, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+        """, (lid, vin or None, source_url, purl, crop_path, plate_text, conf))
+        db_conn.commit()
+        best_candidate["id"] = getattr(cur, "lastrowid", None)
+        found_candidates.append(best_candidate)
+        print(f"    [BEST SHOT SELECTED] {plate_text} (shot score: {best_candidate['shot_quality_score']}, conf: {conf:.2f}, AR: {best_candidate['aspect_ratio']})")
 
     return found_candidates
 

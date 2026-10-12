@@ -2331,10 +2331,10 @@ def plates_review():
 def api_plates_review():
     data = request.get_json(silent=True) or request.form
     cid = data.get("id")
-    action = data.get("action")  # 'approve' or 'reject'
+    action = data.get("action")  # 'approve', 'reject', or 'revert'
     plate = (data.get("plate") or "").strip().upper()
 
-    if not cid or action not in ("approve", "reject"):
+    if not cid or action not in ("approve", "reject", "revert"):
         return jsonify({"status": "error", "message": "Niepoprawne parametry"}), 400
 
     conn = get_db()
@@ -2345,6 +2345,8 @@ def api_plates_review():
 
     vin = cand["vin"]
     lid = cand["listing_id"]
+    prev_status = cand["status"]
+    old_plate = cand["reviewed_plate"] or cand["detected_plate"]
 
     if action == "approve":
         final_plate = plate or cand["detected_plate"]
@@ -2365,16 +2367,55 @@ def api_plates_review():
                 conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'AI extracted plate', 'cv-yolo')", (vin,))
             except Exception:
                 pass
-    else:
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "id": cid, "action": action, "plate": final_plate})
+
+    elif action == "reject":
         conn.execute("""
             UPDATE plate_review_queue
             SET status='rejected', reviewed_at=datetime('now')
             WHERE id=?
         """, (cid,))
 
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "ok", "id": cid, "action": action, "plate": plate})
+        if prev_status == "approved" and old_plate:
+            if lid:
+                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (lid, old_plate))
+            if vin:
+                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                conn.execute("UPDATE vehicles SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                try:
+                    conn.execute("DELETE FROM tags WHERE vin=? AND tag='AI extracted plate'", (vin,))
+                    conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'missing plates', 'system')", (vin,))
+                except Exception:
+                    pass
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "id": cid, "action": action})
+
+    elif action == "revert":
+        conn.execute("""
+            UPDATE plate_review_queue
+            SET status='pending', reviewed_plate=NULL, reviewed_at=NULL
+            WHERE id=?
+        """, (cid,))
+
+        if prev_status == "approved" and old_plate:
+            if lid:
+                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (lid, old_plate))
+            if vin:
+                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                conn.execute("UPDATE vehicles SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                try:
+                    conn.execute("DELETE FROM tags WHERE vin=? AND tag='AI extracted plate'", (vin,))
+                    conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'missing plates', 'system')", (vin,))
+                except Exception:
+                    pass
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "id": cid, "action": action})
 
 
 @app.route("/api/plates/scan_batch", methods=["POST"])
