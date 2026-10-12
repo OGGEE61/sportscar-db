@@ -244,7 +244,12 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     """Skanuje zdjęcia ogłoszenia, znajduje najlepsze ujęcie przód/tył i zapisuje optymalnego kandydata."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
     vin = (listing.get("vin") or "").strip().upper()
+    status = (listing.get("status") or "").strip().lower()
     source_url = listing.get("source_url") or ""
+
+    # Ignoruj ogłoszenia odrzucone lub bez prawidłowego VIN
+    if status == "rejected" or not vin or vin.startswith("PLH"):
+        return []
 
     photos_raw = listing.get("photos")
     photo_urls = []
@@ -365,11 +370,15 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
     limit_clause = "LIMIT ?" if (limit and limit > 0) else ""
     params = (limit,) if (limit and limit > 0) else ()
 
-    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia i nie były jeszcze skanowane
+    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia, NIE są odrzucone, mają prawdziwy VIN i nie były jeszcze skanowane
     rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
         WHERE (registration_plate IS NULL OR registration_plate = '')
+          AND status != 'rejected'
+          AND vin IS NOT NULL 
+          AND vin != '' 
+          AND vin NOT LIKE 'PLH%'
           AND photos IS NOT NULL 
           AND photos != ''
           AND photos != '[]'

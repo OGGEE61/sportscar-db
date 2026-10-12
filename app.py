@@ -2313,15 +2313,43 @@ def plates_review():
         LEFT JOIN vehicles v ON v.vin = q.vin
         LEFT JOIN pending_listings p ON (p.id = q.listing_id OR (q.listing_id IS NULL AND p.vin = q.vin))
         WHERE q.status = ?
+          AND q.vin IS NOT NULL 
+          AND q.vin != '' 
+          AND q.vin NOT LIKE 'PLH%'
+          AND (p.status IS NULL OR p.status != 'rejected')
         GROUP BY q.id
         ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
     """, (status_filter,)).fetchall()
 
     stats = {
-        "pending": conn.execute("SELECT COUNT(*) FROM plate_review_queue WHERE status='pending'").fetchone()[0],
-        "approved": conn.execute("SELECT COUNT(*) FROM plate_review_queue WHERE status='approved'").fetchone()[0],
-        "rejected": conn.execute("SELECT COUNT(*) FROM plate_review_queue WHERE status='rejected'").fetchone()[0],
-        "missing_plates": conn.execute("SELECT COUNT(*) FROM pending_listings WHERE (registration_plate IS NULL OR registration_plate='') AND photos IS NOT NULL AND photos != '[]'").fetchone()[0],
+        "pending": conn.execute("""
+            SELECT COUNT(DISTINCT q.id) FROM plate_review_queue q
+            LEFT JOIN pending_listings p ON p.id = q.listing_id
+            WHERE q.status='pending' 
+              AND q.vin IS NOT NULL AND q.vin != '' AND q.vin NOT LIKE 'PLH%'
+              AND (p.status IS NULL OR p.status != 'rejected')
+        """).fetchone()[0],
+        "approved": conn.execute("""
+            SELECT COUNT(DISTINCT q.id) FROM plate_review_queue q
+            LEFT JOIN pending_listings p ON p.id = q.listing_id
+            WHERE q.status='approved'
+              AND q.vin IS NOT NULL AND q.vin != '' AND q.vin NOT LIKE 'PLH%'
+              AND (p.status IS NULL OR p.status != 'rejected')
+        """).fetchone()[0],
+        "rejected": conn.execute("""
+            SELECT COUNT(DISTINCT q.id) FROM plate_review_queue q
+            LEFT JOIN pending_listings p ON p.id = q.listing_id
+            WHERE q.status='rejected'
+              AND q.vin IS NOT NULL AND q.vin != '' AND q.vin NOT LIKE 'PLH%'
+              AND (p.status IS NULL OR p.status != 'rejected')
+        """).fetchone()[0],
+        "missing_plates": conn.execute("""
+            SELECT COUNT(*) FROM pending_listings 
+            WHERE (registration_plate IS NULL OR registration_plate='') 
+              AND status != 'rejected'
+              AND vin IS NOT NULL AND vin != '' AND vin NOT LIKE 'PLH%'
+              AND photos IS NOT NULL AND photos != '[]'
+        """).fetchone()[0],
     }
     conn.close()
     return render_template("plates.html", candidates=candidates, stats=stats, status_filter=status_filter)
