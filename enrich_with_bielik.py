@@ -4,6 +4,10 @@ import json
 import time
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from db import get_db
 from app import CITY_TO_REGION, REGION_NAME_TO_CODE
 

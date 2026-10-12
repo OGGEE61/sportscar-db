@@ -270,8 +270,11 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
     """)
     conn.commit()
 
+    limit_clause = "LIMIT ?" if (limit and limit > 0) else ""
+    params = (limit,) if (limit and limit > 0) else ()
+
     # Pobierz ogłoszenia bez tablicy, które mają zdjęcia
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
         WHERE (registration_plate IS NULL OR registration_plate = '')
@@ -279,8 +282,8 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
           AND photos != ''
           AND photos != '[]'
         ORDER BY id DESC
-        LIMIT ?
-    """, (limit,)).fetchall()
+        {limit_clause}
+    """, params).fetchall()
 
     print(f"\n[plate_scanner] Znaleziono {len(rows)} ogłoszeń do przeskanowania...")
 
@@ -303,7 +306,7 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
 
 if __name__ == "__main__":
     import sys
-    limit = int(sys.argv[1]) if len(sys.argv) > 1 else 5
+    limit = int(sys.argv[1]) if len(sys.argv) > 1 else 50
     print(f"Uruchamiam detekcję tablic rejestracyjnych (limit: {limit})...")
     res = run_plate_detection_batch(limit=limit)
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")

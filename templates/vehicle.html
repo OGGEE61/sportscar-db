@@ -198,6 +198,134 @@
 </div>
 {% endif %}
 
+<!-- CEPiK / HistoriaPojazdu.gov.pl -->
+<div class="card mb-4 shadow-sm border rounded-3 bg-white">
+  <div class="card-header bg-white py-2 px-3 d-flex justify-content-between align-items-center border-bottom">
+    <div class="d-flex align-items-center gap-2">
+      <span class="fw-bold text-dark small text-uppercase"><i class="bi bi-shield-check text-secondary me-1"></i> Rejestr CEPiK (HistoriaPojazdu)</span>
+    </div>
+    <div>
+      {% if cepik_data %}
+      <span class="badge bg-light text-dark border font-monospace small" style="font-size: 0.7rem;">Zsynchronizowano: {{ cepik_data.fetched_at[:10] }}</span>
+      {% elif can_fetch_cepik %}
+      <button class="btn btn-dark btn-sm py-1 px-2" style="font-size: 0.75rem;" onclick="fetchCepik('{{ vehicle.vin }}')" id="cepik-fetch-btn">
+        <i class="bi bi-cloud-arrow-down me-1" id="cepik-btn-icon"></i> <span id="cepik-btn-text">Pobierz z CEPiK</span>
+      </button>
+      {% else %}
+      <span class="badge bg-light text-muted border small" style="font-size: 0.7rem;">Brak kompletu danych do CEPiK</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card-body p-3">
+    {% if cepik_data %}
+      <!-- Podsumowanie statusów formalnych -->
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2 bg-light">
+            <div class="text-muted small" style="font-size: 0.7rem;">Ubezpieczenie OC</div>
+            <div class="fw-semibold text-dark mt-1" style="font-size: 0.85rem;">
+              {% if cepik_data.has_current_oc %}
+              <i class="bi bi-check-circle-fill text-dark me-1"></i> Ważna
+              {% if cepik_data.insurance_expiry_date %}<div class="text-muted small" style="font-size: 0.7rem;">do {{ cepik_data.insurance_expiry_date }}</div>{% endif %}
+              {% else %}
+              <i class="bi bi-x-circle-fill text-muted me-1"></i> Brak
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2 bg-light">
+            <div class="text-muted small" style="font-size: 0.7rem;">Badanie SKP</div>
+            <div class="fw-semibold text-dark mt-1" style="font-size: 0.85rem;">
+              {% if cepik_data.tech_inspection_status == 'Aktualne' %}
+              <i class="bi bi-check-circle-fill text-dark me-1"></i> Aktualne
+              {% if cepik_data.tech_inspection_until %}<div class="text-muted small" style="font-size: 0.7rem;">do {{ cepik_data.tech_inspection_until }}</div>{% endif %}
+              {% else %}
+              <i class="bi bi-exclamation-triangle-fill text-muted me-1"></i> {{ cepik_data.tech_inspection_status or 'Nieznany' }}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2 bg-light">
+            <div class="text-muted small" style="font-size: 0.7rem;">Właściciele w PL</div>
+            <div class="fw-semibold text-dark mt-1" style="font-size: 0.85rem;">
+              <i class="bi bi-people me-1"></i> {{ cepik_data.total_owners or '1' }}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2 bg-light">
+            <div class="text-muted small" style="font-size: 0.7rem;">Status kradzieżowy</div>
+            <div class="fw-semibold text-dark mt-1" style="font-size: 0.85rem;">
+              {% if cepik_data.is_stolen %}
+              <span class="text-danger fw-bold">🚨 SKRADZIONY</span>
+              {% else %}
+              <i class="bi bi-shield-check text-dark me-1"></i> Nie figuruje
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ostrzeżenie o cofniętym liczniku -->
+      {% if cepik_data.odometer_rollback %}
+      <div class="alert alert-light border border-dark rounded-3 py-2 px-3 mb-3 text-dark small d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-octagon-fill fs-5 text-dark"></i>
+        <div>
+          <strong>Uwaga: Wykryto rozbieżność drogomierza!</strong> Na stacji SKP odczytano <strong>{{ "{:,}".format(cepik_data.last_odometer_km) }} km</strong>, podczas gdy w ogłoszeniu podano mniejszy przebieg (różnica: <strong>-{{ "{:,}".format(cepik_data.rollback_diff_km) }} km</strong>).
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Tabela historii odczytów licznika (SKP / Policja) -->
+      {% if cepik_data.odometer_history %}
+      <div class="mt-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="text-muted small fw-semibold text-uppercase" style="font-size: 0.7rem;">Historia odczytów drogomierza (SKP i Policja)</span>
+          <span class="badge bg-light text-dark border font-monospace" style="font-size: 0.7rem;">Ostatni: {{ "{:,}".format(cepik_data.last_odometer_km) }} km</span>
+        </div>
+        <div class="table-responsive border rounded bg-white" style="max-height: 220px; overflow-y: auto;">
+          <table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;">
+            <thead class="table-light text-muted small border-bottom sticky-top">
+              <tr>
+                <th>Data</th>
+                <th>Odczyt drogomierza</th>
+                <th>Instytucja</th>
+                <th>Zdarzenie</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in cepik_data.odometer_history|reverse %}
+              <tr>
+                <td class="font-monospace">{{ item.date }}</td>
+                <td class="fw-bold font-monospace text-dark">{{ "{:,}".format(item.km) }} km</td>
+                <td><span class="badge bg-light text-dark border">{{ item.source }}</span></td>
+                <td class="text-muted text-truncate" style="max-width: 250px;" title="{{ item.event }}">{{ item.event }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <div class="text-center py-3 text-muted">
+        {% if can_fetch_cepik %}
+        <p class="small mb-2">Pojazd posiada komplet danych (VIN, tablica rejestracyjna oraz data 1. rejestracji).</p>
+        <button class="btn btn-dark btn-sm px-3" onclick="fetchCepik('{{ vehicle.vin }}')" id="cepik-fetch-btn-body">
+          <i class="bi bi-cloud-arrow-down me-1"></i> Pobierz oficjalny raport z CEPiK
+        </button>
+        {% else %}
+        <p class="small mb-0">Brak kompletu danych do automatycznego odpytania CEPiK (wymagany numer VIN, tablica rejestracyjna oraz data pierwszej rejestracji).</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
 <!-- Tags -->
 <div class="card mb-4">
   <div class="card-header">Tags</div>
@@ -482,7 +610,35 @@ new Chart(document.getElementById('chartPrice'), {
       }
     }
   }
-});
 </script>
 {% endif %}
+
+<script>
+async function fetchCepik(vin) {
+  const btn = document.getElementById('cepik-fetch-btn') || document.getElementById('cepik-fetch-btn-body');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Pobieranie z CEPiK...';
+  }
+  try {
+    const res = await fetch(`/api/cepik/fetch/${encodeURIComponent(vin)}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      window.location.reload();
+    } else {
+      alert('Błąd CEPiK: ' + (data.message || 'Nieznany błąd'));
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i> Pobierz z CEPiK';
+      }
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i> Pobierz z CEPiK';
+    }
+  }
+}
+</script>
 {% endblock %}

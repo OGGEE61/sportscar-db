@@ -191,3 +191,31 @@ CREATE TABLE IF NOT EXISTS plate_review_queue (
 
 CREATE INDEX IF NOT EXISTS idx_plate_queue_status ON plate_review_queue(status);
 CREATE INDEX IF NOT EXISTS idx_plate_queue_vin    ON plate_review_queue(vin);
+
+-- ── cepik_reports (Official Government CEPiK / HistoriaPojazdu Reports) ─────
+CREATE TABLE IF NOT EXISTS cepik_reports (
+    vin                     TEXT PRIMARY KEY,
+    registration_plate      TEXT,
+    first_registration_date TEXT,
+    make                    TEXT,
+    model                   TEXT,
+    type                    TEXT,
+    subtype                 TEXT,
+    registration_status     TEXT,
+    tech_inspection_status  TEXT,
+    tech_inspection_until   TEXT,
+    has_current_oc          INTEGER,
+    insurance_expiry_date   TEXT,
+    is_stolen               INTEGER DEFAULT 0,
+    total_owners            INTEGER,
+    last_odometer_km        INTEGER,
+    last_odometer_date      TEXT,
+    odometer_history_json   TEXT,
+    events_json             TEXT,
+    odometer_rollback       INTEGER DEFAULT 0,
+    rollback_diff_km        INTEGER DEFAULT 0,
+    fetched_at              TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY(vin) REFERENCES vehicles(vin)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cepik_reports_plate ON cepik_reports(registration_plate);

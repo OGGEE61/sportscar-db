@@ -1416,6 +1416,24 @@ def vehicle_detail(vin):
             ai_data["interior"] = orig["ai_interior_color"]
         ai_data["has_conflict"] = bool(orig["ai_conflict"])
 
+    # CEPiK report
+    cepik_row = conn.execute("SELECT * FROM cepik_reports WHERE vin=?", (vin,)).fetchone()
+    cepik_data = None
+    if cepik_row:
+        import json
+        c_dict = dict(cepik_row)
+        c_dict["odometer_history"] = json.loads(c_dict["odometer_history_json"]) if c_dict.get("odometer_history_json") else []
+        c_dict["events"] = json.loads(c_dict["events_json"]) if c_dict.get("events_json") else []
+        cepik_data = c_dict
+
+    # Check if vehicle is eligible to fetch CEPiK
+    first_reg = conn.execute("""
+        SELECT first_registration_date FROM pending_listings 
+        WHERE vin=? AND first_registration_date IS NOT NULL AND first_registration_date != ''
+        ORDER BY id DESC LIMIT 1
+    """, (vin,)).fetchone()
+    can_fetch_cepik = bool(vehicle["registration_plate"] and first_reg and first_reg["first_registration_date"])
+
     conn.close()
     return render_template("vehicle.html",
         vehicle=vehicle,
@@ -1430,6 +1448,8 @@ def vehicle_detail(vin):
         equipment=equipment,
         raw_desc=raw_desc,
         ai_data=ai_data,
+        cepik_data=cepik_data,
+        can_fetch_cepik=can_fetch_cepik,
     )
 
 
@@ -2373,6 +2393,46 @@ def api_plates_scan_batch():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/cepik/fetch/<path:vin>", methods=["POST"])
+def api_cepik_fetch_vin(vin):
+    conn = get_db()
+    row = conn.execute("""
+        SELECT v.vin, 
+               COALESCE(v.registration_plate, p.registration_plate) as plate,
+               p.first_registration_date
+        FROM vehicles v
+        LEFT JOIN pending_listings p ON p.vin = v.vin
+        WHERE v.vin = ?
+        ORDER BY p.id DESC LIMIT 1
+    """, (vin,)).fetchone()
+
+    if not row or not row["plate"] or not row["first_registration_date"]:
+        conn.close()
+        return jsonify({
+            "status": "error",
+            "message": "Brak numeru rejestracyjnego lub daty pierwszej rejestracji wymaganej przez CEPiK"
+        }), 400
+
+    try:
+        from scripts.fetch_cepik import CepikClient, save_cepik_report
+        client = CepikClient()
+        report = client.fetch_vehicle_data(row["vin"], row["plate"], row["first_registration_date"])
+        if not report:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "Serwer CEPiK nie odnalazł rekordu (sprawdź zgodność tablicy i daty pierwszej rejestracji)"
+            }), 404
+
+        save_cepik_report(report, conn)
+        conn.close()
+        return jsonify({"status": "ok", "report": report})
+    except Exception as e:
+        conn.close()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, port=5555)
+
