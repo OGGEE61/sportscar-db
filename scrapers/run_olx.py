@@ -22,14 +22,22 @@ except ImportError:
 
 from base_scraper import run, _log_run
 from bmw_alpina import CONFIG as ALPINA_OLX
+from bmw_x3_m_f97 import CONFIG as X3_M_OLX
+from bmw_x3_m40i_g01 import CONFIG as X3_M40I_OLX
 
 ALL_OLX_FLEET = [
     ALPINA_OLX,
+    X3_M_OLX,
+    X3_M40I_OLX,
 ]
 
 SCRAPER_MAP = {
-    "alpina": [ALPINA_OLX],
-    "all": ALL_OLX_FLEET,
+    "alpina":   [ALPINA_OLX],
+    "x3m":      [X3_M_OLX],
+    "x3_m":     [X3_M_OLX],
+    "x3_m40i":  [X3_M40I_OLX],
+    "m40i":     [X3_M40I_OLX],
+    "all":      ALL_OLX_FLEET,
 }
 
 if __name__ == "__main__":

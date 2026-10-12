@@ -14,6 +14,8 @@ on:
         options:
           - all
           - alpina
+          - x3m
+          - x3_m40i
 
 jobs:
   scrape:
