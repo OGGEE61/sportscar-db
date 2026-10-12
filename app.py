@@ -2350,6 +2350,20 @@ def api_plates_review():
 
     if action == "approve":
         final_plate = plate or cand["detected_plate"]
+        clean_plate = re.sub(r"[^A-Z0-9]", "", (final_plate or "").upper())
+        if len(clean_plate) > 8:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": f"Tablica rejestracyjna w Polsce może mieć maksymalnie 8 znaków (wprowadzono {len(clean_plate)}: '{final_plate}'). Prawdopodobnie odczytano napis reklamowy."
+            }), 400
+        if len(clean_plate) < 4:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "Tablica rejestracyjna musi mieć co najmniej 4 znaki."
+            }), 400
+
         conn.execute("""
             UPDATE plate_review_queue
             SET status='approved', reviewed_plate=?, reviewed_at=datetime('now')

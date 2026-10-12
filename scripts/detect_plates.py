@@ -179,17 +179,19 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         joined = " ".join([t[0] for t in ocr_texts])
         norm_text = clean_plate_text(joined)
 
-        if is_likely_dealer_badge(norm_text) or len(norm_text) < 4:
-            # Sprawdź poszczególne bloki tekstu
+        # Polska tablica rejestracyjna ma ściśle od 4 do 8 znaków alfanumerycznych.
+        # Jeśli połączony tekst ma > 8 znaków lub nie pasuje do wzorca, sprawdź pojedyncze bloki OCR
+        if len(norm_text) > 8 or is_likely_dealer_badge(norm_text) or not is_valid_plate_format(norm_text):
             best_part = ""
             for t, _ in ocr_texts:
                 cleaned_part = clean_plate_text(t)
-                if not is_likely_dealer_badge(cleaned_part) and is_valid_plate_format(cleaned_part):
+                if is_valid_plate_format(cleaned_part) and not is_likely_dealer_badge(cleaned_part):
                     best_part = cleaned_part
                     break
             norm_text = best_part
 
-        if not norm_text or len(norm_text) < 4:
+        # Rygorystyczny warunek: jeśli tekst nadal ma >8 lub <4 znaki, ODRZUĆ go bezwzględnie!
+        if not norm_text or len(norm_text) < 4 or len(norm_text) > 8 or not is_valid_plate_format(norm_text):
             continue
 
         formatted_plate = format_polish_plate(norm_text)
@@ -278,16 +280,21 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
         return []
 
     # Inteligentny wybór najlepszego zdjęcia (Best Shot Selection):
-    # Sortuj według:
-    # 1. Poprawny format tablicy rejestracyjnej (litery + cyfry)
-    # 2. Jakość ujęcia (prostopadłość przód/tył, wielkość kadru, brak skosu)
-    # 3. Pewność detekcji YOLO
-    all_candidates.sort(
-        key=lambda c: (c["is_standard_format"], c["shot_quality_score"], c["confidence"]),
+    # Dopuszczamy TYLKO kandydatów o prawidłowym formacie tablicy (ściśle 4 do 8 znaków)
+    valid_candidates = [
+        c for c in all_candidates 
+        if c.get("is_standard_format") and 4 <= len(re.sub(r"[^A-Z0-9]", "", c.get("detected_plate") or "")) <= 8
+    ]
+
+    if not valid_candidates:
+        return []
+
+    valid_candidates.sort(
+        key=lambda c: (c["shot_quality_score"], c["confidence"]),
         reverse=True
     )
 
-    best_candidate = all_candidates[0]
+    best_candidate = valid_candidates[0]
 
     # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
     if best_candidate["shot_quality_score"] < 0.28:
