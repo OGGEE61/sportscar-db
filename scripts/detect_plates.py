@@ -268,12 +268,19 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
             created_at          TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS plate_scan_log (
+            listing_id TEXT PRIMARY KEY,
+            scanned_at TEXT DEFAULT (datetime('now')),
+            plates_found INTEGER DEFAULT 0
+        )
+    """)
     conn.commit()
 
     limit_clause = "LIMIT ?" if (limit and limit > 0) else ""
     params = (limit,) if (limit and limit > 0) else ()
 
-    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia
+    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia i nie były jeszcze skanowane
     rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
@@ -281,6 +288,7 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
           AND photos IS NOT NULL 
           AND photos != ''
           AND photos != '[]'
+          AND id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log)
         ORDER BY id DESC
         {limit_clause}
     """, params).fetchall()
@@ -292,10 +300,16 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
 
     for r in rows:
         item = dict(r)
-        print(f"  Skanuję {item.get('make')} {item.get('model')} ({item.get('vin') or 'Brak VIN'}, ID: {item.get('id')})...")
+        lid = item.get('id')
+        print(f"  Skanuję {item.get('make')} {item.get('model')} ({item.get('vin') or 'Brak VIN'}, ID: {lid})...")
         cands = scan_listing_for_plates(item, conn)
         total_scanned += 1
         total_found += len(cands)
+        try:
+            conn.execute("INSERT OR REPLACE INTO plate_scan_log (listing_id, plates_found) VALUES (?, ?)", (str(lid), len(cands)))
+            conn.commit()
+        except Exception:
+            pass
 
     conn.close()
     return {
