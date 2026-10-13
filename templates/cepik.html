@@ -2,69 +2,18 @@
 {% block title %}CEPiK Info & Historia Pojazdu – SportsCar DB{% endblock %}
 
 {% block content %}
-<style>
-.plate-badge {
-  display: inline-flex;
-  align-items: center;
-  background: #ffffff;
-  border: 1.5px solid #0f172a;
-  border-radius: 4px;
-  font-family: 'Inter', monospace, sans-serif;
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.5px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-  overflow: hidden;
-  vertical-align: middle;
-}
-.plate-flag {
-  background: #003399;
-  color: #ffffff;
-  font-size: 0.6rem;
-  font-weight: 800;
-  padding: 2px 5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-.plate-number {
-  padding: 2px 7px;
-  color: #0f172a;
-}
-.badge-rollback {
-  background-color: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-  font-weight: 600;
-  animation: pulse-border 2s infinite;
-}
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-.thumb-car {
-  width: 48px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: 4px;
-  background-color: #f1f5f9;
-}
-</style>
-
 <!-- Nagłówek strony -->
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
   <div>
-    <h2 class="h3 fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
-      <i class="bi bi-shield-check text-secondary"></i> CEPiK Info & Historia Pojazdu
-      <span class="badge bg-light text-secondary border fw-normal fs-6">Baza Gov.pl</span>
+    <h2 class="h3 fw-bold mb-1 text-dark d-flex align-items-center gap-2">
+      <i class="bi bi-shield-check text-primary"></i> CEPiK Info & Historia Pojazdu
     </h2>
     <p class="text-muted small mb-0">
-      Oficjalne dane państwowe: ważność badań technicznych (SKP), polis OC, liczba właścicieli, historia odczytów licznika oraz wykrywanie cofniętych drogomierzy.
+      Oficjalne dane z państwowego rejestru pojazdów: ważność badań technicznych (SKP), polis OC, historia odczytów licznika oraz wykrywanie cofniętych drogomierzy.
     </p>
   </div>
   <div class="d-flex align-items-center gap-2">
-    <button type="button" class="btn btn-dark btn-sm d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#manualCheckModal">
+    <button type="button" class="btn btn-primary btn-sm d-flex align-items-center gap-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#manualCheckModal">
       <i class="bi bi-search"></i>
       <span>Sprawdź w CEPiK (Ręcznie)</span>
     </button>
@@ -75,26 +24,26 @@
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <a href="/cepik?tab=all" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if tab == 'all' %}border-dark shadow{% endif %}">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Pobrane Raporty CEPiK</div>
-        <div class="fs-3 fw-bold text-dark mt-1">{{ stats.total_reports }}</div>
-        <div class="text-muted small" style="font-size: 0.75rem;">na {{ stats.eligible_count }} z kompletem danych</div>
+      <div class="kpi-card {% if tab == 'all' %}is-active{% endif %}">
+        <div class="kpi-label">Pobrane Raporty CEPiK</div>
+        <div class="kpi-value text-dark">{{ stats.total_reports }}</div>
+        <div class="kpi-subtext">na {{ stats.eligible_count }} z kompletem danych</div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
     <a href="/cepik?tab=rollback" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if stats.rollback_count > 0 %}border-danger bg-danger-subtle{% endif %} {% if tab == 'rollback' %}shadow border-2{% endif %}">
-        <div class="{% if stats.rollback_count > 0 %}text-danger{% else %}text-muted{% endif %} small text-uppercase fw-semibold" style="font-size: 0.75rem;">
-          Wykryte Cofnięcia Licznika
-        </div>
-        <div class="fs-3 fw-bold {% if stats.rollback_count > 0 %}text-danger{% else %}text-dark{% endif %} mt-1 d-flex align-items-center gap-2">
-          {{ stats.rollback_count }}
+      <div class="kpi-card {% if tab == 'rollback' %}is-active{% endif %}">
+        <div class="kpi-label d-flex justify-content-between align-items-center">
+          <span>Wykryte Cofnięcia Licznika</span>
           {% if stats.rollback_count > 0 %}
-          <span class="badge bg-danger fs-6 fw-normal">Alert!</span>
+          <span class="badge bg-danger text-white">Alert</span>
           {% endif %}
         </div>
-        <div class="{% if stats.rollback_count > 0 %}text-danger{% else %}text-muted{% endif %} small" style="font-size: 0.75rem;">
+        <div class="kpi-value {% if stats.rollback_count > 0 %}text-danger{% else %}text-dark{% endif %}">
+          {{ stats.rollback_count }}
+        </div>
+        <div class="kpi-subtext {% if stats.rollback_count > 0 %}text-danger font-semibold{% endif %}">
           odczyt SKP wyższy niż ogłoszenie
         </div>
       </div>
@@ -102,35 +51,39 @@
   </div>
   <div class="col-6 col-md-3">
     <a href="/cepik?tab=all" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Ważne Badania (SKP)</div>
-        <div class="fs-3 fw-bold text-success mt-1">{{ stats.active_skp_count }} <span class="fs-6 text-muted fw-normal">({{ stats.skp_pct }}%)</span></div>
-        <div class="text-muted small" style="font-size: 0.75rem;">aktualne badanie okresowe</div>
+      <div class="kpi-card">
+        <div class="kpi-label">Ważne Badania (SKP)</div>
+        <div class="kpi-value text-success">
+          {{ stats.active_skp_count }} <span class="fs-6 text-muted fw-normal">({{ stats.skp_pct }}%)</span>
+        </div>
+        <div class="kpi-subtext">aktualne badanie okresowe</div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
     <a href="/cepik?tab=all" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Aktywne Polisy OC</div>
-        <div class="fs-3 fw-bold text-success mt-1">{{ stats.active_oc_count }} <span class="fs-6 text-muted fw-normal">({{ stats.oc_pct }}%)</span></div>
-        <div class="text-muted small" style="font-size: 0.75rem;">ubezpieczenie odpowiedzialności cywilnej</div>
+      <div class="kpi-card">
+        <div class="kpi-label">Aktywne Polisy OC</div>
+        <div class="kpi-value text-success">
+          {{ stats.active_oc_count }} <span class="fs-6 text-muted fw-normal">({{ stats.oc_pct }}%)</span>
+        </div>
+        <div class="kpi-subtext">ubezpieczenie odpowiedzialności cywilnej</div>
       </div>
     </a>
   </div>
 </div>
 
 <!-- Zakładki -->
-<ul class="nav nav-tabs mb-4 border-bottom">
+<ul class="nav nav-tabs">
   <li class="nav-item">
-    <a class="nav-link text-dark {% if tab == 'all' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=all">
-      <i class="bi bi-list-check me-1"></i> Wszystkie z CEPiK
+    <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="/cepik?tab=all">
+      <i class="bi bi-list-check"></i> Wszystkie z CEPiK
       <span class="badge bg-light text-dark border ms-1">{{ stats.total_reports }}</span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link text-dark {% if tab == 'rollback' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=rollback">
-      <i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Cofnięty Licznik
+    <a class="nav-link {% if tab == 'rollback' %}active{% endif %}" href="/cepik?tab=rollback">
+      <i class="bi bi-exclamation-triangle-fill text-danger"></i> Cofnięty Licznik
       {% if stats.rollback_count > 0 %}
       <span class="badge bg-danger ms-1">{{ stats.rollback_count }}</span>
       {% else %}
@@ -139,40 +92,42 @@
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link text-dark {% if tab == 'issues' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=issues">
-      <i class="bi bi-shield-x text-warning me-1"></i> Brak OC / SKP
+    <a class="nav-link {% if tab == 'issues' %}active{% endif %}" href="/cepik?tab=issues">
+      <i class="bi bi-shield-x text-warning"></i> Brak OC / SKP
       <span class="badge bg-warning text-dark ms-1">{{ stats.issues_count }}</span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link text-dark {% if tab == 'missing' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=missing">
-      <i class="bi bi-clock-history me-1"></i> Do pobrania / Nieznalezione
+    <a class="nav-link {% if tab == 'missing' %}active{% endif %}" href="/cepik?tab=missing">
+      <i class="bi bi-clock-history"></i> Do pobrania / Nieznalezione
       <span class="badge bg-secondary ms-1">{{ stats.missing_count }}</span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link text-dark {% if tab == 'log' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=log">
-      <i class="bi bi-journal-text me-1"></i> Log zapytań
+    <a class="nav-link {% if tab == 'log' %}active{% endif %}" href="/cepik?tab=log">
+      <i class="bi bi-journal-text"></i> Log zapytań
     </a>
   </li>
 </ul>
 
-<!-- Wyszukiwarka i filtr -->
-<div class="card border shadow-sm p-3 bg-white rounded-3 mb-4">
+<!-- Wyszukiwarka i pasek narzędzi filtrujących -->
+<div class="filter-toolbar">
   <form method="get" action="/cepik" class="row g-2 align-items-center">
     <input type="hidden" name="tab" value="{{ tab }}">
     <div class="col-12 col-md-8">
       <div class="input-group">
-        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
-        <input type="text" name="q" value="{{ q }}" class="form-control border-start-0" placeholder="Szukaj po VIN, tablicy rejestracyjnej, marce lub modelu..." id="searchInput">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Szukaj po VIN, tablicy rejestracyjnej, marce lub modelu..." id="searchInput">
         {% if q %}
-        <a href="/cepik?tab={{ tab }}" class="btn btn-outline-secondary" title="Wyczyść"><i class="bi bi-x-lg"></i></a>
+        <a href="/cepik?tab={{ tab }}" class="btn btn-outline-secondary" title="Wyczyść filtr"><i class="bi bi-x-lg"></i></a>
         {% endif %}
       </div>
     </div>
-    <div class="col-12 col-md-4 text-md-end">
-      <button type="submit" class="btn btn-secondary btn-sm px-3">Filtruj</button>
-      <span class="text-muted small ms-2">Wyników: 
+    <div class="col-12 col-md-4 text-md-end d-flex justify-content-md-end align-items-center gap-2">
+      <button type="submit" class="btn btn-primary btn-sm px-3 shadow-sm">
+        <i class="bi bi-funnel me-1"></i>Filtruj
+      </button>
+      <span class="text-muted small">Wyników: 
         {% if tab == 'missing' %}{{ missing_items|length }}
         {% elif tab == 'log' %}{{ sync_logs|length }}
         {% else %}{{ reports|length }}
@@ -184,12 +139,12 @@
 
 <!-- Zawartość główna: Tabela raportów CEPiK -->
 {% if tab in ('all', 'rollback', 'issues') %}
-<div class="card border shadow-sm rounded-3 overflow-hidden bg-white">
+<div class="table-container shadow-sm mb-4">
   <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
-      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.75rem;">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
         <tr>
-          <th style="width: 50px;"></th>
+          <th style="width: 55px;"></th>
           <th>Pojazd & VIN</th>
           <th>Tablica & 1. Rejestracja</th>
           <th>Badanie SKP</th>
@@ -205,10 +160,10 @@
           <!-- Zdjęcie -->
           <td>
             {% if r.v_photo %}
-            <img src="{{ r.v_photo }}" alt="Foto" class="thumb-car">
+            <img src="{{ r.v_photo }}" alt="Foto" style="width: 48px; height: 34px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-default);">
             {% else %}
-            <div class="thumb-car d-flex align-items-center justify-content-center text-muted">
-              <i class="bi bi-car-front fs-5"></i>
+            <div style="width: 48px; height: 34px; border-radius: 6px; background-color: var(--bg-subtle); border: 1px solid var(--border-default);" class="d-flex align-items-center justify-content-center text-muted">
+              <i class="bi bi-car-front fs-6"></i>
             </div>
             {% endif %}
           </td>
@@ -224,12 +179,12 @@
               </a>
               {% if r.source_url %}
               <a href="{{ r.source_url }}" target="_blank" rel="noopener" class="text-muted ms-1" title="Ogłoszenie źródłowe">
-                <i class="bi bi-box-arrow-up-right" style="font-size: 0.75rem;"></i>
+                <i class="bi bi-box-arrow-up-right" style="font-size: 0.72rem;"></i>
               </a>
               {% endif %}
             </div>
             {% if r.latest_price_pln %}
-            <div class="small text-secondary fw-semibold">
+            <div class="small fw-semibold text-primary" style="font-size: 0.8rem;">
               {{ "{:,}".format(r.latest_price_pln) }} PLN
             </div>
             {% endif %}
@@ -283,13 +238,13 @@
           <!-- Przebieg & Licznik -->
           <td>
             {% if r.odometer_rollback %}
-            <div class="badge-rollback rounded p-1 px-2 d-inline-block">
-              <div class="d-flex align-items-center gap-1">
-                <i class="bi bi-exclamation-triangle-fill text-danger"></i>
-                <span class="fw-bold">COFNIĘTY LICZNIK!</span>
+            <div class="p-1 px-2 rounded d-inline-block" style="background-color: var(--danger-light); border: 1px solid #fecaca;">
+              <div class="d-flex align-items-center gap-1 text-danger small fw-bold">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span>COFNIĘTY LICZNIK!</span>
               </div>
-              <div style="font-size: 0.75rem;">
-                SKP: <span class="fw-bold font-monospace">{{ "{:,}".format(r.last_odometer_km) }} km</span><br>
+              <div style="font-size: 0.74rem;">
+                SKP: <span class="fw-bold font-monospace text-dark">{{ "{:,}".format(r.last_odometer_km) }} km</span><br>
                 Różnica: <span class="fw-bold text-danger">-{{ "{:,}".format(r.rollback_diff_km) }} km</span>
               </div>
             </div>
@@ -327,13 +282,13 @@
           <!-- Akcje -->
           <td class="text-end">
             <div class="btn-group btn-group-sm">
-              <button type="button" class="btn btn-outline-dark" onclick="openDetailsModal('{{ r.vin }}')" title="Pokaż pełną historię badań i zdarzeń">
+              <button type="button" class="btn btn-outline-primary" onclick="openDetailsModal('{{ r.vin }}')" title="Pokaż pełną historię badań i zdarzeń">
                 <i class="bi bi-clock-history me-1"></i> Historia
               </button>
-              <button type="button" class="btn btn-light border" onclick="refreshVehicleCepik('{{ r.vin }}', this)" title="Pobierz ponownie z CEPiK">
+              <button type="button" class="btn btn-outline-secondary" onclick="refreshVehicleCepik('{{ r.vin }}', this)" title="Pobierz ponownie z CEPiK">
                 <i class="bi bi-arrow-clockwise"></i>
               </button>
-              <a href="/vehicle/{{ r.vin }}" class="btn btn-light border" title="Przejdź do karty pojazdu">
+              <a href="/vehicle/{{ r.vin }}" class="btn btn-outline-secondary" title="Przejdź do karty pojazdu">
                 <i class="bi bi-arrow-up-right"></i>
               </a>
             </div>
@@ -355,16 +310,16 @@
 
 <!-- Zawartość: Zakładka "Do pobrania / Nieznalezione" -->
 {% if tab == 'missing' %}
-<div class="card border shadow-sm rounded-3 overflow-hidden bg-white">
-  <div class="card-header bg-light border-bottom py-3 d-flex justify-content-between align-items-center">
+<div class="table-container shadow-sm mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background-color: var(--bg-subtle);">
     <div>
       <h6 class="mb-0 fw-bold text-dark">Pojazdy z kompletem danych (Tablica + Data 1. Rej.), oczekujące lub nieznalezione w CEPiK</h6>
       <small class="text-muted">Kliknij „Pobierz z CEPiK”, aby natychmiast odpytać oficjalny rejestr rządowy.</small>
     </div>
   </div>
   <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
-      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.75rem;">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
         <tr>
           <th>Pojazd & VIN</th>
           <th>Tablica Rejestracyjna</th>
@@ -433,10 +388,10 @@
           <!-- Akcje -->
           <td class="text-end">
             <div class="btn-group btn-group-sm">
-              <button type="button" class="btn btn-dark" onclick="fetchSingleMissing('{{ m.vin }}', '{{ m.registration_plate }}', '{{ m.first_registration_date }}', this)">
+              <button type="button" class="btn btn-primary" onclick="fetchSingleMissing('{{ m.vin }}', '{{ m.registration_plate }}', '{{ m.first_registration_date }}', this)">
                 <i class="bi bi-cloud-arrow-down me-1"></i> Pobierz z CEPiK
               </button>
-              <a href="/vehicle/{{ m.vin }}" class="btn btn-light border" title="Karta pojazdu">
+              <a href="/vehicle/{{ m.vin }}" class="btn btn-outline-secondary" title="Karta pojazdu">
                 <i class="bi bi-arrow-up-right"></i>
               </a>
             </div>
@@ -458,10 +413,10 @@
 
 <!-- Zawartość: Zakładka "Log synchronizacji" -->
 {% if tab == 'log' %}
-<div class="card border shadow-sm rounded-3 overflow-hidden bg-white">
+<div class="table-container shadow-sm mb-4">
   <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
-      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.75rem;">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
         <tr>
           <th>Data zapytania</th>
           <th>VIN</th>
@@ -520,12 +475,12 @@
 <div class="modal fade" id="cepikDetailsModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
-      <div class="modal-header bg-dark text-white">
+      <div class="modal-header border-bottom py-3" style="background-color: var(--bg-subtle);">
         <div>
-          <h5 class="modal-title h6 fw-bold mb-0" id="modalTitle">Szczegóły Raportu CEPiK</h5>
-          <small class="text-secondary" id="modalSubtitle"></small>
+          <h5 class="modal-title h6 fw-bold mb-0 text-dark" id="modalTitle">Szczegóły Raportu CEPiK</h5>
+          <small class="text-muted" id="modalSubtitle"></small>
         </div>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
       </div>
       <div class="modal-body p-4">
         <!-- Alert Rollbacku w modalu -->
@@ -538,7 +493,7 @@
         </div>
 
         <!-- Parametry pojazdu wg CEPiK -->
-        <div class="card border bg-light p-3 mb-4 rounded-3">
+        <div class="card p-3 mb-4 rounded-3" style="background-color: var(--bg-subtle); border: 1px solid var(--border-default);">
           <h6 class="fw-bold small text-uppercase text-muted mb-3">Dane Identyfikacyjne Pojazdu w Rejestrze CEPiK</h6>
           <div class="row g-2 small" id="modalVehicleInfo">
             <!-- Wstrzykiwane przez JS -->
@@ -547,12 +502,12 @@
 
         <!-- Tabela: Historia badań technicznych i odczytów licznika -->
         <h6 class="fw-bold small text-uppercase text-dark mb-2 d-flex align-items-center gap-2">
-          <i class="bi bi-speedometer2 text-secondary"></i> Historia Odczytów Licznika z Badań Technicznych (SKP) i Kontroli Policji
+          <i class="bi bi-speedometer2 text-primary"></i> Historia Odczytów Licznika z Badań Technicznych (SKP) i Kontroli Policji
         </h6>
-        <div class="card border rounded-3 overflow-hidden mb-4">
+        <div class="table-container mb-4">
           <div class="table-responsive">
             <table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;">
-              <thead class="table-light text-muted">
+              <thead>
                 <tr>
                   <th>Data</th>
                   <th>Stan Drogomierza</th>
@@ -569,17 +524,17 @@
 
         <!-- Oś Czasu: Zdarzenia urzędowe -->
         <h6 class="fw-bold small text-uppercase text-dark mb-2 d-flex align-items-center gap-2">
-          <i class="bi bi-calendar-event text-secondary"></i> Oś Czasu Zdarzeń Rejestracyjnych
+          <i class="bi bi-calendar-event text-primary"></i> Oś Czasu Zdarzeń Rejestracyjnych
         </h6>
-        <div class="border rounded-3 p-3 bg-white" id="modalEventsContainer">
+        <div class="p-3 bg-white rounded-3 border" id="modalEventsContainer">
           <!-- Wstrzykiwane przez JS -->
         </div>
       </div>
-      <div class="modal-footer bg-light">
-        <a href="#" id="modalVehiclePageLink" class="btn btn-outline-dark btn-sm me-auto">
+      <div class="modal-footer border-top py-2" style="background-color: var(--bg-subtle);">
+        <a href="#" id="modalVehiclePageLink" class="btn btn-outline-primary btn-sm me-auto">
           <i class="bi bi-car-front me-1"></i> Otwórz kartę pojazdu w bazie
         </a>
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
       </div>
     </div>
   </div>
@@ -592,15 +547,15 @@
 <div class="modal fade" id="manualCheckModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content border-0 shadow">
-      <div class="modal-header bg-dark text-white">
-        <h5 class="modal-title h6 fw-bold mb-0">
-          <i class="bi bi-shield-check me-1"></i> Sprawdź Dowolny Pojazd w CEPiK
+      <div class="modal-header border-bottom py-3" style="background-color: var(--bg-subtle);">
+        <h5 class="modal-title h6 fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+          <i class="bi bi-shield-check text-primary"></i> Sprawdź Dowolny Pojazd w CEPiK
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
       </div>
       <div class="modal-body p-4">
         <p class="small text-muted mb-3">
-          Podaj dane wymagane przez rządowy portal <em>HistoriaPojazdu.gov.pl</em>, aby na żywo pobrać oficjalny raport do bazy SportsCar DB.
+          Podaj dane wymagane przez portal <em>HistoriaPojazdu.gov.pl</em>, aby na żywo pobrać oficjalny raport do bazy SportsCar DB.
         </p>
         <form id="manualCheckForm">
           <div class="mb-3">
@@ -614,10 +569,10 @@
           <div class="mb-3">
             <label class="form-label small fw-bold text-dark">Data Pierwszej Rejestracji (YYYY-MM-DD)</label>
             <input type="date" class="form-control" id="manualDate" required>
-            <small class="text-muted" style="font-size: 0.72rem;">Format: RRRR-MM-DD (dokładna data z dowodu lub ogłoszenia)</small>
+            <small class="text-muted" style="font-size: 0.72rem;">Format: RRRR-MM-DD (dokładna data z dowodu rejestracyjnego)</small>
           </div>
           <div id="manualCheckAlert" class="alert alert-danger d-none small py-2"></div>
-          <button type="submit" class="btn btn-dark w-100 py-2 d-flex align-items-center justify-content-center gap-2" id="manualSubmitBtn">
+          <button type="submit" class="btn btn-primary w-100 py-2 d-flex align-items-center justify-content-center gap-2 shadow-sm" id="manualSubmitBtn">
             <i class="bi bi-cloud-arrow-down fs-5"></i>
             <span>Pobierz Oficjalny Raport CEPiK</span>
           </button>
@@ -661,7 +616,7 @@ function openDetailsModal(vin) {
     <div class="col-6 col-md-4"><span class="text-muted">Marka wg CEPiK:</span> <strong class="text-dark">${data.make || '—'}</strong></div>
     <div class="col-6 col-md-4"><span class="text-muted">Model wg CEPiK:</span> <strong class="text-dark">${data.model || '—'}</strong></div>
     <div class="col-6 col-md-4"><span class="text-muted">Rodzaj / Podrodzaj:</span> <strong class="text-dark">${data.type || ''} ${data.subtype ? '(' + data.subtype + ')' : ''}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Status rejestracji:</span> <span class="badge bg-success-subtle text-success border">${data.registration_status || 'Zarejestrowany'}</span></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Status rejestracji:</span> <span class="badge bg-success-subtle text-success border border-success-subtle">${data.registration_status || 'Zarejestrowany'}</span></div>
     <div class="col-6 col-md-4"><span class="text-muted">Liczba właścicieli w PL:</span> <strong class="text-dark">${data.total_owners || 1}</strong></div>
     <div class="col-6 col-md-4"><span class="text-muted">Status kradzieży:</span> <strong class="${data.is_stolen ? 'text-danger' : 'text-success'}">${data.is_stolen ? 'SKRADZIONY!' : 'Bez wpisu o kradzieży'}</strong></div>
     <div class="col-6 col-md-4"><span class="text-muted">Ważność SKP:</span> <strong class="text-dark">${data.tech_inspection_until || '—'}</strong> (${data.tech_inspection_status || 'Nieznany'})</div>
@@ -693,8 +648,8 @@ function openDetailsModal(vin) {
     eventsEl.innerHTML = `
       <div class="timeline ps-2">
         ${data.events.map(ev => `
-          <div class="border-start border-2 border-secondary ps-3 pb-3 position-relative">
-            <div class="position-absolute rounded-circle bg-secondary" style="width: 8px; height: 8px; left: -5px; top: 6px;"></div>
+          <div class="border-start border-2 border-primary ps-3 pb-3 position-relative">
+            <div class="position-absolute rounded-circle bg-primary" style="width: 8px; height: 8px; left: -5px; top: 6px;"></div>
             <div class="d-flex align-items-center gap-2">
               <span class="badge bg-light text-dark border font-monospace small" style="font-size: 0.72rem;">${ev.date || '—'}</span>
               <strong class="text-dark small">${ev.name || 'Zdarzenie'}</strong>

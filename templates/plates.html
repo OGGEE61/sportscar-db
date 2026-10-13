@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
   <div>
     <h2 class="h3 fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
-      <i class="bi bi-camera text-secondary"></i> Weryfikacja Tablic Rejestracyjnych
+      <i class="bi bi-camera text-primary"></i> Weryfikacja Tablic Rejestracyjnych
       <span class="badge bg-light text-secondary border fw-normal fs-6">Human-in-the-Loop</span>
     </h2>
     <p class="text-muted small mb-0">
@@ -13,7 +13,7 @@
     </p>
   </div>
   <div class="d-flex align-items-center gap-2">
-    <button type="button" class="btn btn-dark btn-sm d-flex align-items-center gap-2" id="scan-btn" onclick="runBatchScan()">
+    <button type="button" class="btn btn-primary btn-sm d-flex align-items-center gap-2 shadow-sm" id="scan-btn" onclick="runBatchScan()">
       <i class="bi bi-camera" id="scan-icon"></i>
       <span id="scan-text">Skanuj zdjęcia ogłoszeń (CV)</span>
     </button>
@@ -24,52 +24,56 @@
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <a href="/plates?status=pending" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if status_filter == 'pending' %}border-dark shadow{% endif %}">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Oczekujące weryfikacji</div>
-        <div class="fs-3 fw-bold text-dark mt-1" id="stat-pending">{{ stats.pending }}</div>
+      <div class="kpi-card {% if status_filter == 'pending' %}is-active{% endif %}">
+        <div class="kpi-label">Oczekujące weryfikacji</div>
+        <div class="kpi-value text-dark" id="stat-pending">{{ stats.pending }}</div>
+        <div class="kpi-subtext">nowe odczyty do potwierdzenia</div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
     <a href="/plates?status=approved" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if status_filter == 'approved' %}border-dark shadow{% endif %}">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Zatwierdzone tablice (Foto)</div>
-        <div class="fs-3 fw-bold text-dark mt-1">{{ stats.approved }}</div>
+      <div class="kpi-card {% if status_filter == 'approved' %}is-active{% endif %}">
+        <div class="kpi-label">Zatwierdzone tablice (Foto)</div>
+        <div class="kpi-value text-dark">{{ stats.approved }}</div>
+        <div class="kpi-subtext">zapisane w bazie jako zweryfikowane</div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
     <a href="/plates?status=rejected" class="text-decoration-none">
-      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if status_filter == 'rejected' %}border-dark shadow{% endif %}">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Odrzucone</div>
-        <div class="fs-3 fw-bold text-dark mt-1">{{ stats.rejected }}</div>
+      <div class="kpi-card {% if status_filter == 'rejected' %}is-active{% endif %}">
+        <div class="kpi-label">Odrzucone</div>
+        <div class="kpi-value text-muted">{{ stats.rejected }}</div>
+        <div class="kpi-subtext">błędne odczyty lub ramki</div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card border shadow-sm p-3 bg-white rounded-3 h-100">
-      <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Bez tablic w bazie</div>
-      <div class="fs-3 fw-bold text-dark mt-1">{{ stats.missing_plates }}</div>
+    <div class="kpi-card">
+      <div class="kpi-label">Bez tablic w bazie</div>
+      <div class="kpi-value text-muted">{{ stats.missing_plates }}</div>
+      <div class="kpi-subtext">brak tablicy z ogłoszenia lub foto</div>
     </div>
   </div>
 </div>
 
 <!-- Zakładki statusu -->
-<ul class="nav nav-tabs mb-4 border-bottom">
+<ul class="nav nav-tabs">
   <li class="nav-item">
-    <a class="nav-link text-dark {% if status_filter == 'pending' %}active fw-semibold border-bottom-0{% endif %}" href="/plates?status=pending">
+    <a class="nav-link {% if status_filter == 'pending' %}active{% endif %}" href="/plates?status=pending">
       Do weryfikacji
       <span class="badge bg-light text-dark border ms-1">{{ stats.pending }}</span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link text-dark {% if status_filter == 'approved' %}active fw-semibold border-bottom-0{% endif %}" href="/plates?status=approved">
+    <a class="nav-link {% if status_filter == 'approved' %}active{% endif %}" href="/plates?status=approved">
       Zatwierdzone tablice (Foto)
       <span class="badge bg-light text-dark border ms-1">{{ stats.approved }}</span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link text-dark {% if status_filter == 'rejected' %}active fw-semibold border-bottom-0{% endif %}" href="/plates?status=rejected">
+    <a class="nav-link {% if status_filter == 'rejected' %}active{% endif %}" href="/plates?status=rejected">
       Odrzucone
       <span class="badge bg-light text-dark border ms-1">{{ stats.rejected }}</span>
     </a>
