@@ -64,9 +64,10 @@ python scrapers/run_olx.py all
 ```
 app.py                 # entry point (Vercel + `python app.py`)
 db.py                  # SQLite / D1 backends, schema + migrations
+validation.py          # VIN + plate validation (CORE: shared by scrapers and app)
 webapp/
   __init__.py          # create_app(): config, Jinja filters, blueprint registration
-  helpers.py           # VIN/plate validation, parsing, paths
+  helpers.py           # parsing helpers, paths, env flags
   regions.py           # city → voivodeship lookup tables
   services/            # listing approval & spec inference, photo storage
   blueprints/          # routes: auth, dashboard, vehicles, review, plates, cepik, api
@@ -74,7 +75,7 @@ scrapers/              # otomoto / OLX scrapers (run on GitHub Actions)
 scripts/               # CV plate detection, CEPiK fetch, maintenance tools
 ```
 
-Tests: `python -m unittest tests.test_system tests.test_fixes` (CI runs these plus `ruff check --select F .`).
+Tests: `python -m unittest tests.test_validation tests.test_system tests.test_fixes` (CI runs these plus `ruff check --select F .`).
 
 ---
 
