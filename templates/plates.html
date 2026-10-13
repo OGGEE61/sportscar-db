@@ -20,40 +20,26 @@
   </div>
 </div>
 
-<!-- Statystyki / Szybkie przełączanie widoków -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <a href="/plates?status=pending" class="text-decoration-none">
-      <div class="kpi-card {% if status_filter == 'pending' %}is-active{% endif %}">
-        <div class="kpi-label">Oczekujące weryfikacji</div>
-        <div class="kpi-value text-dark" id="stat-pending">{{ stats.pending }}</div>
-        <div class="kpi-subtext">nowe odczyty do potwierdzenia</div>
+<!-- Kompaktowy pasek statystyk (bez zbędnego tekstu) -->
+<div class="card border shadow-sm mb-4 bg-white">
+  <div class="card-body py-2 px-3">
+    <div class="row text-center text-md-start align-items-center g-2 g-md-3">
+      <div class="col-6 col-md-3 border-end">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.7rem;">Do weryfikacji</div>
+        <div class="fs-4 fw-bold {% if stats.pending > 0 %}text-primary{% else %}text-dark{% endif %}" id="stat-pending">{{ stats.pending }}</div>
       </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-3">
-    <a href="/plates?status=approved" class="text-decoration-none">
-      <div class="kpi-card {% if status_filter == 'approved' %}is-active{% endif %}">
-        <div class="kpi-label">Zatwierdzone tablice (Foto)</div>
-        <div class="kpi-value text-dark">{{ stats.approved }}</div>
-        <div class="kpi-subtext">zapisane w bazie jako zweryfikowane</div>
+      <div class="col-6 col-md-3 border-end">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.7rem;">Zatwierdzone (Foto)</div>
+        <div class="fs-4 fw-bold text-dark">{{ stats.approved }}</div>
       </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-3">
-    <a href="/plates?status=rejected" class="text-decoration-none">
-      <div class="kpi-card {% if status_filter == 'rejected' %}is-active{% endif %}">
-        <div class="kpi-label">Odrzucone</div>
-        <div class="kpi-value text-muted">{{ stats.rejected }}</div>
-        <div class="kpi-subtext">błędne odczyty lub ramki</div>
+      <div class="col-6 col-md-3 border-end">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.7rem;">Odrzucone</div>
+        <div class="fs-4 fw-bold text-muted">{{ stats.rejected }}</div>
       </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="kpi-card">
-      <div class="kpi-label">Bez tablic w bazie</div>
-      <div class="kpi-value text-muted">{{ stats.missing_plates }}</div>
-      <div class="kpi-subtext">brak tablicy z ogłoszenia lub foto</div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.7rem;">Bez tablic w bazie</div>
+        <div class="fs-4 fw-bold text-muted">{{ stats.missing_plates }}</div>
+      </div>
     </div>
   </div>
 </div>
@@ -278,10 +264,10 @@
       Kolejka oczekujących jest pusta. Kliknij przycisk poniżej, aby przeskanować zdjęcia kolejnych aut bez tablic w bazie.
     </p>
     <div class="d-flex justify-content-center gap-2">
-      <button class="btn btn-dark px-4" onclick="runBatchScan()">
-        <i class="bi bi-play-circle me-1"></i> Uruchom skanowanie 10 kolejnych aut
+      <button class="btn btn-primary px-4 shadow-sm" onclick="runBatchScan()">
+        <i class="bi bi-camera me-1"></i> Uruchom skanowanie kolejnych aut
       </button>
-      <a href="/plates?status=approved" class="btn btn-outline-dark px-3">
+      <a href="/plates?status=approved" class="btn btn-outline-secondary px-3">
         Zobacz zatwierdzone auta ({{ stats.approved }})
       </a>
     </div>
