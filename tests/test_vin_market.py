@@ -15,5 +15,5 @@ for row in rows:
     try:
         v = Vin(vin)
         print(f"[{make}] {vin} - DESC says {market}, vininfo region: {v.region}, country: {v.country}")
-    except Exception as e:
+    except Exception:
         pass

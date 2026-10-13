@@ -1,5 +1,4 @@
 import os
-import re
 
 # manually parse .env
 with open(".env") as f:

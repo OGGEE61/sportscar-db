@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from db import get_db, init_db, make_placeholder_vin, resolve_placeholder
 from datetime import datetime
-import json, os, io, re
+import hmac, json, os, io, re
 
 try:
     from dotenv import load_dotenv
@@ -9,8 +9,21 @@ try:
 except ImportError:
     pass
 
+IS_PRODUCTION = bool(os.environ.get("VERCEL"))
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "fallback-dev-secret-key")
+app.secret_key = os.environ.get("SECRET_KEY")
+if not app.secret_key:
+    if IS_PRODUCTION and os.environ.get("ADMIN_PASSWORD"):
+        # A known fallback key would let anyone forge a logged-in session
+        raise RuntimeError("SECRET_KEY must be set in production")
+    app.secret_key = "fallback-dev-secret-key"
+# Lax blocks cross-site POSTs from carrying the session cookie (CSRF mitigation)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=IS_PRODUCTION,
+)
 app.jinja_env.filters["fromjson"] = json.loads
 NOW = lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -119,18 +132,26 @@ try:
 except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
 
+# Endpoints called by scrapers/GitHub Actions; authenticated by API_TOKEN instead of a session
+TOKEN_API_PATHS = {
+    "/api/ingest", "/api/ingest_pending", "/api/mark_removed", "/api/log_run",
+}
+
 @app.before_request
 def require_login():
-    if request.path.startswith("/api/") or request.path.startswith("/static/") or request.path == "/login":
+    if request.path in TOKEN_API_PATHS or request.path.startswith("/static/") or request.path == "/login":
         return
     admin_password = os.environ.get("ADMIN_PASSWORD")
     if admin_password and not session.get("logged_in"):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Unauthorized"}), 401
         return redirect(url_for("login"))
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form.get("password") == os.environ.get("ADMIN_PASSWORD"):
+        admin_password = os.environ.get("ADMIN_PASSWORD") or ""
+        if admin_password and hmac.compare_digest(request.form.get("password", ""), admin_password):
             session["logged_in"] = True
             return redirect(url_for("dashboard"))
         return render_template("login.html", error="Invalid password")
@@ -1888,10 +1909,14 @@ def vin_corrections():
 
 def check_api_token():
     token = os.environ.get("API_TOKEN")
-    if token:
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer ") or auth.split(" ")[1] != token:
-            return jsonify({"error": "Unauthorized"}), 401
+    if not token:
+        if IS_PRODUCTION:
+            return jsonify({"error": "API_TOKEN not configured"}), 503
+        return None  # local dev: open
+    auth = request.headers.get("Authorization", "")
+    supplied = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+    if not hmac.compare_digest(supplied, token):
+        return jsonify({"error": "Unauthorized"}), 401
     return None
 
 @app.route("/api/ingest", methods=["POST"])
@@ -1923,9 +1948,17 @@ def api_ingest():
             vin_status,source_method)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
-            make        = COALESCE(excluded.make, make),
-            model       = COALESCE(excluded.model, model),
+            make        = CASE WHEN excluded.make  = 'Unknown' THEN make  ELSE excluded.make  END,
+            model       = CASE WHEN excluded.model = 'Unknown' THEN model ELSE excluded.model END,
+            variant     = COALESCE(excluded.variant, variant),
+            year        = COALESCE(NULLIF(excluded.year, 0), year),
+            body_type   = COALESCE(excluded.body_type, body_type),
+            engine_cc   = COALESCE(excluded.engine_cc, engine_cc),
+            engine_cyl  = COALESCE(excluded.engine_cyl, engine_cyl),
             power_hp    = COALESCE(excluded.power_hp, power_hp),
+            drivetrain  = COALESCE(excluded.drivetrain, drivetrain),
+            transmission= COALESCE(excluded.transmission, transmission),
+            color_ext   = COALESCE(excluded.color_ext, color_ext),
             updated_at  = datetime('now')
     """, (
         vin,
@@ -2321,7 +2354,7 @@ def review_approve(pid):
         return redirect(url_for("review_detail", pid=next_p["id"]))
     return redirect(url_for("review_queue"))
 
-@app.route("/review/reject_all_pending")
+@app.route("/review/reject_all_pending", methods=["POST"])
 def review_reject_all_pending():
     conn = get_db()
     conn.execute(
@@ -2333,7 +2366,7 @@ def review_reject_all_pending():
         return {"status": "success"}
     return redirect(url_for("review_queue"))
 
-@app.route("/review/clear_rejected")
+@app.route("/review/clear_rejected", methods=["POST"])
 def review_clear_rejected():
     conn = get_db()
     conn.execute("DELETE FROM pending_listings WHERE status='rejected'")

@@ -12,7 +12,7 @@ import json
 import base64
 import sqlite3
 import urllib.request
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from PIL import Image, ImageEnhance
 import numpy as np
 

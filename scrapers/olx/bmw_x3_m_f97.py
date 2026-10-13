@@ -25,11 +25,10 @@ def validate_x3m(detail: dict) -> bool:
 
     fuel = (detail.get("fuel_type") or "").lower()
     if "diesel" in fuel:
-        print(f"  [reject-x3m] Paliwo diesel wykluczone dla X3 M — odrzucono.")
+        print("  [reject-x3m] Paliwo diesel wykluczone dla X3 M — odrzucono.")
         return False
 
     title = (detail.get("title") or "").lower()
-    desc = (detail.get("raw_description") or "").lower()
 
     if any(k in title for k in ["m40i", "m40d", "m40", "2.0d", "3.0d", "x-line", "xline"]):
         print(f"  [reject-x3m] Odrzucono wersję niebędącą X3 M ('{title}')")

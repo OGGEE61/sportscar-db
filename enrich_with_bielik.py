@@ -3,7 +3,6 @@ import re
 import json
 import time
 import requests
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -112,7 +111,6 @@ def main():
         make = r["make"] or ""
         model = r["model"] or ""
         city = r["location_city"] or ""
-        existing_region = r["location_region"]
         source = r["source"]
         source_listing_id = r["source_listing_id"]
 

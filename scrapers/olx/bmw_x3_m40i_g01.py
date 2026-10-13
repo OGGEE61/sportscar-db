@@ -28,13 +28,13 @@ def validate_x3_m40i(detail: dict) -> bool:
     title = (detail.get("title") or "").lower()
 
     if "diesel" in fuel or "diesel" in desc or "m40d" in title or "m40d" in desc or "m40 d" in title:
-        print(f"  [reject-m40i] Wykryto wersję wysokoprężną (diesel / M40d) — odrzucono.")
+        print("  [reject-m40i] Wykryto wersję wysokoprężną (diesel / M40d) — odrzucono.")
         return False
 
     # Title or description sanity check: must explicitly reference M40i / M40
     if not any(k in title for k in ["m40i", "m40", "m 40i", "m 40"]):
         if not ("m40i" in desc or "m40" in desc):
-            print(f"  [reject-m40i] Brak oznaczenia M40i w tytule i opisie — odrzucono.")
+            print("  [reject-m40i] Brak oznaczenia M40i w tytule i opisie — odrzucono.")
             return False
 
     # Power range check: B58 has 354-388 HP. Reject 20i/30i and X3 M (>430 HP)
@@ -46,7 +46,7 @@ def validate_x3_m40i(detail: dict) -> bool:
     # Exclude true X3 M Competition
     if any(k in title for k in ["x3m comp", "competition"]):
         if power and power > 440:
-            print(f"  [reject-m40i] Wykryto pełne X3 M Competition — odrzucono (to nie M40i).")
+            print("  [reject-m40i] Wykryto pełne X3 M Competition — odrzucono (to nie M40i).")
             return False
 
     return True
