@@ -19,7 +19,7 @@ if listing:
     try:
         vin = _approve_listing(conn, dict(listing))
         print("Success! VIN:", vin)
-    except Exception as e:
+    except Exception:
         print("Error during approve:")
         traceback.print_exc()
 else:

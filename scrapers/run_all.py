@@ -91,7 +91,6 @@ ALL_FLEET = [
 # Dynamically distribute 3 runs per week for every scraper across the 7 days
 WEEKDAY_SCHEDULE = {i: [] for i in range(7)}
 _all_runs = ALL_FLEET * 3
-import random
 _rnd = random.Random(42) # Fixed seed so schedule is stable
 _rnd.shuffle(_all_runs)
 

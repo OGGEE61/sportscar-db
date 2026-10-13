@@ -467,6 +467,42 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_cepik_reports_plate ON cepik_reports(registration_plate)")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(9,'plate_queue_and_cepik')")
 
+    # Migration v10: columns the app/scripts use that were previously only added
+    # by hand on production (fresh databases crashed on /logs, plates, AI views)
+    missing_cols = {
+        "scraper_logs": [
+            ("is_read", "INTEGER NOT NULL DEFAULT 0"),
+            ("list_url", "TEXT"),
+            ("found_count", "INTEGER DEFAULT 0"),
+            ("new_count", "INTEGER DEFAULT 0"),
+            ("dup_count", "INTEGER DEFAULT 0"),
+            ("rej_count", "INTEGER DEFAULT 0"),
+        ],
+        "listing_observations": [
+            ("registration_plate", "TEXT"),
+        ],
+        "pending_listings": [
+            ("registration_plate", "TEXT"),
+            ("first_registration_date", "TEXT"),
+            ("ai_summary", "TEXT"),
+            ("ai_suggested_market", "TEXT"),
+            ("ai_conflict", "INTEGER"),
+            ("ai_reasoning", "TEXT"),
+            ("ai_equipment", "TEXT"),
+            ("ai_interior_color", "TEXT"),
+            ("ai_processed_at", "TEXT"),
+        ],
+        "vehicles": [
+            ("ai_summary", "TEXT"),
+        ],
+    }
+    for table, cols in missing_cols.items():
+        have = {r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col, decl in cols:
+            if col not in have:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(10,'backfill_missing_columns')")
+
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
     db.execute("""
@@ -505,18 +541,34 @@ def resolve_placeholder(old_vin: str, new_vin: str,
         row = db.execute("SELECT * FROM vehicles WHERE vin=?", (old_vin,)).fetchone()
         if not row:
             raise ValueError(f"VIN not found: {old_vin}")
-        db.execute("""
-            INSERT OR IGNORE INTO vehicles
-              (vin,make,model,variant,year,body_type,engine_cc,engine_cyl,power_hp,
-               drivetrain,transmission,color_ext,color_int,
-               vin_status,notes,source_method,created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'unverified',?,?,?)
-        """, (new_vin, row["make"], row["model"], row["variant"], row["year"],
-              row["body_type"], row["engine_cc"], row["engine_cyl"], row["power_hp"],
-              row["drivetrain"], row["transmission"], row["color_ext"], row["color_int"],
-              row["notes"], source_method, row["created_at"]))
-        for tbl in ("listing_observations", "condition_reports", "tags"):
+        # Copy every column except the identity/status ones, so nothing set on
+        # the placeholder (photo, plate, equipment, AI summary, ...) is lost.
+        skip = {"vin", "vin_status", "vin_verified_at", "vin_verified_by", "source_method", "updated_at"}
+        cols = [k for k in row.keys() if k not in skip]
+        db.execute(f"""
+            INSERT OR IGNORE INTO vehicles (vin, vin_status, source_method, {', '.join(cols)})
+            VALUES (?, 'unverified', ?, {', '.join('?' * len(cols))})
+        """, (new_vin, source_method, *[row[c] for c in cols]))
+        # If the real VIN already existed, fill its gaps from the placeholder
+        fill = [c for c in cols if c not in ("created_at",)]
+        if fill:
+            db.execute(f"""
+                UPDATE vehicles SET {', '.join(f'{c} = COALESCE({c}, ?)' for c in fill)}
+                WHERE vin = ?
+            """, (*[row[c] for c in fill], new_vin))
+        for tbl in ("listing_observations", "condition_reports", "tags", "plate_review_queue"):
+            if tbl == "tags":
+                # tags has UNIQUE(vin, tag): drop duplicates the real VIN already has
+                db.execute("""
+                    DELETE FROM tags WHERE vin=? AND tag IN (SELECT tag FROM tags WHERE vin=?)
+                """, (old_vin, new_vin))
             db.execute(f"UPDATE {tbl} SET vin=? WHERE vin=?", (new_vin, old_vin))
+        db.execute("UPDATE pending_listings SET vin=? WHERE vin=?", (new_vin, old_vin))
+        db.execute("""
+            UPDATE cepik_reports SET vin=? WHERE vin=?
+              AND NOT EXISTS (SELECT 1 FROM cepik_reports WHERE vin=?)
+        """, (new_vin, old_vin, new_vin))
+        db.execute("DELETE FROM cepik_reports WHERE vin=?", (old_vin,))
         db.execute("DELETE FROM vehicles WHERE vin=?", (old_vin,))
         db.execute("""
             INSERT INTO vin_correction_log(old_vin,new_vin,reason,corrected_by,source_method)

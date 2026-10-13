@@ -26,7 +26,7 @@ def validate_rs3_8v(detail: dict) -> bool:
 
     fuel = (detail.get("fuel_type") or "").lower()
     if "diesel" in fuel:
-        print(f"  [reject-rs3] Paliwo diesel wykluczone dla RS3 — odrzucono.")
+        print("  [reject-rs3] Paliwo diesel wykluczone dla RS3 — odrzucono.")
         return False
 
     title = (detail.get("title") or "").lower()
@@ -34,7 +34,7 @@ def validate_rs3_8v(detail: dict) -> bool:
 
     # Must mention RS3 or RS 3 in title or description
     if not any(k in title for k in ["rs3", "rs 3"]) and not any(k in desc for k in ["rs3", "rs 3"]):
-        print(f"  [reject-rs3] Brak oznaczenia RS3 w tytule i opisie — odrzucono.")
+        print("  [reject-rs3] Brak oznaczenia RS3 w tytule i opisie — odrzucono.")
         return False
 
     # Check for fake/look conversions: e.g. "s3 rs3 look", "a3 rs3 pakiet"

@@ -416,7 +416,7 @@ if (rejectAllBtn) {
       row.style.pointerEvents = 'none';
     });
     
-    fetch('/review/reject_all_pending?ajax=1')
+    fetch('/review/reject_all_pending?ajax=1', { method: 'POST' })
     .then(res => {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
@@ -447,7 +447,7 @@ if (clearRejectedBtn) {
       row.style.pointerEvents = 'none';
     });
     
-    fetch('/review/clear_rejected?ajax=1')
+    fetch('/review/clear_rejected?ajax=1', { method: 'POST' })
     .then(res => {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();

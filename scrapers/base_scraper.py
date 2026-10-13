@@ -976,7 +976,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
         cookies   = refresh_session(cookies)
         logged_in = check_session(cookies)
     else:
-        print(f"[auth] No cookies -- VINs will stay encrypted.")
+        print("[auth] No cookies -- VINs will stay encrypted.")
 
     results  = []
     seen_ids = set()
@@ -1065,9 +1065,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             detail["vin_confidence"] = "found_in_schema"
                             print(f"    VIN (api):    {revealed}")
                         else:
-                            print(f"    VIN: brak poprawnego numeru w ogłoszeniu")
+                            print("    VIN: brak poprawnego numeru w ogłoszeniu")
                     elif vc == "found_in_schema":
-                        print(f"    VIN: brak poprawnego numeru w ogłoszeniu")
+                        print("    VIN: brak poprawnego numeru w ogłoszeniu")
                     if detail.get("year"):
                         print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
                               f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")

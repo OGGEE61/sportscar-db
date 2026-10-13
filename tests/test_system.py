@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-import json
 import sqlite3
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,6 +27,7 @@ class TestSportsCarDB(unittest.TestCase):
         
     def setUp(self):
         # Fresh DB for each test
+        db.DB_PATH = TEST_DB_PATH
         if os.path.exists(TEST_DB_PATH):
             os.remove(TEST_DB_PATH)
         

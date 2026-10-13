@@ -1,4 +1,3 @@
-import os
 from db import get_db
 
 conn = get_db()

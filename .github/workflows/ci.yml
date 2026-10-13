@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt ruff
+
+    - name: Lint (pyflakes rules)
+      run: ruff check --select F .
+
+    - name: Tests
+      # Only offline tests; the other tests/*.py files hit otomoto live
+      run: python -m unittest tests.test_system tests.test_fixes

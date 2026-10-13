@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run, _log_run
+from base_scraper import run
 from bmw_alpina import CONFIG as ALPINA_OLX
 from bmw_x3_m_f97 import CONFIG as X3_M_OLX
 from bmw_x3_m40i_g01 import CONFIG as X3_M40I_OLX
