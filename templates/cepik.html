@@ -1,0 +1,806 @@
+{% extends "base.html" %}
+{% block title %}CEPiK Info & Historia Pojazdu – SportsCar DB{% endblock %}
+
+{% block content %}
+<style>
+.plate-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1.5px solid #0f172a;
+  border-radius: 4px;
+  font-family: 'Inter', monospace, sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.plate-flag {
+  background: #003399;
+  color: #ffffff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.plate-number {
+  padding: 2px 7px;
+  color: #0f172a;
+}
+.badge-rollback {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  font-weight: 600;
+  animation: pulse-border 2s infinite;
+}
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+.thumb-car {
+  width: 48px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  background-color: #f1f5f9;
+}
+</style>
+
+<!-- Nagłówek strony -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+  <div>
+    <h2 class="h3 fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
+      <i class="bi bi-shield-check text-secondary"></i> CEPiK Info & Historia Pojazdu
+      <span class="badge bg-light text-secondary border fw-normal fs-6">Baza Gov.pl</span>
+    </h2>
+    <p class="text-muted small mb-0">
+      Oficjalne dane państwowe: ważność badań technicznych (SKP), polis OC, liczba właścicieli, historia odczytów licznika oraz wykrywanie cofniętych drogomierzy.
+    </p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <button type="button" class="btn btn-dark btn-sm d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#manualCheckModal">
+      <i class="bi bi-search"></i>
+      <span>Sprawdź w CEPiK (Ręcznie)</span>
+    </button>
+  </div>
+</div>
+
+<!-- Statystyki / KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <a href="/cepik?tab=all" class="text-decoration-none">
+      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if tab == 'all' %}border-dark shadow{% endif %}">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Pobrane Raporty CEPiK</div>
+        <div class="fs-3 fw-bold text-dark mt-1">{{ stats.total_reports }}</div>
+        <div class="text-muted small" style="font-size: 0.75rem;">na {{ stats.eligible_count }} z kompletem danych</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="/cepik?tab=rollback" class="text-decoration-none">
+      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if stats.rollback_count > 0 %}border-danger bg-danger-subtle{% endif %} {% if tab == 'rollback' %}shadow border-2{% endif %}">
+        <div class="{% if stats.rollback_count > 0 %}text-danger{% else %}text-muted{% endif %} small text-uppercase fw-semibold" style="font-size: 0.75rem;">
+          Wykryte Cofnięcia Licznika
+        </div>
+        <div class="fs-3 fw-bold {% if stats.rollback_count > 0 %}text-danger{% else %}text-dark{% endif %} mt-1 d-flex align-items-center gap-2">
+          {{ stats.rollback_count }}
+          {% if stats.rollback_count > 0 %}
+          <span class="badge bg-danger fs-6 fw-normal">Alert!</span>
+          {% endif %}
+        </div>
+        <div class="{% if stats.rollback_count > 0 %}text-danger{% else %}text-muted{% endif %} small" style="font-size: 0.75rem;">
+          odczyt SKP wyższy niż ogłoszenie
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="/cepik?tab=all" class="text-decoration-none">
+      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Ważne Badania (SKP)</div>
+        <div class="fs-3 fw-bold text-success mt-1">{{ stats.active_skp_count }} <span class="fs-6 text-muted fw-normal">({{ stats.skp_pct }}%)</span></div>
+        <div class="text-muted small" style="font-size: 0.75rem;">aktualne badanie okresowe</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a href="/cepik?tab=all" class="text-decoration-none">
+      <div class="card border shadow-sm p-3 bg-white rounded-3 h-100">
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Aktywne Polisy OC</div>
+        <div class="fs-3 fw-bold text-success mt-1">{{ stats.active_oc_count }} <span class="fs-6 text-muted fw-normal">({{ stats.oc_pct }}%)</span></div>
+        <div class="text-muted small" style="font-size: 0.75rem;">ubezpieczenie odpowiedzialności cywilnej</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- Zakładki -->
+<ul class="nav nav-tabs mb-4 border-bottom">
+  <li class="nav-item">
+    <a class="nav-link text-dark {% if tab == 'all' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=all">
+      <i class="bi bi-list-check me-1"></i> Wszystkie z CEPiK
+      <span class="badge bg-light text-dark border ms-1">{{ stats.total_reports }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link text-dark {% if tab == 'rollback' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=rollback">
+      <i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Cofnięty Licznik
+      {% if stats.rollback_count > 0 %}
+      <span class="badge bg-danger ms-1">{{ stats.rollback_count }}</span>
+      {% else %}
+      <span class="badge bg-light text-muted border ms-1">0</span>
+      {% endif %}
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link text-dark {% if tab == 'issues' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=issues">
+      <i class="bi bi-shield-x text-warning me-1"></i> Brak OC / SKP
+      <span class="badge bg-warning text-dark ms-1">{{ stats.issues_count }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link text-dark {% if tab == 'missing' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=missing">
+      <i class="bi bi-clock-history me-1"></i> Do pobrania / Nieznalezione
+      <span class="badge bg-secondary ms-1">{{ stats.missing_count }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link text-dark {% if tab == 'log' %}active fw-semibold border-bottom-0{% endif %}" href="/cepik?tab=log">
+      <i class="bi bi-journal-text me-1"></i> Log zapytań
+    </a>
+  </li>
+</ul>
+
+<!-- Wyszukiwarka i filtr -->
+<div class="card border shadow-sm p-3 bg-white rounded-3 mb-4">
+  <form method="get" action="/cepik" class="row g-2 align-items-center">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <div class="col-12 col-md-8">
+      <div class="input-group">
+        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+        <input type="text" name="q" value="{{ q }}" class="form-control border-start-0" placeholder="Szukaj po VIN, tablicy rejestracyjnej, marce lub modelu..." id="searchInput">
+        {% if q %}
+        <a href="/cepik?tab={{ tab }}" class="btn btn-outline-secondary" title="Wyczyść"><i class="bi bi-x-lg"></i></a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-12 col-md-4 text-md-end">
+      <button type="submit" class="btn btn-secondary btn-sm px-3">Filtruj</button>
+      <span class="text-muted small ms-2">Wyników: 
+        {% if tab == 'missing' %}{{ missing_items|length }}
+        {% elif tab == 'log' %}{{ sync_logs|length }}
+        {% else %}{{ reports|length }}
+        {% endif %}
+      </span>
+    </div>
+  </form>
+</div>
+
+<!-- Zawartość główna: Tabela raportów CEPiK -->
+{% if tab in ('all', 'rollback', 'issues') %}
+<div class="card border shadow-sm rounded-3 overflow-hidden bg-white">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.75rem;">
+        <tr>
+          <th style="width: 50px;"></th>
+          <th>Pojazd & VIN</th>
+          <th>Tablica & 1. Rejestracja</th>
+          <th>Badanie SKP</th>
+          <th>Polisa OC</th>
+          <th>Przebieg (SKP vs Ogłoszenie)</th>
+          <th>Właściciele</th>
+          <th class="text-end">Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr class="{% if r.odometer_rollback %}table-danger-subtle{% endif %}">
+          <!-- Zdjęcie -->
+          <td>
+            {% if r.v_photo %}
+            <img src="{{ r.v_photo }}" alt="Foto" class="thumb-car">
+            {% else %}
+            <div class="thumb-car d-flex align-items-center justify-content-center text-muted">
+              <i class="bi bi-car-front fs-5"></i>
+            </div>
+            {% endif %}
+          </td>
+
+          <!-- Pojazd & VIN -->
+          <td>
+            <div class="fw-bold text-dark">
+              {{ r.v_make or r.make }} {{ r.v_model or r.model }} {% if r.v_year %}<span class="text-muted fw-normal">({{ r.v_year }})</span>{% endif %}
+            </div>
+            <div class="d-flex align-items-center gap-1 font-monospace small text-muted">
+              <a href="/vehicle/{{ r.vin }}" class="text-decoration-none text-dark fw-semibold" title="Zobacz kartę pojazdu">
+                {{ r.vin }}
+              </a>
+              {% if r.source_url %}
+              <a href="{{ r.source_url }}" target="_blank" rel="noopener" class="text-muted ms-1" title="Ogłoszenie źródłowe">
+                <i class="bi bi-box-arrow-up-right" style="font-size: 0.75rem;"></i>
+              </a>
+              {% endif %}
+            </div>
+            {% if r.latest_price_pln %}
+            <div class="small text-secondary fw-semibold">
+              {{ "{:,}".format(r.latest_price_pln) }} PLN
+            </div>
+            {% endif %}
+          </td>
+
+          <!-- Tablica & Data 1. Rejestracji -->
+          <td>
+            <div class="mb-1">
+              <span class="plate-badge">
+                <span class="plate-flag">PL</span>
+                <span class="plate-number">{{ r.registration_plate }}</span>
+              </span>
+            </div>
+            <div class="text-muted small" style="font-size: 0.75rem;">
+              1. rej: <span class="fw-semibold text-dark">{{ r.first_registration_date or '—' }}</span>
+            </div>
+          </td>
+
+          <!-- Badanie SKP -->
+          <td>
+            {% if r.tech_inspection_status == 'Aktualne' %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle">
+              <i class="bi bi-check-circle-fill me-1"></i>Aktualne
+            </span>
+            {% if r.tech_inspection_until %}
+            <div class="text-muted small mt-1" style="font-size: 0.72rem;">do {{ r.tech_inspection_until }}</div>
+            {% endif %}
+            {% else %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+              <i class="bi bi-x-circle-fill me-1"></i>{{ r.tech_inspection_status or 'Nieaktualne' }}
+            </span>
+            {% endif %}
+          </td>
+
+          <!-- Polisa OC -->
+          <td>
+            {% if r.has_current_oc %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle">
+              <i class="bi bi-shield-check me-1"></i>Aktywne
+            </span>
+            {% if r.insurance_expiry_date %}
+            <div class="text-muted small mt-1" style="font-size: 0.72rem;">do {{ r.insurance_expiry_date }}</div>
+            {% endif %}
+            {% else %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+              <i class="bi bi-shield-x me-1"></i>Brak OC
+            </span>
+            {% endif %}
+          </td>
+
+          <!-- Przebieg & Licznik -->
+          <td>
+            {% if r.odometer_rollback %}
+            <div class="badge-rollback rounded p-1 px-2 d-inline-block">
+              <div class="d-flex align-items-center gap-1">
+                <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                <span class="fw-bold">COFNIĘTY LICZNIK!</span>
+              </div>
+              <div style="font-size: 0.75rem;">
+                SKP: <span class="fw-bold font-monospace">{{ "{:,}".format(r.last_odometer_km) }} km</span><br>
+                Różnica: <span class="fw-bold text-danger">-{{ "{:,}".format(r.rollback_diff_km) }} km</span>
+              </div>
+            </div>
+            {% elif r.last_odometer_km %}
+            <div class="fw-bold text-dark font-monospace">
+              {{ "{:,}".format(r.last_odometer_km) }} km
+            </div>
+            <div class="text-muted small" style="font-size: 0.72rem;">
+              SKP ({{ r.last_odometer_date }})
+            </div>
+            {% if r.listing_mileage_km %}
+            <div class="text-muted small" style="font-size: 0.72rem;">
+              Ogłoszenie: {{ "{:,}".format(r.listing_mileage_km) }} km
+            </div>
+            {% endif %}
+            {% else %}
+            <span class="text-muted small">Brak odczytu SKP</span>
+            {% endif %}
+          </td>
+
+          <!-- Właściciele & Kradzież -->
+          <td>
+            <div class="small fw-semibold text-dark">
+              <i class="bi bi-people me-1 text-secondary"></i> {{ r.total_owners or '1' }} w PL
+            </div>
+            <div class="small text-success mt-1" style="font-size: 0.72rem;">
+              {% if r.is_stolen %}
+              <span class="text-danger fw-bold"><i class="bi bi-shield-fill-exclamation me-1"></i>SKRADZIONY!</span>
+              {% else %}
+              <i class="bi bi-check2-circle me-1"></i>Brak kradzieży
+              {% endif %}
+            </div>
+          </td>
+
+          <!-- Akcje -->
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-dark" onclick="openDetailsModal('{{ r.vin }}')" title="Pokaż pełną historię badań i zdarzeń">
+                <i class="bi bi-clock-history me-1"></i> Historia
+              </button>
+              <button type="button" class="btn btn-light border" onclick="refreshVehicleCepik('{{ r.vin }}', this)" title="Pobierz ponownie z CEPiK">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+              <a href="/vehicle/{{ r.vin }}" class="btn btn-light border" title="Przejdź do karty pojazdu">
+                <i class="bi bi-arrow-up-right"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center py-5 text-muted">
+            <i class="bi bi-inbox fs-2 d-block mb-2 text-secondary"></i>
+            Brak raportów spełniających wybrane kryteria.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Zawartość: Zakładka "Do pobrania / Nieznalezione" -->
+{% if tab == 'missing' %}
+<div class="card border shadow-sm rounded-3 overflow-hidden bg-white">
+  <div class="card-header bg-light border-bottom py-3 d-flex justify-content-between align-items-center">
+    <div>
+      <h6 class="mb-0 fw-bold text-dark">Pojazdy z kompletem danych (Tablica + Data 1. Rej.), oczekujące lub nieznalezione w CEPiK</h6>
+      <small class="text-muted">Kliknij „Pobierz z CEPiK”, aby natychmiast odpytać oficjalny rejestr rządowy.</small>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.75rem;">
+        <tr>
+          <th>Pojazd & VIN</th>
+          <th>Tablica Rejestracyjna</th>
+          <th>Data 1. Rejestracji</th>
+          <th>Ostatnia Próba</th>
+          <th>Status / Diagnoza</th>
+          <th class="text-end">Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in missing_items %}
+        <tr>
+          <!-- Pojazd & VIN -->
+          <td>
+            <div class="fw-bold text-dark">
+              {{ m.make }} {{ m.model }} {% if m.year %}<span class="text-muted fw-normal">({{ m.year }})</span>{% endif %}
+            </div>
+            <div class="font-monospace small text-muted">
+              <a href="/vehicle/{{ m.vin }}" class="text-decoration-none text-dark fw-semibold">
+                {{ m.vin }}
+              </a>
+            </div>
+          </td>
+
+          <!-- Tablica -->
+          <td>
+            <span class="plate-badge">
+              <span class="plate-flag">PL</span>
+              <span class="plate-number">{{ m.registration_plate }}</span>
+            </span>
+          </td>
+
+          <!-- Data 1. Rejestracji -->
+          <td>
+            <span class="fw-bold text-dark font-monospace">{{ m.first_registration_date }}</span>
+          </td>
+
+          <!-- Ostatnia Próba -->
+          <td>
+            {% if m.last_sync_attempt %}
+            <div class="small text-muted">{{ m.last_sync_attempt[:16] }}</div>
+            {% else %}
+            <span class="badge bg-light text-muted border">Jeszcze nie sprawdzano</span>
+            {% endif %}
+          </td>
+
+          <!-- Status / Diagnoza -->
+          <td>
+            {% if m.last_sync_status == 'not_found' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+              <i class="bi bi-question-circle me-1"></i>Nie odnaleziono w CEPiK
+            </span>
+            <div class="small text-muted mt-1" style="font-size: 0.72rem;">
+              {{ m.last_sync_message or 'Sprawdź zgodność tablicy i daty 1. rej.' }}
+            </div>
+            {% elif m.last_sync_status %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ m.last_sync_status }}</span>
+            <div class="small text-muted mt-1" style="font-size: 0.72rem;">{{ m.last_sync_message }}</div>
+            {% else %}
+            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+              <i class="bi bi-clock me-1"></i>Gotowy do pobrania
+            </span>
+            {% endif %}
+          </td>
+
+          <!-- Akcje -->
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-dark" onclick="fetchSingleMissing('{{ m.vin }}', '{{ m.registration_plate }}', '{{ m.first_registration_date }}', this)">
+                <i class="bi bi-cloud-arrow-down me-1"></i> Pobierz z CEPiK
+              </button>
+              <a href="/vehicle/{{ m.vin }}" class="btn btn-light border" title="Karta pojazdu">
+                <i class="bi bi-arrow-up-right"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-5 text-muted">
+            <i class="bi bi-check2-circle fs-2 d-block mb-2 text-success"></i>
+            Wszystkie kwalifikujące się pojazdy zostały już pomyślnie sprawdzone w CEPiK!
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Zawartość: Zakładka "Log synchronizacji" -->
+{% if tab == 'log' %}
+<div class="card border shadow-sm rounded-3 overflow-hidden bg-white">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.75rem;">
+        <tr>
+          <th>Data zapytania</th>
+          <th>VIN</th>
+          <th>Pojazd</th>
+          <th>Tablica</th>
+          <th>Status</th>
+          <th>Odpowiedź / Komunikat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in sync_logs %}
+        <tr>
+          <td class="text-nowrap small font-monospace">{{ l.attempted_at[:19] }}</td>
+          <td class="font-monospace small">
+            <a href="/vehicle/{{ l.vin }}" class="text-decoration-none text-dark fw-bold">{{ l.vin }}</a>
+          </td>
+          <td>{{ l.make or '—' }} {{ l.model or '' }}</td>
+          <td>
+            {% if l.registration_plate %}
+            <span class="plate-badge">
+              <span class="plate-flag">PL</span>
+              <span class="plate-number">{{ l.registration_plate }}</span>
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if l.status == 'success' %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle">
+              <i class="bi bi-check-circle-fill me-1"></i>Sukces
+            </span>
+            {% elif l.status == 'not_found' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+              <i class="bi bi-search me-1"></i>Nie znaleziono
+            </span>
+            {% else %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ l.status }}</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ l.message or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-5 text-muted">Brak wpisów w historii zapytań.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+
+<!-- ========================================================================= -->
+<!-- MODAL: Szczegółowa Historia & Oś Czasu CEPiK                              -->
+<!-- ========================================================================= -->
+<div class="modal fade" id="cepikDetailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-dark text-white">
+        <div>
+          <h5 class="modal-title h6 fw-bold mb-0" id="modalTitle">Szczegóły Raportu CEPiK</h5>
+          <small class="text-secondary" id="modalSubtitle"></small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body p-4">
+        <!-- Alert Rollbacku w modalu -->
+        <div id="modalRollbackAlert" class="alert alert-danger d-none mb-4" role="alert">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-exclamation-triangle-fill fs-5 text-danger"></i>
+            <h6 class="mb-0 fw-bold">Uwaga: Wykryto rozbieżność odczytu drogomierza!</h6>
+          </div>
+          <p class="small mb-0" id="modalRollbackText"></p>
+        </div>
+
+        <!-- Parametry pojazdu wg CEPiK -->
+        <div class="card border bg-light p-3 mb-4 rounded-3">
+          <h6 class="fw-bold small text-uppercase text-muted mb-3">Dane Identyfikacyjne Pojazdu w Rejestrze CEPiK</h6>
+          <div class="row g-2 small" id="modalVehicleInfo">
+            <!-- Wstrzykiwane przez JS -->
+          </div>
+        </div>
+
+        <!-- Tabela: Historia badań technicznych i odczytów licznika -->
+        <h6 class="fw-bold small text-uppercase text-dark mb-2 d-flex align-items-center gap-2">
+          <i class="bi bi-speedometer2 text-secondary"></i> Historia Odczytów Licznika z Badań Technicznych (SKP) i Kontroli Policji
+        </h6>
+        <div class="card border rounded-3 overflow-hidden mb-4">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size: 0.8rem;">
+              <thead class="table-light text-muted">
+                <tr>
+                  <th>Data</th>
+                  <th>Stan Drogomierza</th>
+                  <th>Instytucja</th>
+                  <th>Rodzaj Badania / Zdarzenia</th>
+                </tr>
+              </thead>
+              <tbody id="modalOdometerTableBody">
+                <!-- Wstrzykiwane przez JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Oś Czasu: Zdarzenia urzędowe -->
+        <h6 class="fw-bold small text-uppercase text-dark mb-2 d-flex align-items-center gap-2">
+          <i class="bi bi-calendar-event text-secondary"></i> Oś Czasu Zdarzeń Rejestracyjnych
+        </h6>
+        <div class="border rounded-3 p-3 bg-white" id="modalEventsContainer">
+          <!-- Wstrzykiwane przez JS -->
+        </div>
+      </div>
+      <div class="modal-footer bg-light">
+        <a href="#" id="modalVehiclePageLink" class="btn btn-outline-dark btn-sm me-auto">
+          <i class="bi bi-car-front me-1"></i> Otwórz kartę pojazdu w bazie
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Zamknij</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========================================================================= -->
+<!-- MODAL: Ręczne Sprawdzenie w CEPiK (Dowolny VIN)                            -->
+<!-- ========================================================================= -->
+<div class="modal fade" id="manualCheckModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title h6 fw-bold mb-0">
+          <i class="bi bi-shield-check me-1"></i> Sprawdź Dowolny Pojazd w CEPiK
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="small text-muted mb-3">
+          Podaj dane wymagane przez rządowy portal <em>HistoriaPojazdu.gov.pl</em>, aby na żywo pobrać oficjalny raport do bazy SportsCar DB.
+        </p>
+        <form id="manualCheckForm">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-dark">Numer VIN (17 znaków)</label>
+            <input type="text" class="form-control font-monospace" id="manualVin" required placeholder="np. WBS41DM0408G96326" maxlength="17" style="text-transform: uppercase;">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-dark">Numer Rejestracyjny</label>
+            <input type="text" class="form-control font-monospace" id="manualPlate" required placeholder="np. WW488GV" maxlength="10" style="text-transform: uppercase;">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-dark">Data Pierwszej Rejestracji (YYYY-MM-DD)</label>
+            <input type="date" class="form-control" id="manualDate" required>
+            <small class="text-muted" style="font-size: 0.72rem;">Format: RRRR-MM-DD (dokładna data z dowodu lub ogłoszenia)</small>
+          </div>
+          <div id="manualCheckAlert" class="alert alert-danger d-none small py-2"></div>
+          <button type="submit" class="btn btn-dark w-100 py-2 d-flex align-items-center justify-content-center gap-2" id="manualSubmitBtn">
+            <i class="bi bi-cloud-arrow-down fs-5"></i>
+            <span>Pobierz Oficjalny Raport CEPiK</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Przechowywanie danych raportów dla szybkiego modalu -->
+<script>
+window.CEPIK_REPORTS = {};
+{% for r in reports %}
+window.CEPIK_REPORTS['{{ r.vin }}'] = {{ r|tojson }};
+{% endfor %}
+
+// Otwieranie modalu ze szczegółami
+function openDetailsModal(vin) {
+  const data = window.CEPIK_REPORTS[vin];
+  if (!data) return;
+
+  document.getElementById('modalTitle').innerText = `${data.v_make || data.make || ''} ${data.v_model || data.model || ''}`;
+  document.getElementById('modalSubtitle').innerText = `VIN: ${data.vin} | Tablica: ${data.registration_plate || '—'}`;
+  document.getElementById('modalVehiclePageLink').href = `/vehicle/${encodeURIComponent(data.vin)}`;
+
+  // Rollback Alert
+  const rollbackEl = document.getElementById('modalRollbackAlert');
+  if (data.odometer_rollback) {
+    rollbackEl.classList.remove('d-none');
+    document.getElementById('modalRollbackText').innerHTML = 
+      `Podczas ostatniego badania technicznego lub kontroli drogowej (${data.last_odometer_date}) zarejestrowano stan drogomierza ` +
+      `<strong>${Number(data.last_odometer_km).toLocaleString()} km</strong>, podczas gdy w ogłoszeniu podano mniejszy przebieg ` +
+      `(rozbieżność: <strong class="text-danger">-${Number(data.rollback_diff_km).toLocaleString()} km</strong>).`;
+  } else {
+    rollbackEl.classList.add('d-none');
+  }
+
+  // Dane pojazdu
+  const infoEl = document.getElementById('modalVehicleInfo');
+  infoEl.innerHTML = `
+    <div class="col-6 col-md-4"><span class="text-muted">Marka wg CEPiK:</span> <strong class="text-dark">${data.make || '—'}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Model wg CEPiK:</span> <strong class="text-dark">${data.model || '—'}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Rodzaj / Podrodzaj:</span> <strong class="text-dark">${data.type || ''} ${data.subtype ? '(' + data.subtype + ')' : ''}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Status rejestracji:</span> <span class="badge bg-success-subtle text-success border">${data.registration_status || 'Zarejestrowany'}</span></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Liczba właścicieli w PL:</span> <strong class="text-dark">${data.total_owners || 1}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Status kradzieży:</span> <strong class="${data.is_stolen ? 'text-danger' : 'text-success'}">${data.is_stolen ? 'SKRADZIONY!' : 'Bez wpisu o kradzieży'}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Ważność SKP:</span> <strong class="text-dark">${data.tech_inspection_until || '—'}</strong> (${data.tech_inspection_status || 'Nieznany'})</div>
+    <div class="col-6 col-md-4"><span class="text-muted">Ważność OC:</span> <strong class="text-dark">${data.insurance_expiry_date || '—'}</strong> (${data.has_current_oc ? 'Aktywne' : 'Brak'})</div>
+    <div class="col-6 col-md-4"><span class="text-muted">Zsynchronizowano:</span> <span class="text-muted font-monospace">${(data.fetched_at || '').substring(0, 16)}</span></div>
+  `;
+
+  // Tabela odczytów licznika
+  const odoBody = document.getElementById('modalOdometerTableBody');
+  if (data.odometer_history && data.odometer_history.length > 0) {
+    odoBody.innerHTML = data.odometer_history.map(item => `
+      <tr>
+        <td class="font-monospace text-nowrap">${item.date || '—'}</td>
+        <td class="fw-bold font-monospace ${item.rollback_detected ? 'text-danger' : 'text-dark'}">
+          ${Number(item.km).toLocaleString()} km
+          ${item.rollback_detected ? '<span class="badge bg-danger ms-1" style="font-size:0.65rem;">Cofnięcie</span>' : ''}
+        </td>
+        <td><span class="badge bg-light text-dark border">${item.source || 'SKP'}</span></td>
+        <td class="text-muted">${item.event || 'Okresowe badanie techniczne'}</td>
+      </tr>
+    `).join('');
+  } else {
+    odoBody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-muted">Brak zarejestrowanych badań w historii CEPiK</td></tr>`;
+  }
+
+  // Zdarzenia
+  const eventsEl = document.getElementById('modalEventsContainer');
+  if (data.events && data.events.length > 0) {
+    eventsEl.innerHTML = `
+      <div class="timeline ps-2">
+        ${data.events.map(ev => `
+          <div class="border-start border-2 border-secondary ps-3 pb-3 position-relative">
+            <div class="position-absolute rounded-circle bg-secondary" style="width: 8px; height: 8px; left: -5px; top: 6px;"></div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-light text-dark border font-monospace small" style="font-size: 0.72rem;">${ev.date || '—'}</span>
+              <strong class="text-dark small">${ev.name || 'Zdarzenie'}</strong>
+            </div>
+            ${ev.details && ev.details.length > 0 ? `
+              <div class="mt-1 small text-muted">
+                ${ev.details.map(d => `<span class="me-3">${d.name}: <strong>${d.value}</strong></span>`).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } else {
+    eventsEl.innerHTML = `<p class="text-muted small mb-0">Brak dodatkowych zdarzeń urzędowych w raporcie.</p>`;
+  }
+
+  const modal = new bootstrap.Modal(document.getElementById('cepikDetailsModal'));
+  modal.show();
+}
+
+// Odświeżanie pojedynczego pojazdu z tabeli
+async function refreshVehicleCepik(vin, btn) {
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
+
+  try {
+    const res = await fetch(`/api/cepik/fetch/${encodeURIComponent(vin)}`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      window.location.reload();
+    } else {
+      alert('Błąd CEPiK: ' + (data.message || 'Nieznany błąd'));
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  } catch (err) {
+    alert('Błąd sieci: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+// Pobieranie dla brakującego pojazdu
+async function fetchSingleMissing(vin, plate, firstReg, btn) {
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Pobieranie...`;
+
+  try {
+    const res = await fetch(`/api/cepik/fetch/${encodeURIComponent(vin)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plate: plate, first_registration_date: firstReg })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      window.location.href = '/cepik?tab=all';
+    } else {
+      alert('Odpowiedź CEPiK: ' + (data.message || 'Nie odnaleziono rekordu'));
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  } catch (err) {
+    alert('Błąd połączenia: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+// Formularz ręcznego sprawdzenia
+document.getElementById('manualCheckForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const vin = document.getElementById('manualVin').value.trim().toUpperCase();
+  const plate = document.getElementById('manualPlate').value.trim().toUpperCase();
+  const firstReg = document.getElementById('manualDate').value.trim();
+  const alertEl = document.getElementById('manualCheckAlert');
+  const submitBtn = document.getElementById('manualSubmitBtn');
+
+  alertEl.classList.add('d-none');
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Łączenie z HistoriaPojazdu.gov.pl...`;
+
+  try {
+    const res = await fetch(`/api/cepik/fetch/${encodeURIComponent(vin)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plate: plate, first_registration_date: firstReg })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.status === 'ok') {
+      window.location.href = '/cepik?tab=all';
+    } else {
+      alertEl.innerText = data.message || 'Nie udało się pobrać danych z CEPiK. Upewnij się, że tablica i data są w 100% zgodne z dowodem rejestracyjnym.';
+      alertEl.classList.remove('d-none');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `<i class="bi bi-cloud-arrow-down fs-5"></i> <span>Pobierz Oficjalny Raport CEPiK</span>`;
+    }
+  } catch (err) {
+    alertEl.innerText = 'Błąd komunikacji: ' + err.message;
+    alertEl.classList.remove('d-none');
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `<i class="bi bi-cloud-arrow-down fs-5"></i> <span>Pobierz Oficjalny Raport CEPiK</span>`;
+  }
+});
+</script>
+{% endblock %}

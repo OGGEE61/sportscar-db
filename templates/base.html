@@ -27,7 +27,11 @@
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/models') %}active{% endif %}" href="/models">Model Analytics</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/vehicles') %}active{% endif %}" href="/vehicles">Vehicles</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/add') %}active{% endif %}" href="/add">Add Vehicle</a></li>
-        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/corrections') %}active{% endif %}" href="/corrections">Corrections</a></li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.path.startswith('/cepik') %}active{% endif %}" href="/cepik">
+            <i class="bi bi-shield-check me-1"></i>CEPiK Info
+          </a>
+        </li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/review') %}active{% endif %}" href="/review">Review Queue</a></li>
         <li class="nav-item">
           <a class="nav-link position-relative {% if request.path.startswith('/plates') %}active{% endif %}" href="/plates">
