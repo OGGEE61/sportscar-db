@@ -1630,11 +1630,18 @@ def update_status(vin):
 def update_vehicle_details(vin):
     conn = get_db()
     try:
+        reg_plate = request.form.get("registration_plate")
+        reg_plate = reg_plate.strip().upper() if reg_plate else None
         conn.execute('''
             UPDATE vehicles
             SET year = ?, body_type = ?, engine_cc = ?, engine_cyl = ?,
                 power_hp = ?, drivetrain = ?, transmission = ?, color_ext = ?,
-                color_int = ?, registration_plate = ?, first_registration_date = ?
+                color_int = ?, registration_plate = ?, first_registration_date = ?,
+                vin_status = CASE 
+                    WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' 
+                    WHEN ? IS NOT NULL AND ? != '' THEN 'verified' 
+                    ELSE vin_status 
+                END
             WHERE vin = ?
         ''', (
             request.form.get("year", type=int) or None,
@@ -1646,8 +1653,10 @@ def update_vehicle_details(vin):
             request.form.get("transmission") or None,
             request.form.get("color_ext") or None,
             request.form.get("color_int") or None,
-            request.form.get("registration_plate") or None,
+            reg_plate,
             request.form.get("first_registration_date") or None,
+            reg_plate,
+            reg_plate,
             vin
         ))
         conn.commit()
@@ -2405,7 +2414,12 @@ def api_plates_review():
             conn.execute("UPDATE pending_listings SET registration_plate=? WHERE id=?", (final_plate, lid))
         if vin:
             conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=?", (final_plate, vin))
-            conn.execute("UPDATE vehicles SET registration_plate=? WHERE vin=?", (final_plate, vin))
+            conn.execute("""
+                UPDATE vehicles 
+                SET registration_plate=?, 
+                    vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'verified' END 
+                WHERE vin=?
+            """, (final_plate, vin))
             conn.execute("UPDATE listing_observations SET registration_plate=? WHERE vin=?", (final_plate, vin))
             try:
                 conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
@@ -2428,7 +2442,12 @@ def api_plates_review():
                 conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (lid, old_plate))
             if vin:
                 conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
-                conn.execute("UPDATE vehicles SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                conn.execute("""
+                    UPDATE vehicles 
+                    SET registration_plate=NULL, 
+                        vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'unverified' END 
+                    WHERE vin=? AND registration_plate=?
+                """, (vin, old_plate))
                 conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
                 try:
                     conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('photo extracted', 'AI extracted plate')", (vin,))
@@ -2451,7 +2470,12 @@ def api_plates_review():
                 conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (lid, old_plate))
             if vin:
                 conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
-                conn.execute("UPDATE vehicles SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
+                conn.execute("""
+                    UPDATE vehicles 
+                    SET registration_plate=NULL, 
+                        vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'unverified' END 
+                    WHERE vin=? AND registration_plate=?
+                """, (vin, old_plate))
                 conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
                 try:
                     conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('photo extracted', 'AI extracted plate')", (vin,))
@@ -2466,14 +2490,15 @@ def api_plates_review():
 @app.route("/api/plates/scan_batch", methods=["POST"])
 def api_plates_scan_batch():
     limit = int(request.args.get("limit") or 5)
+    rescan = request.args.get("rescan", "0") in ("1", "true", "True")
     try:
         from scripts.detect_plates import run_plate_detection_batch
-        res = run_plate_detection_batch(limit=limit)
+        res = run_plate_detection_batch(limit=limit, rescan_empty=rescan)
         return jsonify({"status": "ok", "scanned": res["scanned_count"], "found": res["found_plates"]})
     except ImportError:
         return jsonify({
             "status": "error",
-            "message": "Skanowanie AI za pomocą YOLOv8/EasyOCR uruchamia się lokalnie na Twoim komputerze (skrypt scripts/detect_plates.py), ponieważ silnik CV wymaga bibliotek PyTorch."
+            "message": "Skanowanie CV za pomocą YOLOv8/EasyOCR uruchamia się lokalnie na Twoim komputerze (skrypt scripts/detect_plates.py), ponieważ silnik CV wymaga bibliotek PyTorch."
         }), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

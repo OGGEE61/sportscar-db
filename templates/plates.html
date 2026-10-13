@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Weryfikacja Tablic (AI) – SportsCar DB{% endblock %}
+{% block title %}Weryfikacja Tablic (CV) – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
@@ -14,8 +14,8 @@
   </div>
   <div class="d-flex align-items-center gap-2">
     <button type="button" class="btn btn-dark btn-sm d-flex align-items-center gap-2" id="scan-btn" onclick="runBatchScan()">
-      <i class="bi bi-cpu" id="scan-icon"></i>
-      <span id="scan-text">Skanuj kolejne ogłoszenia (AI)</span>
+      <i class="bi bi-camera" id="scan-icon"></i>
+      <span id="scan-text">Skanuj zdjęcia ogłoszeń (CV)</span>
     </button>
   </div>
 </div>
@@ -33,7 +33,7 @@
   <div class="col-6 col-md-3">
     <a href="/plates?status=approved" class="text-decoration-none">
       <div class="card border shadow-sm p-3 bg-white rounded-3 h-100 {% if status_filter == 'approved' %}border-dark shadow{% endif %}">
-        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Zatwierdzone przez AI</div>
+        <div class="text-muted small text-uppercase fw-semibold" style="font-size: 0.75rem;">Zatwierdzone tablice (Foto)</div>
         <div class="fs-3 fw-bold text-dark mt-1">{{ stats.approved }}</div>
       </div>
     </a>
@@ -64,7 +64,7 @@
   </li>
   <li class="nav-item">
     <a class="nav-link text-dark {% if status_filter == 'approved' %}active fw-semibold border-bottom-0{% endif %}" href="/plates?status=approved">
-      Zatwierdzone tablice (AI)
+      Zatwierdzone tablice (Foto)
       <span class="badge bg-light text-dark border ms-1">{{ stats.approved }}</span>
     </a>
   </li>

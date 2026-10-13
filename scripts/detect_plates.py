@@ -64,22 +64,31 @@ def clean_plate_text(raw_text: str) -> str:
         return ""
     # Tylko wielkie litery i cyfry
     cleaned = re.sub(r"[^A-Z0-9]", "", raw_text.upper())
-    # Euroband z flagą PL często jest czytany przez OCR jako prefiks 'PL'
-    if cleaned.startswith("PL") and len(cleaned) >= 7:
-        cleaned = cleaned[2:]
+    # Euroband z flagą PL często jest czytany przez OCR jako prefiks 'PL', '1PL', 'IPL' itp.
+    for pfx in ("1PL", "IPL", "PL"):
+        if cleaned.startswith(pfx) and len(cleaned) - len(pfx) >= 4:
+            rem = cleaned[len(pfx):]
+            if rem and rem[0].isalpha():
+                cleaned = rem
+                break
     return cleaned
 
 
 def format_polish_plate(raw_text: str) -> str:
-    """Formatuje standardową polską tablicę: rozdziela wyróżnik powiatu spacją (np. OKR 9MM6, KR 7VG22)."""
+    """Formatuje standardową lub indywidualną polską tablicę: rozdziela wyróżnik spacją (np. OKR 9MM6, KR 7VG22, P8 RS3)."""
     cleaned = clean_plate_text(raw_text)
     if not cleaned:
         return ""
     if 4 <= len(cleaned) <= 8:
+        # Standardowa 2-literowa (np. KR 7VG22, WA 6950E, LU 274TJ)
         if len(cleaned) >= 5 and cleaned[:2].isalpha() and not cleaned[2].isalpha():
             return f"{cleaned[:2]} {cleaned[2:]}"
+        # Standardowa 3-literowa (np. OKR 9MM6, DWR 6978V, POS 78616)
         elif len(cleaned) >= 6 and cleaned[:3].isalpha() and not cleaned[3].isalpha():
             return f"{cleaned[:3]} {cleaned[3:]}"
+        # Indywidualna: 1 litera + 1 cyfra + wyróżnik (np. P8 RS3, W0 BOSS)
+        elif len(cleaned) >= 4 and cleaned[0].isalpha() and cleaned[1].isdigit():
+            return f"{cleaned[:2]} {cleaned[2:]}"
     return cleaned
 
 
@@ -95,9 +104,11 @@ def is_likely_dealer_badge(norm_text: str) -> bool:
 
 
 def is_valid_plate_format(norm_text: str) -> bool:
-    """Sprawdza, czy długość i struktura przypomina tablicę rejestracyjną (PL: 4-8 znaków)."""
-    cleaned = re.sub(r"[^A-Z0-9]", "", (norm_text or "").upper())
+    """Sprawdza, czy długość i struktura przypomina tablicę rejestracyjną (PL: 4-8 znaków, zaczyna się od litery)."""
+    cleaned = clean_plate_text(norm_text)
     if not cleaned or len(cleaned) < 4 or len(cleaned) > 8:
+        return False
+    if not cleaned[0].isalpha():
         return False
     has_letter = any(c.isalpha() for c in cleaned)
     has_digit = any(c.isdigit() for c in cleaned)
@@ -124,11 +135,9 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
             continue
 
         # Ocena ujęcia pod kątem prostoliniowości (przód / tył pojazdu)
-        # Standardowa tablica UE ma stosunek boków 520x114 mm (~4.56 : 1)
         aspect_ratio = float(bw) / float(max(1, bh))
         ar_diff = abs(aspect_ratio - 4.56)
 
-        # Ujęcia pod dużym kątem (3/4) mają aspect_ratio < 3.2 lub > 5.5
         aspect_score = max(0.0, 1.0 - (ar_diff / 2.2))
         area_score = min(1.0, float(bw * bh) / 14000.0)
 
@@ -150,55 +159,52 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         full_crop = img_pil.crop((x1, y1, x2, y2))
 
         # Weryfikacja tła: polska tablica musi mieć jasne (białe) tło.
-        # Sprawdzamy średnią jasność i odrzucamy czarne elementy (grille, wloty, zderzaki)
         crop_arr = np.array(full_crop)
         ch, cw = crop_arr.shape[:2]
         center_area = crop_arr[int(ch * 0.2):int(ch * 0.8), int(cw * 0.2):int(cw * 0.8)]
         if center_area.size > 0:
             mean_brightness = float(np.mean(center_area))
-            # Ciemne kratki chłodnicy lub czarny lakier mają jasność < 65
             if mean_brightness < 60:
                 continue
 
         # Przygotowanie wycinka pod OCR:
-        # 1. Odetnij dolne 16% ramki reklamowej (telefony, adresy www dealerów)
-        ocr_bh = max(10, int(bh * 0.84))
+        # 1. Odetnij dolne 15% ramki reklamowej
+        ocr_bh = max(10, int(bh * 0.85))
         
-        # 2. Dla poziomych tablic unijnych (AR > 3.0) odetnij lewy niebieski pasek (Euroband ~11% szerokości),
-        # aby EasyOCR nie mylił gwiazdek UE i flagi z literami 'PL', '1', 'I', '['.
+        # 2. Dla poziomych tablic unijnych (AR >= 3.2) odetnij lewy niebieski pasek (Euroband ~8% szerokości)
         ocr_x1 = xyxy[0]
-        if aspect_ratio >= 3.0:
-            ocr_x1 = xyxy[0] + max(4, int(bw * 0.11))
+        if aspect_ratio >= 3.2:
+            ocr_x1 = xyxy[0] + max(3, int(bw * 0.08))
 
         ocr_crop = img_pil.crop((ocr_x1, xyxy[1], xyxy[2], xyxy[1] + ocr_bh))
 
-        # Skaluj do znormalizowanej wysokości 70px
-        scale = 70.0 / float(max(1, ocr_crop.size[1]))
-        ocr_scaled = ocr_crop.resize((int(ocr_crop.size[0] * scale), 70), Image.Resampling.LANCZOS)
+        # Skaluj do znormalizowanej wysokości 80px
+        scale = 80.0 / float(max(1, ocr_crop.size[1]))
+        ocr_scaled = ocr_crop.resize((int(ocr_crop.size[0] * scale), 80), Image.Resampling.LANCZOS)
 
-        # Zwiększ kontrast
+        # Wariant 1: RGB + podbity kontrast
         enhancer = ImageEnhance.Contrast(ocr_scaled)
         enhanced_crop = enhancer.enhance(1.4)
+        ocr_results = reader.readtext(np.array(enhanced_crop), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-        crop_np = np.array(enhanced_crop)
-        ocr_results = reader.readtext(crop_np, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        # Wariant 2 (fallback): jeśli nic nie odczytano, spróbuj skali szarości z wyższym kontrastem
+        if not ocr_results:
+            gray_crop = ocr_scaled.convert("L")
+            gray_enhanced = ImageEnhance.Contrast(gray_crop).enhance(1.8)
+            ocr_results = reader.readtext(np.array(gray_enhanced), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
         if not ocr_results:
             continue
 
-        # Wybierz najlepszy fragment z OCR pasujący do tablicy
         ocr_texts = []
         for r in ocr_results:
             t = r[1]
             c = r[2] if len(r) > 2 else 0.5
             ocr_texts.append((t, c))
 
-        # Spróbuj złożyć lub wybrać główny blok
         joined = " ".join([t[0] for t in ocr_texts])
         norm_text = clean_plate_text(joined)
 
-        # Polska tablica rejestracyjna ma ściśle od 4 do 8 znaków alfanumerycznych.
-        # Jeśli połączony tekst ma > 8 znaków lub nie pasuje do wzorca, sprawdź pojedyncze bloki OCR
         if len(norm_text) > 8 or is_likely_dealer_badge(norm_text) or not is_valid_plate_format(norm_text):
             best_part = ""
             for t, _ in ocr_texts:
@@ -208,7 +214,6 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
                     break
             norm_text = best_part
 
-        # Rygorystyczny warunek: jeśli tekst nadal ma >8 lub <4 znaki, ODRZUĆ go bezwzględnie!
         if not norm_text or len(norm_text) < 4 or len(norm_text) > 8 or not is_valid_plate_format(norm_text):
             continue
 
@@ -237,8 +242,32 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
     return candidates
 
 
-def download_image(url: str, timeout: int = 10) -> Optional[Image.Image]:
+_curl_session = None
+
+def get_curl_session():
+    global _curl_session
+    if _curl_session is None:
+        try:
+            from curl_cffi import requests as cffi_requests
+            _curl_session = cffi_requests.Session(impersonate="chrome124")
+        except Exception:
+            _curl_session = None
+    return _curl_session
+
+
+def download_image(url: str, timeout: int = 12) -> Optional[Image.Image]:
     """Pobiera zdjęcie z adresu URL i zwraca obiekt PIL."""
+    if not url:
+        return None
+    session = get_curl_session()
+    if session:
+        try:
+            resp = session.get(url, timeout=timeout)
+            if resp.status_code == 200:
+                return Image.open(io.BytesIO(resp.content)).convert("RGB")
+        except Exception:
+            pass
+
     try:
         req = urllib.request.Request(
             url,
@@ -246,7 +275,7 @@ def download_image(url: str, timeout: int = 10) -> Optional[Image.Image]:
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/146.0.0.0 Safari/537.36"
+                    "Chrome/124.0.0.0 Safari/537.36"
                 )
             }
         )
@@ -262,33 +291,50 @@ def fetch_listing_gallery_photos(source_url: str) -> List[str]:
     """Pobiera pełną listę zdjęć z ogłoszenia (np. z Otomoto __NEXT_DATA__ lub OLX), gdy w bazie jest tylko 1 miniatura."""
     if not source_url or not source_url.startswith("http"):
         return []
-    try:
-        req = urllib.request.Request(
-            source_url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/146.0.0.0 Safari/537.36"
-                )
-            }
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
+    html = ""
+    session = get_curl_session()
+    if session:
+        try:
+            resp = session.get(source_url, timeout=15)
+            if resp.status_code == 200:
+                html = resp.text
+        except Exception as e:
+            print(f"    [gallery fetch curl_cffi error] {source_url}: {e}")
+    if not html:
+        try:
+            req = urllib.request.Request(
+                source_url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    )
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+        except Exception as e:
+            print(f"    [gallery fetch error] {source_url}: {e}")
+            return []
 
+    if html:
         # Otomoto NEXT_DATA
         m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
         if m:
-            data = json.loads(m.group(1))
-            advert = data.get("props", {}).get("pageProps", {}).get("advert", {})
-            photos = advert.get("images", {}).get("photos", [])
-            urls = []
-            for p in photos:
-                u = p.get("id") or p.get("url") if isinstance(p, dict) else (p if isinstance(p, str) else None)
-                if u:
-                    urls.append(u)
-            if urls:
-                return urls
+            try:
+                data = json.loads(m.group(1))
+                advert = data.get("props", {}).get("pageProps", {}).get("advert", {})
+                photos = advert.get("images", {}).get("photos", [])
+                urls = []
+                for p in photos:
+                    u = p.get("id") or p.get("url") if isinstance(p, dict) else (p if isinstance(p, str) else None)
+                    if u:
+                        urls.append(u)
+                if urls:
+                    return urls
+            except Exception:
+                pass
 
         # OLX fallback / apollo cdn regex
         urls = re.findall(r'https://ireland\.apollo\.olxcdn\.com/v1/files/[a-zA-Z0-9_\-]+/image', html)
@@ -300,8 +346,6 @@ def fetch_listing_gallery_photos(source_url: str) -> List[str]:
                     seen.add(u)
                     clean_urls.append(u)
             return clean_urls
-    except Exception as e:
-        print(f"    [gallery fetch error] {source_url}: {e}")
     return []
 
 
@@ -410,7 +454,7 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     return found_candidates
 
 
-def run_plate_detection_batch(limit: int = 15) -> Dict:
+def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Dict:
     """Skanuje ogłoszenia bez numeru rejestracyjnego."""
     try:
         from db import get_db
@@ -448,7 +492,12 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
     limit_clause = "LIMIT ?" if (limit and limit > 0) else ""
     params = (limit,) if (limit and limit > 0) else ()
 
-    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia, NIE są odrzucone, mają prawdziwy VIN i nie były jeszcze skanowane
+    if not rescan_empty:
+        scan_log_filter = "AND id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log)"
+    else:
+        scan_log_filter = "AND (id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log) OR id IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log WHERE plates_found = 0))"
+
+    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia, NIE są odrzucone i mają prawdziwy VIN
     rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
@@ -460,12 +509,12 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
           AND photos IS NOT NULL 
           AND photos != ''
           AND photos != '[]'
-          AND id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log)
+          {scan_log_filter}
         ORDER BY id DESC
         {limit_clause}
     """, params).fetchall()
 
-    print(f"\n[plate_scanner] Znaleziono {len(rows)} ogłoszeń do przeskanowania...")
+    print(f"\n[plate_scanner] Znaleziono {len(rows)} ogłoszeń do przeskanowania (rescan_empty={rescan_empty})...")
 
     total_scanned = 0
     total_found = 0
@@ -491,8 +540,12 @@ def run_plate_detection_batch(limit: int = 15) -> Dict:
 
 
 if __name__ == "__main__":
-    import sys
-    limit = int(sys.argv[1]) if len(sys.argv) > 1 else 50
-    print(f"Uruchamiam detekcję tablic rejestracyjnych (limit: {limit})...")
-    res = run_plate_detection_batch(limit=limit)
+    import argparse
+    parser = argparse.ArgumentParser(description="Lokalna detekcja tablic rejestracyjnych (YOLOv8 + EasyOCR)")
+    parser.add_argument("--limit", type=int, default=15, help="Limit ogłoszeń")
+    parser.add_argument("--rescan-empty", action="store_true", help="Ponów próbę dla ogłoszeń bez tablicy (gdzie poprzednio było 0)")
+    args = parser.parse_args()
+
+    print(f"Uruchamiam detekcję tablic rejestracyjnych (limit: {args.limit}, rescan_empty: {args.rescan_empty})...")
+    res = run_plate_detection_batch(limit=args.limit, rescan_empty=args.rescan_empty)
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")

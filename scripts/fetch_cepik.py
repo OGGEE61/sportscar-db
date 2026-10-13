@@ -44,6 +44,8 @@ class CepikClient:
 
     def init_session(self) -> bool:
         """Inicjalizuje sesję z portalem rządowym i pobiera tokeny XSRF oraz sesyjne."""
+        self.session = requests.Session()
+        self.wid = f"HistoriaPojazdu:{int(time.time() * 1000)}"
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -95,8 +97,8 @@ class CepikClient:
         # Format YYYY-MM (uzupełnij do 1. dnia)
         m3 = re.match(r"^(\d{4})-(\d{1,2})$", date_str)
         if m3:
-            y, m = m3.groups()
-            return f"{y}-{int(m):02d}-01"
+            y, m, d = m3.group(1), m3.group(2), "01"
+            return f"{y}-{int(m):02d}-{int(d):02d}"
         return None
 
     def fetch_vehicle_data(self, vin: str, plate: str, first_reg_date: str) -> Optional[Dict[str, Any]]:
@@ -119,35 +121,57 @@ class CepikClient:
             "firstRegistrationDate": norm_date,
         }
 
-        try:
-            # 1. Pobierz dane techniczne i podstawowe
-            v_url = f"{self.API_BASE}/data/vehicle-data"
-            v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
-
-            # Jeśli wygasła sesja, zreinituj raz
-            if v_resp.status_code == 406 or "HTTP_HEADER_REQUIRED" in v_resp.text:
-                self.init_session()
+        for attempt in range(2):
+            try:
+                # 1. Pobierz dane techniczne i podstawowe
+                v_url = f"{self.API_BASE}/data/vehicle-data"
                 v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
 
-            if v_resp.status_code != 200:
-                logger.warning(f"Błąd vehicle-data ({v_resp.status_code}) dla {norm_plate}/{norm_vin}: {v_resp.text[:160]}")
+                # Jeśli wygasła sesja lub przekroczono limit zapytań
+                if v_resp.status_code in (401, 403, 406) or "HTTP_HEADER_REQUIRED" in v_resp.text:
+                    self.init_session()
+                    v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
+                elif v_resp.status_code == 429 or "Exceeded requests/sec limit" in v_resp.text:
+                    logger.warning("Limit zapytań CEPiK przekroczony — oczekiwanie 3.5s...")
+                    time.sleep(3.5)
+                    self.init_session()
+                    v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
+
+                if v_resp.status_code != 200:
+                    logger.warning(f"Błąd vehicle-data ({v_resp.status_code}) dla {norm_plate}/{norm_vin}: {v_resp.text[:160]}")
+                    return None
+
+                try:
+                    v_json = v_resp.json()
+                except Exception:
+                    if attempt == 0:
+                        self.init_session()
+                        time.sleep(1.0)
+                        continue
+                    return None
+
+                basic_data = v_json.get("technicalData", {}).get("basicData", {})
+
+                # 2. Pobierz oś czasu i historię przebiegów
+                time.sleep(0.5)
+                t_url = f"{self.API_BASE}/data/timeline-data"
+                t_resp = self.session.post(t_url, json=payload, headers=self.headers, timeout=20)
+                try:
+                    t_json = t_resp.json() if t_resp.status_code == 200 else {}
+                except Exception:
+                    t_json = {}
+                timeline_data = t_json.get("timelineData", {})
+
+                return self._parse_cepik_response(norm_vin, norm_plate, norm_date, basic_data, timeline_data)
+
+            except Exception as e:
+                if attempt == 0:
+                    self.init_session()
+                    time.sleep(1.0)
+                    continue
+                logger.error(f"Wyjątek podczas odpytywania CEPiK dla {vin}: {e}")
                 return None
-
-            v_json = v_resp.json()
-            basic_data = v_json.get("technicalData", {}).get("basicData", {})
-
-            # 2. Pobierz oś czasu i historię przebiegów
-            time.sleep(0.5)
-            t_url = f"{self.API_BASE}/data/timeline-data"
-            t_resp = self.session.post(t_url, json=payload, headers=self.headers, timeout=20)
-            t_json = t_resp.json() if t_resp.status_code == 200 else {}
-            timeline_data = t_json.get("timelineData", {})
-
-            return self._parse_cepik_response(norm_vin, norm_plate, norm_date, basic_data, timeline_data)
-
-        except Exception as e:
-            logger.error(f"Wyjątek podczas odpytywania CEPiK dla {vin}: {e}")
-            return None
+        return None
 
     def _parse_cepik_response(
         self, vin: str, plate: str, first_reg_date: str, basic: Dict[str, Any], timeline: Dict[str, Any]
@@ -340,10 +364,20 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
     return True
 
 
-def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
+def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_failed: bool = False):
     """Główna funkcja synchronizacji raportów CEPiK."""
     conn = db.get_db()
     client = CepikClient()
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_sync_log (
+            vin TEXT PRIMARY KEY,
+            status TEXT,
+            message TEXT,
+            attempted_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
 
     if single_vin:
         rows = conn.execute("""
@@ -361,8 +395,9 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
                 LIMIT 1
             """, (single_vin,)).fetchall()
     else:
+        log_filter = "" if retry_failed else "AND (l.vin IS NULL OR l.status != 'not_found')"
         # Pobierz auta, które mają komplet danych i nie były jeszcze sprawdzone
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT DISTINCT 
                 v.vin, 
                 v.registration_plate, 
@@ -372,6 +407,7 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
             FROM vehicles v
             LEFT JOIN pending_listings p ON p.vin = v.vin
             LEFT JOIN cepik_reports c ON c.vin = v.vin
+            LEFT JOIN cepik_sync_log l ON l.vin = v.vin
             WHERE v.vin IS NOT NULL
               AND v.vin != ''
               AND v.vin NOT LIKE 'PLH%'
@@ -380,15 +416,18 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
               AND COALESCE(v.first_registration_date, p.first_registration_date) IS NOT NULL
               AND COALESCE(v.first_registration_date, p.first_registration_date) != ''
               AND c.vin IS NULL
+              {log_filter}
+            ORDER BY v.vin
             LIMIT ?
         """, (limit,)).fetchall()
 
         # Jeśli brak w vehicles, sprawdź dodatkowo pending_listings
         if not rows:
-            rows = conn.execute("""
+            rows = conn.execute(f"""
                 SELECT DISTINCT p.vin, p.registration_plate, p.first_registration_date, p.make, p.model
                 FROM pending_listings p
                 LEFT JOIN cepik_reports c ON c.vin = p.vin
+                LEFT JOIN cepik_sync_log l ON l.vin = p.vin
                 WHERE p.vin IS NOT NULL
                   AND p.vin != ''
                   AND p.vin NOT LIKE 'PLH%'
@@ -397,6 +436,7 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
                   AND p.first_registration_date IS NOT NULL
                   AND p.first_registration_date != ''
                   AND c.vin IS NULL
+                  {log_filter}
                 ORDER BY p.id DESC
                 LIMIT ?
             """, (limit,)).fetchall()
@@ -416,15 +456,25 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
         data = client.fetch_vehicle_data(vin, plate, date_str)
         if data:
             save_cepik_report(data, conn)
+            try:
+                conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) VALUES (?, 'success', 'OK', datetime('now'))", (vin,))
+                conn.commit()
+            except Exception:
+                pass
             success_count += 1
             oc_txt = "✓ Aktualna" if data["has_current_oc"] else "✗ Brak"
             skp_txt = data["tech_inspection_status"]
             odo_txt = f"{data['last_odometer_km']:,} km" if data['last_odometer_km'] else "Brak danych"
             print(f"  ✓ Zapisano dane CEPiK! OC: {oc_txt} | Badanie SKP: {skp_txt} | Ostatni licznik: {odo_txt} | Właściciele: {data['total_owners']}")
         else:
+            try:
+                conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) VALUES (?, 'not_found', 'Pojazd nie odnaleziony w CEPiK', datetime('now'))", (vin,))
+                conn.commit()
+            except Exception:
+                pass
             print("  ⚠️ Nie udało się pobrać raportu z CEPiK (sprawdź poprawność tablicy lub daty rejestracji).")
 
-        time.sleep(1.5)
+        time.sleep(2.0)
 
     print(f"\n=== Zakończono synchronizację CEPiK! Pomyślnie zapisano: {success_count}/{len(rows)} raportów. ===")
     conn.close()
@@ -433,8 +483,9 @@ def run_cepik_sync(limit: int = 10, single_vin: Optional[str] = None):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Synchronizacja danych pojazdów z państwowym rejestrem CEPiK")
-    parser.add_argument("--limit", type=int, default=10, help="Liczba pojazdów do sprawdzenia")
+    parser.add_argument("--limit", type=int, default=50, help="Liczba pojazdów do sprawdzenia")
     parser.add_argument("--vin", type=str, default=None, help="Sprawdź pojedynczy numer VIN")
+    parser.add_argument("--retry-failed", action="store_true", help="Ponów próbę dla wcześniej nieodnalezionych w CEPiK")
     args = parser.parse_args()
 
-    run_cepik_sync(limit=args.limit, single_vin=args.vin)
+    run_cepik_sync(limit=args.limit, single_vin=args.vin, retry_failed=args.retry_failed)
