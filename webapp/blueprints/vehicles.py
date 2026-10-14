@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from flask import Blueprint, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import NOW, safe_float, safe_int
+from webapp.helpers import NOW, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 
 bp = Blueprint("vehicles", __name__)
@@ -207,7 +207,7 @@ def vehicle_detail(vin):
         conditions=conditions,
         tags=tags,
         corrections=corrections,
-        price_timeline=json.dumps([dict(r) for r in price_timeline]),
+        price_timeline=script_json([dict(r) for r in price_timeline]),
         photos=photos,
         equipment=equipment,
         raw_desc=raw_desc,

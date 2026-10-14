@@ -531,7 +531,7 @@ function openDetailsModal(vin) {
   if (data.odometer_rollback) {
     rollbackEl.classList.remove('d-none');
     document.getElementById('modalRollbackText').innerHTML = 
-      `Podczas badania technicznego (${data.last_odometer_date}) zarejestrowano stan ` +
+      `Podczas badania technicznego (${escHtml(data.last_odometer_date)}) zarejestrowano stan ` +
       `<strong>${Number(data.last_odometer_km).toLocaleString()} km</strong>, podczas gdy w ogłoszeniu podano mniejszy przebieg ` +
       `(różnica: <strong class="text-danger">-${Number(data.rollback_diff_km).toLocaleString()} km</strong>).`;
   } else {
@@ -540,27 +540,27 @@ function openDetailsModal(vin) {
 
   const infoEl = document.getElementById('modalVehicleInfo');
   infoEl.innerHTML = `
-    <div class="col-6 col-md-4"><span class="text-muted">Marka wg CEPiK:</span> <strong class="text-dark">${data.make || '—'}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Model wg CEPiK:</span> <strong class="text-dark">${data.model || '—'}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Rodzaj / Podrodzaj:</span> <strong class="text-dark">${data.type || ''} ${data.subtype ? '(' + data.subtype + ')' : ''}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Status rejestracji:</span> <span class="badge bg-success-subtle text-success border border-success-subtle">${data.registration_status || 'Zarejestrowany'}</span></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Marka wg CEPiK:</span> <strong class="text-dark">${escHtml(data.make || '—')}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Model wg CEPiK:</span> <strong class="text-dark">${escHtml(data.model || '—')}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Rodzaj / Podrodzaj:</span> <strong class="text-dark">${escHtml(data.type || '')} ${data.subtype ? '(' + escHtml(data.subtype) + ')' : ''}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Status rejestracji:</span> <span class="badge bg-success-subtle text-success border border-success-subtle">${escHtml(data.registration_status || 'Zarejestrowany')}</span></div>
     <div class="col-6 col-md-4"><span class="text-muted">Właściciele w PL:</span> <strong class="text-dark">${data.total_owners || 1}</strong></div>
     <div class="col-6 col-md-4"><span class="text-muted">Kradzież:</span> <strong class="${data.is_stolen ? 'text-danger' : 'text-success'}">${data.is_stolen ? 'SKRADZIONY!' : 'Brak wpisu'}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Ważność SKP:</span> <strong class="text-dark">${data.tech_inspection_until || '—'}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Ważność OC:</span> <strong class="text-dark">${data.insurance_expiry_date || '—'}</strong></div>
-    <div class="col-6 col-md-4"><span class="text-muted">Zsynchronizowano:</span> <span class="text-muted font-monospace">${(data.fetched_at || '').substring(0, 10)}</span></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Ważność SKP:</span> <strong class="text-dark">${escHtml(data.tech_inspection_until || '—')}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Ważność OC:</span> <strong class="text-dark">${escHtml(data.insurance_expiry_date || '—')}</strong></div>
+    <div class="col-6 col-md-4"><span class="text-muted">Zsynchronizowano:</span> <span class="text-muted font-monospace">${escHtml((data.fetched_at || '').substring(0, 10))}</span></div>
   `;
 
   const odoBody = document.getElementById('modalOdometerTableBody');
   if (data.odometer_history && data.odometer_history.length > 0) {
     odoBody.innerHTML = data.odometer_history.map(item => `
       <tr>
-        <td class="font-monospace text-nowrap">${item.date || '—'}</td>
+        <td class="font-monospace text-nowrap">${escHtml(item.date || '—')}</td>
         <td class="fw-bold font-monospace ${item.rollback_detected ? 'text-danger' : 'text-dark'}">
           ${Number(item.km).toLocaleString()} km
         </td>
-        <td><span class="badge bg-light text-dark border">${item.source || 'SKP'}</span></td>
-        <td class="text-muted">${item.event || 'Okresowe badanie techniczne'}</td>
+        <td><span class="badge bg-light text-dark border">${escHtml(item.source || 'SKP')}</span></td>
+        <td class="text-muted">${escHtml(item.event || 'Okresowe badanie techniczne')}</td>
       </tr>
     `).join('');
   } else {
@@ -575,12 +575,12 @@ function openDetailsModal(vin) {
           <div class="border-start border-2 border-primary ps-3 pb-3 position-relative">
             <div class="position-absolute rounded-circle bg-primary" style="width: 8px; height: 8px; left: -5px; top: 6px;"></div>
             <div class="d-flex align-items-center gap-2">
-              <span class="badge bg-light text-dark border font-monospace small" style="font-size: 0.72rem;">${ev.date || '—'}</span>
-              <strong class="text-dark small">${ev.name || 'Zdarzenie'}</strong>
+              <span class="badge bg-light text-dark border font-monospace small" style="font-size: 0.72rem;">${escHtml(ev.date || '—')}</span>
+              <strong class="text-dark small">${escHtml(ev.name || 'Zdarzenie')}</strong>
             </div>
             ${ev.details && ev.details.length > 0 ? `
               <div class="mt-1 small text-muted">
-                ${ev.details.map(d => `<span class="me-3">${d.name}: <strong>${d.value}</strong></span>`).join('')}
+                ${ev.details.map(d => `<span class="me-3">${escHtml(d.name)}: <strong>${escHtml(d.value)}</strong></span>`).join('')}
               </div>
             ` : ''}
           </div>

@@ -59,7 +59,7 @@
 
     {% if raw_desc %}
     <div class="section-label">Original description</div>
-    <div class="raw-desc mb-3">{{ raw_desc|safe }}</div>
+    <div class="raw-desc mb-3">{{ raw_desc|plain_text }}</div>
     {% endif %}
 
     <!-- Podsumowanie przez AI -->

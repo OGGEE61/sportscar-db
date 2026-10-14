@@ -1,9 +1,9 @@
-import json
 import os
 
 from flask import Blueprint, redirect, render_template, request, url_for
 from db import get_db
 from webapp import invalidate_notifications
+from webapp.helpers import script_json
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, REGION_NAME_TO_CODE
 
@@ -228,10 +228,10 @@ def dashboard():
     conn.close()
     return render_template("dashboard.html",
         stats=stats, recent=recent,
-        makes_dist=json.dumps([dict(r) for r in makes_dist]),
-        price_ranges=json.dumps([dict(r) for r in price_ranges]),
-        weekly=json.dumps([dict(r) for r in weekly]),
-        map_data=json.dumps(map_data),
+        makes_dist=script_json([dict(r) for r in makes_dist]),
+        price_ranges=script_json([dict(r) for r in price_ranges]),
+        weekly=script_json([dict(r) for r in weekly]),
+        map_data=script_json(map_data),
         active_filter=active_filter,
         scraper_logs=[dict(r) for r in scraper_logs]
     )
@@ -353,9 +353,9 @@ def model_analytics():
         selected_model=current_model,
         stats=stats,
         vehicles=vehicles,
-        scatter_data=json.dumps(scatter_data),
-        hist_labels=json.dumps(hist_labels),
-        hist_counts=json.dumps(hist_counts),
-        map_data=json.dumps(map_data),
-        year_data=json.dumps(year_data),
+        scatter_data=script_json(scatter_data),
+        hist_labels=script_json(hist_labels),
+        hist_counts=script_json(hist_counts),
+        map_data=script_json(map_data),
+        year_data=script_json(year_data),
     )
