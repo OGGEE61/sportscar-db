@@ -5,7 +5,7 @@ import re
 
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
-from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
+from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate, safe_float, safe_int
 from webapp.regions import CITY_TO_REGION
 from webapp.services.photos import save_photo
 
@@ -261,6 +261,9 @@ def api_ingest_pending():
     sid    = p.get("source_listing_id")
     vin    = (p.get("vin") or "").strip().upper()
     vc     = p.get("vin_confidence", "none")
+
+    if p.get("first_registration_date") and not is_valid_first_registration_date(p["first_registration_date"]):
+        p["first_registration_date"] = None
 
     reg_plate = p.get("registration_plate")
     if reg_plate and not is_valid_registration_plate(reg_plate):
