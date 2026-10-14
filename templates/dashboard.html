@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_source.html" import source_badge %}
 {% block title %}Dashboard – SportsCar DB{% endblock %}
 
 {% block content %}
@@ -142,7 +143,7 @@
             <br><span class="badge bg-light text-dark border" style="font-size: 9px;">{{ r.region }}</span>
             {% endif %}
           </td>
-          <td><span class="badge bg-secondary">{{ r.source_method }}</span></td>
+          <td>{{ source_badge(r.source) }}</td>
           <td class="text-nowrap small text-muted">{{ r.observed_at[:16] }}</td>
           <td>
             {% if r.vin_status == 'verified' %}

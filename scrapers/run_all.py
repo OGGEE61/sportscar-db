@@ -210,7 +210,7 @@ if __name__ == "__main__":
             err_msg = str(e)
             print(f"  [ERROR running scraper {label}]: {err_msg}")
             failed_models.append((label, err_msg))
-            _log_run("error", f"Scraper '{label}' failed: {err_msg}")
+            _log_run("error", f"Scraper '{label}' failed: {err_msg}", source="otomoto")
 
         # If running 'all', take a long 2-minute break every 10 models to protect cookies
         if target in ("all", "fleet") and (i + 1) % 10 == 0 and (i + 1) < len(scrapers_to_run):
@@ -233,6 +233,6 @@ if __name__ == "__main__":
             summary_msg = f"Scheduled run finished with errors: {len(failed_models)}/{len(scrapers_to_run)} failed ({failed_names}). Processed {totals['total']} listings."
         else:
             summary_msg = f"Scheduled run completed successfully: all {len(scrapers_to_run)} scrapers finished. Processed {totals['total']} listings."
-        _log_run(summary_status, summary_msg, processed=totals["total"])
+        _log_run(summary_status, summary_msg, processed=totals["total"], source="otomoto")
 
 

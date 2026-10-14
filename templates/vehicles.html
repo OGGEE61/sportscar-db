@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_source.html" import source_badge %}
 {% block title %}Vehicles – SportsCar DB{% endblock %}
 
 {% block content %}
@@ -9,7 +10,7 @@
 
 <!-- Filters -->
 <form class="row g-2 mb-4" method="get">
-  <div class="col-md-3">
+  <div class="col-md-2">
     <input name="q" class="form-control" placeholder="Search VIN / make / model…" value="{{ q }}">
   </div>
   <div class="col-md-2">
@@ -34,6 +35,13 @@
       <option value="verified"    {% if status=='verified'    %}selected{% endif %}>Verified</option>
       <option value="unverified"  {% if status=='unverified'  %}selected{% endif %}>Unverified</option>
       <option value="placeholder" {% if status=='placeholder' %}selected{% endif %}>Placeholder</option>
+    </select>
+  </div>
+  <div class="col-md-1">
+    <select name="source" class="form-select" title="Source">
+      <option value="">All sources</option>
+      <option value="otomoto" {% if source=='otomoto' %}selected{% endif %}>Otomoto</option>
+      <option value="olx"     {% if source=='olx'     %}selected{% endif %}>OLX</option>
     </select>
   </div>
   <div class="col-md-2">
@@ -106,6 +114,7 @@
       </div>
 
       <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
+        {% for s in (v.sources or '').split(',') if s %}{{ source_badge(s) }}{% endfor %}
         <span>{{ v.year }}</span>
         {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} HP</span>{% endif %}
         {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cc</span>{% endif %}
@@ -147,7 +156,7 @@
   {% endfor %}
 </div>
 {% if pages > 1 %}
-{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&sort=' ~ sort %}
+{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort %}
 <nav aria-label="Vehicles pages">
   <ul class="pagination justify-content-center">
     <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" id="page-prev" href="/vehicles?{{ qs }}&page={{ page - 1 }}">‹ Prev</a></li>

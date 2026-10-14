@@ -106,4 +106,4 @@ jobs:
         curl -s -X POST "$BASE_URL/api/log_run" \
           -H "Authorization: Bearer $API_TOKEN" \
           -H "Content-Type: application/json" \
-          -d "{\"status\": \"error\", \"message\": \"GitHub Actions runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true
+          -d "{\"status\": \"error\", \"source\": \"otomoto\", \"message\": \"GitHub Actions runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true

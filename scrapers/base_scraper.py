@@ -82,11 +82,11 @@ def _fetch_known(items: list) -> dict:
         return {}
 
 
-def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0):
+def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0, source: str = ""):
     try:
         _API_SESSION.post(
             LOG_URL,
-            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count},
+            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count, "source": source},
             headers=API_HEADERS,
             timeout=5
         )
@@ -259,7 +259,7 @@ def refresh_session(cookies: dict) -> dict:
         if r.status_code != 200:
             print(f"[auth] Token refresh failed: HTTP {r.status_code} -- {r.text[:120]}")
             if not _token_error_logged:
-                _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.")
+                _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.", source="otomoto")
                 _token_error_logged = True
             return cookies
         tokens       = r.json().get("AuthenticationResult", {})
@@ -267,7 +267,7 @@ def refresh_session(cookies: dict) -> dict:
         if not new_id_token:
             print("[auth] Token refresh: no IdToken in response")
             if not _token_error_logged:
-                _log_run("error", "Token refresh failed: No IdToken in response.")
+                _log_run("error", "Token refresh failed: No IdToken in response.", source="otomoto")
                 _token_error_logged = True
             return cookies
         updated = dict(cookies)
@@ -1129,6 +1129,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
                     "origin_market":           final_origin_market,
+                    "found_by":                cfg.source,  # scraper; "source" is the ad's host
                 }
     
                 # Fill gaps with known model defaults
@@ -1192,5 +1193,6 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched "
           f"(New: {new_count}, Dup: {dup_count}, Rej: {rej_count}, Detail skipped: {skipped_count}).")
     if post_to_api:
-        _log_run(status, msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count)
+        _log_run(status, msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count,
+                 source=cfg.source)
     return results

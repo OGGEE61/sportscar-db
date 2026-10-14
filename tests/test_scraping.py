@@ -191,6 +191,53 @@ class TestOlxRunner(unittest.TestCase):
         self.assertEqual(oto_f80.source, "otomoto")  # replace() must not mutate the otomoto config
 
 
+class TestSourceDisplay(ScrapingTestCase):
+    def ingest(self, sid, source, found_by):
+        self.client.post("/api/ingest_pending", headers=TOKEN, json={
+            "source": source, "source_listing_id": sid, "raw_title": f"BMW M4 {sid}",
+            "make": "BMW", "model": "M4", "variant": "F82", "found_by": found_by})
+
+    def test_ingest_stores_found_by_and_review_filters_by_source(self):
+        self.ingest("o1", "otomoto", "olx")   # cross-posted otomoto ad seen by the OLX scraper
+        self.ingest("x1", "olx", "olx")
+        conn = db.get_db()
+        row = conn.execute("SELECT source, found_by FROM pending_listings WHERE source_listing_id='o1'").fetchone()
+        conn.close()
+        self.assertEqual((row["source"], row["found_by"]), ("otomoto", "olx"))
+        page = self.client.get("/review").get_data(as_text=True)
+        self.assertIn("src-otomoto", page)
+        self.assertIn("via OLX", page)
+        olx_only = self.client.get("/review?source=olx").get_data(as_text=True)
+        self.assertIn("BMW M4 x1", olx_only)
+        self.assertNotIn("BMW M4 o1", olx_only)
+
+    def test_logs_source_column_url_fallback_and_filter(self):
+        self.client.post("/api/log_run", headers=TOKEN, json={
+            "status": "success", "message": "olx run", "source": "olx"})
+        # no source field, like rows written before migration v11
+        self.client.post("/api/log_run", headers=TOKEN, json={
+            "status": "success", "message": "old otomoto run", "list_url": "https://www.otomoto.pl/osobowe/bmw/m3"})
+        page = self.client.get("/logs").get_data(as_text=True)
+        self.assertIn("src-olx", page)
+        self.assertIn("src-otomoto", page)
+        oto = self.client.get("/logs?source=otomoto").get_data(as_text=True)
+        self.assertIn("old otomoto run", oto)
+        self.assertNotIn("olx run", oto)
+
+    def test_vehicles_filter_by_source(self):
+        self.add_active_listing("f80-1", "WBS8M9C50J5K99001", "F80")
+        all_page = self.client.get("/vehicles").get_data(as_text=True)
+        self.assertIn("WBS8M9C50J5K99001", all_page)
+        self.assertIn("src-otomoto", all_page)
+        self.assertNotIn("WBS8M9C50J5K99001", self.client.get("/vehicles?source=olx").get_data(as_text=True))
+
+    def test_optional_column_write_never_raises(self):
+        from webapp.blueprints.api import _set_optional_column
+        conn = db.get_db()
+        _set_optional_column(conn, "scraper_logs", "column_not_migrated", "olx", 1)
+        conn.close()
+
+
 class TestPages(ScrapingTestCase):
     def test_manual_vehicle_detail_without_review_or_cepik(self):
         conn = db.get_db()
