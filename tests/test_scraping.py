@@ -83,6 +83,22 @@ class TestMarkRemovedScope(ScrapingTestCase):
         self.assertFalse(self.removed("f80-1"))
 
 
+class TestSeenAgainClearsRemoved(ScrapingTestCase):
+    def test_reappearing_listing_is_active_again(self):
+        self.add_active_listing("f80-1", "WBS8M9C50J5K99001", "F80")
+        self.client.post("/api/mark_removed", headers=TOKEN, json={
+            "source": "otomoto", "make": "BMW", "model": "M3", "variant": "F80", "seen_ids": ["other"]})
+        self.assertTrue(self.removed("f80-1"))
+        res = self.client.post("/api/ingest_pending", headers=TOKEN, json={
+            "source": "otomoto", "source_listing_id": "f80-1", "price_pln": 300000})
+        self.assertIn(res.get_json()["tag"], ("seen_again", "price_updated"))
+        conn = db.get_db()
+        left = conn.execute("SELECT COUNT(*) FROM listing_observations "
+                            "WHERE source_listing_id='f80-1' AND removed_at IS NOT NULL").fetchone()[0]
+        conn.close()
+        self.assertEqual(left, 0)
+
+
 class TestKnownListings(ScrapingTestCase):
     def test_complete_incomplete_and_rejected(self):
         self.add_active_listing("full", "WBS8M9C50J5K99001", "F80", plate="WX12345", frd="2016-05-01")
