@@ -9,5 +9,5 @@
 [ ] 9. Jakość tablic i dat 1. rejestracji pod CEPiK: walidacja daty przy ingest (nie w przyszłości, nie przed 1980), zakładka "Do poprawy" na /cepik z edycją tablicy/daty i ponownym sprawdzeniem (12/29 X3 M40i bez raportu, np. tablica "BMWm40i", data "2024-01-01"). Uwaga: walidacja tablic jest w validation.py - zmieniać tylko z testami
 [ ] 10. Zapisywać model_id (id z webapp/model_catalog.py) na pojeździe przy zatwierdzeniu: ScraperConfig.model_id -> pending_listings -> vehicles, migracja v12 z backfillem; /models filtruje po model_id zamiast luźnych warunków (np. Cayman 981 i 718 oba łapią rok 2016)
 [ ] 11. Ostrzeżenie o wygasłych cookies otomoto: scraper raportuje stan sesji (ok/expired), baner na dashboardzie gdy VIN-y nie są odsłaniane
-[ ] 12. Mapy (dashboard, /models): przepuszczać tylko znane kody województw z REGION_NAMES
+[x] 12. Mapy (dashboard, /models): przepuszczać tylko znane kody województw z REGION_NAMES (Zrobione - resolve_region w webapp/regions.py, używane na dashboardzie i /models)
 [ ] 13. Przyciski masowe na /review (np. odrzuć wszystkie) ignorują filtr OLX/Otomoto - uwzględnić filtr albo wyraźnie to oznaczyć
