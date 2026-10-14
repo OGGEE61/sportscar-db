@@ -152,6 +152,45 @@ class TestScraperRun(unittest.TestCase):
         self.assertEqual(detail.call_count, 1)  # only id2 fetched
 
 
+class TestOlxSkipsOtomotoHosted(unittest.TestCase):
+    CFG = base_scraper.ScraperConfig(make="BMW", model="M4", variant="F82", source="olx",
+                                     list_url="https://www.olx.pl/x/?page={page}", detail_delay=0,
+                                     skip_otomoto_hosted=True)
+
+    def test_only_olx_ads_fetched_and_otomoto_only_page_does_not_stop_paging(self):
+        def card(i, host):
+            c = _card(i)
+            c["source_url"] = (f"https://www.otomoto.pl/oferta/{i}" if host == "oto"
+                               else f"https://www.olx.pl/d/oferta/{i}")
+            return c
+        pages = [[card(1, "oto"), card(2, "oto")],   # page 1: only cross-posted otomoto ads
+                 [card(3, "olx"), card(4, "oto")],   # page 2: one OLX ad
+                 []]
+        api = mock.MagicMock()
+        api.post.side_effect = lambda url, **kw: FakeResp(200, {"known": {}, "tag": "pending", "marked": 0})
+        with mock.patch.object(base_scraper, "load_cookies", return_value={}), \
+             mock.patch.object(base_scraper.requests, "get", side_effect=lambda *a, **k: FakeResp(200)), \
+             mock.patch.object(base_scraper, "_parse_olx_cards", side_effect=pages), \
+             mock.patch.object(base_scraper, "fetch_detail", return_value={}) as detail, \
+             mock.patch.object(base_scraper, "_API_SESSION", api), \
+             mock.patch.object(base_scraper.time, "sleep"):
+            results = base_scraper.run(self.CFG)
+        self.assertEqual([r["source_listing_id"] for r in results], ["id3"])
+        self.assertEqual(detail.call_count, 1)
+        self.assertTrue(any("mark_removed" in c.args[0] for c in api.post.call_args_list))
+
+
+class TestOlxRunner(unittest.TestCase):
+    def test_olx_configs_are_olx_and_match_otomoto_identity(self):
+        import importlib
+        run_olx = importlib.import_module("run_olx")
+        from otomoto.bmw_m3_f80 import CONFIG as oto_f80
+        self.assertTrue(all(c.source == "olx" for c in run_olx.ALL_OLX_FLEET))
+        f80 = run_olx.M3_F80_OLX
+        self.assertEqual((f80.make, f80.model, f80.variant), (oto_f80.make, oto_f80.model, oto_f80.variant))
+        self.assertEqual(oto_f80.source, "otomoto")  # replace() must not mutate the otomoto config
+
+
 class TestPages(ScrapingTestCase):
     def test_manual_vehicle_detail_without_review_or_cepik(self):
         conn = db.get_db()

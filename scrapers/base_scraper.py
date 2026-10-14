@@ -130,6 +130,10 @@ class ScraperConfig:
 
     detail_delay: float = 1.0
 
+    # OLX search results are mostly cross-posted otomoto ads, which the otomoto
+    # scraper for the same model already collects. True = only OLX's own ads.
+    skip_otomoto_hosted: bool = False
+
     # Known model specs — auto-filled when the scraped page doesn't return a value.
     # e.g. RS3 8V is always 400 HP petrol AWD — no need to parse it per listing.
     defaults: dict = field(default_factory=dict)
@@ -987,9 +991,17 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             def _card_source(c):
                 return "otomoto" if "otomoto.pl" in (c["source_url"] or "") else cfg.source
 
-            known = _fetch_known([[_card_source(c), c["listing_id"]] for c in cards]) if post_to_api else {}
+            def _skip_hosted(c):
+                return cfg.skip_otomoto_hosted and _card_source(c) == "otomoto"
+
+            known = _fetch_known([[_card_source(c), c["listing_id"]] for c in cards
+                                  if not _skip_hosted(c)]) if post_to_api else {}
 
             for card in cards:
+                # Filtered here, not before the "no cards" check: a page holding only
+                # otomoto ads must not end pagination (and trigger the sold check) early
+                if _skip_hosted(card):
+                    continue
                 listing_id    = card["listing_id"]
                 title         = card["title"]
                 price_raw     = card["price_raw"]

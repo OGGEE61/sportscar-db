@@ -11,7 +11,6 @@ import time
 import random
 
 sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "olx"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 try:
@@ -21,16 +20,29 @@ except ImportError:
     pass
 
 from base_scraper import run
-from bmw_alpina import CONFIG as ALPINA_OLX
-from bmw_x3_m_f97 import CONFIG as X3_M_OLX
-from bmw_x3_m40i_g01 import CONFIG as X3_M40I_OLX
-from audi_rs3_8v import CONFIG as RS3_8V_OLX
+# Package-qualified: olx/ and otomoto/ share module names (bmw_m3_f80, ...)
+from olx.bmw_alpina import CONFIG as ALPINA_OLX
+from olx.bmw_x3_m_f97 import CONFIG as X3_M_OLX
+from olx.bmw_x3_m40i_g01 import CONFIG as X3_M40I_OLX
+from olx.audi_rs3_8v import CONFIG as RS3_8V_OLX
+from olx.bmw_m3_f80 import CONFIG as M3_F80_OLX
+from olx.bmw_m3_e46 import CONFIG as M3_E46_OLX
+from olx.bmw_m4_f82 import CONFIG as M4_F82_OLX
+from olx.bmw_m2_f87 import CONFIG as M2_F87_OLX
+from olx.bmw_m2_g87 import CONFIG as M2_G87_OLX
+from olx.mercedes_c63_w204 import CONFIG as C63_W204_OLX
 
 ALL_OLX_FLEET = [
     ALPINA_OLX,
     X3_M_OLX,
     X3_M40I_OLX,
     RS3_8V_OLX,
+    M3_F80_OLX,
+    M3_E46_OLX,
+    M4_F82_OLX,
+    M2_F87_OLX,
+    M2_G87_OLX,
+    C63_W204_OLX,
 ]
 
 SCRAPER_MAP = {
@@ -41,6 +53,14 @@ SCRAPER_MAP = {
     "m40i":     [X3_M40I_OLX],
     "rs3":      [RS3_8V_OLX],
     "rs3_8v":   [RS3_8V_OLX],
+    "m3":       [M3_F80_OLX, M3_E46_OLX],
+    "m3_f80":   [M3_F80_OLX],
+    "m3_e46":   [M3_E46_OLX],
+    "m4":       [M4_F82_OLX],
+    "m2":       [M2_F87_OLX, M2_G87_OLX],
+    "m2_f87":   [M2_F87_OLX],
+    "m2_g87":   [M2_G87_OLX],
+    "c63":      [C63_W204_OLX],
     "all":      ALL_OLX_FLEET,
 }
 
