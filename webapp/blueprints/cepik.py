@@ -1,7 +1,9 @@
 import json
+import re
 
 from flask import Blueprint, jsonify, redirect, render_template, request
 from db import get_db
+from validation import is_valid_first_registration_date, is_valid_registration_plate
 
 bp = Blueprint("cepik", __name__)
 
@@ -10,6 +12,42 @@ bp = Blueprint("cepik", __name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # CEPIK & HISTORIA POJAZDU (GOV.PL) DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _fix_candidates(conn, q=""):
+    """Vehicles without a CEPiK report whose plate/date need a human correction:
+    CEPiK did not find them, or the stored plate/date fails validation."""
+    where = ["v.vin NOT IN (SELECT vin FROM cepik_reports)",
+             "(COALESCE(v.registration_plate, '') != '' OR COALESCE(v.first_registration_date, p.first_registration_date, '') != '')"]
+    params = []
+    if q:
+        where.append("(v.vin LIKE ? OR v.registration_plate LIKE ? OR v.make LIKE ? OR v.model LIKE ?)")
+        params.extend([f"%{q}%"] * 4)
+    rows = conn.execute(f"""
+        SELECT v.vin, v.make, v.model, v.year, v.registration_plate,
+               COALESCE(v.first_registration_date, p.first_registration_date) AS first_registration_date,
+               (SELECT l.status FROM cepik_sync_log l WHERE l.vin = v.vin ORDER BY l.attempted_at DESC LIMIT 1) AS last_sync_status,
+               (SELECT l.message FROM cepik_sync_log l WHERE l.vin = v.vin ORDER BY l.attempted_at DESC LIMIT 1) AS last_sync_message
+        FROM vehicles v
+        LEFT JOIN pending_listings p ON p.vin = v.vin
+        WHERE {' AND '.join(where)}
+        GROUP BY v.vin
+        ORDER BY v.updated_at DESC
+    """, tuple(params)).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r)
+        problems = []
+        if d["last_sync_status"] == "not_found":
+            problems.append("CEPiK nie znalazł rekordu")
+        if d["registration_plate"] and not is_valid_registration_plate(d["registration_plate"]):
+            problems.append("Niepoprawna tablica")
+        if d["first_registration_date"] and not is_valid_first_registration_date(d["first_registration_date"]):
+            problems.append("Niepoprawna data 1. rejestracji")
+        if problems:
+            d["problems"] = problems
+            items.append(d)
+    return items
+
 
 @bp.route("/cepik")
 def cepik_dashboard():
@@ -51,6 +89,9 @@ def cepik_dashboard():
 
     stats["missing_count"] = missing_count
     stats["eligible_count"] = stats["total_reports"] + missing_count
+
+    fix_items = _fix_candidates(conn, q if tab == "fix" else "")
+    stats["fix_count"] = len(fix_items) if tab == "fix" and not q else len(_fix_candidates(conn, ""))
 
     reports = []
     missing_items = []
@@ -132,6 +173,9 @@ def cepik_dashboard():
         raw_rows = conn.execute(query, tuple(params)).fetchall()
         missing_items = [dict(r) for r in raw_rows]
 
+    elif tab == "fix":
+        pass  # fix_items already loaded above
+
     elif tab == "log":
         where_clauses = ["1=1"]
         params = []
@@ -159,6 +203,7 @@ def cepik_dashboard():
         stats=stats,
         reports=reports,
         missing_items=missing_items,
+        fix_items=fix_items,
         sync_logs=sync_logs,
     )
 
@@ -218,3 +263,24 @@ def api_cepik_fetch_vin(vin):
     except Exception as e:
         conn.close()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@bp.route("/api/cepik/fix/<path:vin>", methods=["POST"])
+def api_cepik_fix_vin(vin):
+    """Store a human-corrected plate / first registration date on the vehicle."""
+    payload = request.get_json(silent=True) or {}
+    plate = re.sub(r"[\s\-\.]", "", (payload.get("plate") or "")).upper()
+    first_reg = (payload.get("first_registration_date") or "").strip()
+    if not is_valid_registration_plate(plate):
+        return jsonify({"status": "error", "message": "Niepoprawny numer rejestracyjny"}), 400
+    if not is_valid_first_registration_date(first_reg):
+        return jsonify({"status": "error", "message": "Niepoprawna data (RRRR-MM-DD, od 1980, nie z przyszłości)"}), 400
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE vehicles SET registration_plate=?, first_registration_date=?, updated_at=datetime('now') WHERE vin=?",
+        (plate, first_reg, vin))
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return jsonify({"status": "error", "message": "Nie znaleziono pojazdu"}), 404
+    return jsonify({"status": "ok", "plate": plate, "first_registration_date": first_reg})
