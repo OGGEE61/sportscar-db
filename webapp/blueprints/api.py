@@ -196,13 +196,25 @@ def api_log_run():
     processed = int(p.get("processed_count", 0))
 
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO scraper_logs (status, message, processed_count, list_url, found_count, new_count, dup_count, rej_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (status, message, processed, p.get("list_url", ""), int(p.get("found_count", 0)), int(p.get("new_count", 0)), int(p.get("dup_count", 0)), int(p.get("rej_count", 0)))
     )
     conn.commit()
+    if p.get("source"):
+        _set_optional_column(conn, "scraper_logs", "source", p["source"], cur.lastrowid)
     conn.close()
     return jsonify({"ok": True})
+
+
+def _set_optional_column(conn, table, column, value, row_id):
+    """Write a column added by a recent migration; a database that hasn't run
+    `python db.py` yet just skips it instead of failing the whole request."""
+    try:
+        conn.execute(f"UPDATE {table} SET {column}=? WHERE id=?", (value, row_id))
+        conn.commit()
+    except Exception as e:
+        print(f"[{table}.{column}] not stored (run `python db.py` to migrate): {e}")
 
 
 @bp.route("/api/known_listings", methods=["POST"])
@@ -375,6 +387,8 @@ def api_ingest_pending():
             return jsonify({"status": "ok", "id": 0, "tag": "duplicate"})
 
         lid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        if p.get("found_by"):
+            _set_optional_column(conn, "pending_listings", "found_by", p["found_by"], lid)
 
         # ── Download + compress photo ─────────────────────────────────────────
         photos_list = p.get("photos") or []

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_source.html" import source_badge %}
 {% block title %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
 {% block head %}
 <style>
@@ -386,7 +387,7 @@
     {% for key, obs_list in ad_groups.items() %}
     <div class="border-bottom p-3">
       <div class="fw-semibold mb-2 small text-muted">
-        Ad: {{ key }}
+        {{ source_badge(obs_list[0].source) }} Ad: <code>{{ obs_list[0].source_listing_id }}</code>
         {% set url = obs_list[0].source_url if obs_list else None %}
         {% if url %}
         <a href="{{ url }}" target="_blank" class="ms-2 text-decoration-none" title="Open listing">&#8599;</a>
@@ -434,7 +435,7 @@
               <td>{{ "{:,.0f}".format(o.price_pln) if o.price_pln else '—' }}</td>
               <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
               <td>{{ o.registration_plate or '—' }}</td>
-              <td>{{ o.source }}</td>
+              <td>{{ source_badge(o.source) }}</td>
               <td><span class="badge bg-secondary">{{ o.source_method }}</span></td>
               <td>
                 {% if o.source_url %}

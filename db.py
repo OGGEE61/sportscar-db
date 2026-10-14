@@ -506,6 +506,23 @@ def init_db():
                 db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(10,'backfill_missing_columns')")
 
+    # Migration v11: which scraper (olx/otomoto) produced a listing / log row.
+    # pending_listings.source is the ad's host; found_by is the scraper that saw it
+    # (an OLX search also returns cross-posted otomoto ads).
+    have = {r[1] for r in db.execute("PRAGMA table_info(pending_listings)").fetchall()}
+    if "found_by" not in have:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN found_by TEXT")
+    have = {r[1] for r in db.execute("PRAGMA table_info(scraper_logs)").fetchall()}
+    if "source" not in have:
+        db.execute("ALTER TABLE scraper_logs ADD COLUMN source TEXT")
+    db.execute("""
+        UPDATE scraper_logs SET source = CASE
+            WHEN list_url LIKE '%olx.pl%' THEN 'olx'
+            WHEN list_url LIKE '%otomoto.pl%' THEN 'otomoto' END
+        WHERE source IS NULL AND (list_url LIKE '%olx.pl%' OR list_url LIKE '%otomoto.pl%')
+    """)
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(11,'scraper_source')")
+
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
     db.execute("""

@@ -1,0 +1,21 @@
+{# Badge for where a listing / scraper run comes from.
+   source   = the ad's host (pending_listings.source, listing_observations.source)
+   found_by = the scraper that saw it, shown only when it differs (an OLX search
+              also returns cross-posted otomoto ads) #}
+{% macro source_badge(source, found_by=None) -%}
+{%- set s = (source or '')|lower -%}
+{%- if s == 'olx' -%}<span class="badge src-badge src-olx">OLX</span>
+{%- elif s == 'otomoto' -%}<span class="badge src-badge src-otomoto">Otomoto</span>
+{%- elif s -%}<span class="badge src-badge bg-light text-dark border">{{ source }}</span>
+{%- endif -%}
+{%- if found_by and (found_by|lower) != s %} <span class="text-muted small text-nowrap">via {{ 'OLX' if (found_by|lower) == 'olx' else found_by|capitalize }}</span>{% endif -%}
+{%- endmacro %}
+
+{# Buttons to filter a list by source; base_url must end with ? or & #}
+{% macro source_filter(base_url, current) -%}
+<div class="btn-group btn-group-sm" role="group" aria-label="Filter by source">
+  <a href="{{ base_url }}" class="btn btn-outline-secondary {% if not current %}active{% endif %}">All</a>
+  <a href="{{ base_url }}source=otomoto" class="btn btn-outline-secondary {% if current == 'otomoto' %}active{% endif %}">Otomoto</a>
+  <a href="{{ base_url }}source=olx" class="btn btn-outline-secondary {% if current == 'olx' %}active{% endif %}">OLX</a>
+</div>
+{%- endmacro %}

@@ -18,24 +18,27 @@ REVIEW_PER_PAGE = 30
 @bp.route("/review")
 def review_queue():
     status_filter = request.args.get("status", "pending")
+    source = request.args.get("source", "")
+    source = source if source in ("olx", "otomoto") else ""
     page = max(request.args.get("page", 1, type=int) or 1, 1)
+    src_sql, src_params = (" AND source = ?", [source]) if source else ("", [])
     conn = get_db()
-    counts = {r["status"]: r["cnt"] for r in conn.execute("""
-        SELECT status, COUNT(*) AS cnt FROM pending_listings GROUP BY status
-    """).fetchall()}
+    counts = {r["status"]: r["cnt"] for r in conn.execute(f"""
+        SELECT status, COUNT(*) AS cnt FROM pending_listings WHERE 1=1{src_sql} GROUP BY status
+    """, src_params).fetchall()}
     pages = max((counts.get(status_filter, 0) + REVIEW_PER_PAGE - 1) // REVIEW_PER_PAGE, 1)
     page = min(page, pages)
     order_col = "reviewed_at" if status_filter == "approved" else "scraped_at"
     listings = conn.execute(f"""
         SELECT * FROM pending_listings
-        WHERE status = ?
+        WHERE status = ?{src_sql}
         ORDER BY {order_col} DESC
         LIMIT ? OFFSET ?
-    """, (status_filter, REVIEW_PER_PAGE, (page - 1) * REVIEW_PER_PAGE)).fetchall()
+    """, (status_filter, *src_params, REVIEW_PER_PAGE, (page - 1) * REVIEW_PER_PAGE)).fetchall()
     conn.close()
     return render_template("review.html",
         listings=listings, counts=counts, status_filter=status_filter,
-        page=page, pages=pages)
+        source=source, page=page, pages=pages)
 
 
 @bp.route("/review/<int:pid>")
