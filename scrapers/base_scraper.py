@@ -82,11 +82,11 @@ def _fetch_known(items: list) -> dict:
         return {}
 
 
-def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0):
+def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0, source: str = ""):
     try:
         _API_SESSION.post(
             LOG_URL,
-            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count},
+            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count, "source": source},
             headers=API_HEADERS,
             timeout=5
         )
@@ -129,6 +129,10 @@ class ScraperConfig:
 
 
     detail_delay: float = 1.0
+
+    # OLX search results are mostly cross-posted otomoto ads, which the otomoto
+    # scraper for the same model already collects. True = only OLX's own ads.
+    skip_otomoto_hosted: bool = False
 
     # Known model specs — auto-filled when the scraped page doesn't return a value.
     # e.g. RS3 8V is always 400 HP petrol AWD — no need to parse it per listing.
@@ -255,7 +259,7 @@ def refresh_session(cookies: dict) -> dict:
         if r.status_code != 200:
             print(f"[auth] Token refresh failed: HTTP {r.status_code} -- {r.text[:120]}")
             if not _token_error_logged:
-                _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.")
+                _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.", source="otomoto")
                 _token_error_logged = True
             return cookies
         tokens       = r.json().get("AuthenticationResult", {})
@@ -263,7 +267,7 @@ def refresh_session(cookies: dict) -> dict:
         if not new_id_token:
             print("[auth] Token refresh: no IdToken in response")
             if not _token_error_logged:
-                _log_run("error", "Token refresh failed: No IdToken in response.")
+                _log_run("error", "Token refresh failed: No IdToken in response.", source="otomoto")
                 _token_error_logged = True
             return cookies
         updated = dict(cookies)
@@ -987,9 +991,17 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             def _card_source(c):
                 return "otomoto" if "otomoto.pl" in (c["source_url"] or "") else cfg.source
 
-            known = _fetch_known([[_card_source(c), c["listing_id"]] for c in cards]) if post_to_api else {}
+            def _skip_hosted(c):
+                return cfg.skip_otomoto_hosted and _card_source(c) == "otomoto"
+
+            known = _fetch_known([[_card_source(c), c["listing_id"]] for c in cards
+                                  if not _skip_hosted(c)]) if post_to_api else {}
 
             for card in cards:
+                # Filtered here, not before the "no cards" check: a page holding only
+                # otomoto ads must not end pagination (and trigger the sold check) early
+                if _skip_hosted(card):
+                    continue
                 listing_id    = card["listing_id"]
                 title         = card["title"]
                 price_raw     = card["price_raw"]
@@ -1117,6 +1129,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
                     "origin_market":           final_origin_market,
+                    "found_by":                cfg.source,  # scraper; "source" is the ad's host
                 }
     
                 # Fill gaps with known model defaults
@@ -1180,5 +1193,6 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched "
           f"(New: {new_count}, Dup: {dup_count}, Rej: {rej_count}, Detail skipped: {skipped_count}).")
     if post_to_api:
-        _log_run(status, msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count)
+        _log_run(status, msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count,
+                 source=cfg.source)
     return results

@@ -17,11 +17,19 @@ on:
           - x3m
           - x3_m40i
           - rs3
+          - m3
+          - m3_f80
+          - m3_e46
+          - m4
+          - m2
+          - m2_f87
+          - m2_g87
+          - c63
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
     - name: Checkout repository
@@ -59,4 +67,4 @@ jobs:
         curl -s -X POST "$BASE_URL/api/log_run" \
           -H "Authorization: Bearer $API_TOKEN" \
           -H "Content-Type: application/json" \
-          -d "{\"status\": \"error\", \"message\": \"OLX Scrapers runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true
+          -d "{\"status\": \"error\", \"source\": \"olx\", \"message\": \"OLX Scrapers runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true

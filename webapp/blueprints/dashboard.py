@@ -57,20 +57,31 @@ def serve_media(filename):
 @bp.route("/logs")
 def logs():
     page = max(request.args.get("page", 1, type=int) or 1, 1)
+    source = request.args.get("source", "")
+    source = source if source in ("olx", "otomoto") else ""
     conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM scraper_logs").fetchone()[0]
+    # Older rows have no source: fall back to the run's list URL
+    url_src = ("CASE WHEN list_url LIKE '%olx.pl%' THEN 'olx' "
+               "WHEN list_url LIKE '%otomoto.pl%' THEN 'otomoto' END")
+    try:
+        conn.execute("SELECT source FROM scraper_logs LIMIT 1").fetchall()
+        src_expr = f"COALESCE(source, {url_src})"
+    except Exception:  # database not migrated yet (python db.py)
+        src_expr = url_src
+    where, params = (f" WHERE {src_expr} = ?", [source]) if source else ("", [])
+    total = conn.execute(f"SELECT COUNT(*) FROM scraper_logs{where}", params).fetchone()[0]
     pages = max((total + LOGS_PER_PAGE - 1) // LOGS_PER_PAGE, 1)
     page = min(page, pages)
     logs_data = conn.execute(
-        "SELECT * FROM scraper_logs ORDER BY run_date DESC LIMIT ? OFFSET ?",
-        (LOGS_PER_PAGE, (page - 1) * LOGS_PER_PAGE),
+        f"SELECT *, {src_expr} AS src FROM scraper_logs{where} ORDER BY run_date DESC LIMIT ? OFFSET ?",
+        (*params, LOGS_PER_PAGE, (page - 1) * LOGS_PER_PAGE),
     ).fetchall()
     # Mark as read
     conn.execute("UPDATE scraper_logs SET is_read = 1 WHERE is_read = 0")
     conn.commit()
     conn.close()
     invalidate_notifications()  # badge should drop to 0 right away
-    return render_template("logs.html", logs=logs_data, page=page, pages=pages)
+    return render_template("logs.html", logs=logs_data, page=page, pages=pages, source=source)
 
 @bp.route("/")
 def dashboard():

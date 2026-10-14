@@ -22,13 +22,15 @@ def vehicles_list():
     make   = request.args.get("make", "")
     status = request.args.get("status", "")
     region = request.args.get("region", "").strip()
+    source = request.args.get("source", "")
+    source = source if source in ("olx", "otomoto") else ""
     sort   = request.args.get("sort", "last_seen")
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
     # Pre-aggregate per VIN (avoids the observations x tags row fan-out)
     base = """
         SELECT v.*, o.obs_count, o.ad_count, o.min_price, o.max_price,
-               o.last_observed, o.active_ads, t.tags
+               o.last_observed, o.active_ads, o.sources, t.tags
         FROM vehicles v
         LEFT JOIN (
             SELECT vin,
@@ -37,7 +39,8 @@ def vehicles_list():
                    MIN(price_pln)                    AS min_price,
                    MAX(price_pln)                    AS max_price,
                    MAX(observed_at)                  AS last_observed,
-                   SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads
+                   SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
+                   GROUP_CONCAT(DISTINCT source)     AS sources
             FROM listing_observations GROUP BY vin
         ) o ON o.vin = v.vin
         LEFT JOIN (
@@ -52,6 +55,8 @@ def vehicles_list():
         wheres.append("v.make = ?"); params.append(make)
     if status:
         wheres.append("v.vin_status = ?"); params.append(status)
+    if source:
+        wheres.append("v.vin IN (SELECT vin FROM listing_observations WHERE source = ?)"); params.append(source)
     if region:
         cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == region]
         cond = "lo.location_region = ?"
@@ -87,7 +92,7 @@ def vehicles_list():
     return render_template("vehicles.html",
         vehicles=vehicles, makes=[m["make"] for m in makes],
         q=q, selected_make=make, status=status, sort=sort,
-        selected_region=region, regions=REGION_NAMES,
+        selected_region=region, regions=REGION_NAMES, source=source,
         page=page, pages=pages, total=total)
 
 

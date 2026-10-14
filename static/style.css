@@ -569,3 +569,8 @@ body {
   opacity: 0.9;
   transform: scale(1.01);
 }
+
+/* Listing / scraper source badges (OLX vs otomoto) */
+.src-badge { font-size: 0.7em; font-weight: 600; letter-spacing: .02em; }
+.src-olx { background: #e3f4f1; color: #00594c; border: 1px solid #a7d8cf; }
+.src-otomoto { background: #fdecee; color: #a1001a; border: 1px solid #f3b4bd; }
