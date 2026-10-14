@@ -249,7 +249,7 @@
           <td>
             <div class="d-flex align-items-center gap-2">
               {% if v.photo %}
-              <img src="/media/{{ v.photo }}" class="rounded" style="width: 48px; height: 32px; object-fit: cover; border: 1px solid #dee2e6;" loading="lazy">
+              <img src="{{ media_url(v.photo) }}" class="rounded" style="width: 48px; height: 32px; object-fit: cover; border: 1px solid #dee2e6;" loading="lazy">
               {% else %}
               <div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: 48px; height: 32px; font-size: 11px; color: #adb5bd;">
                 <i class="bi bi-car-front"></i>
@@ -318,6 +318,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 // ── 1. Scatter Plot: Price vs Mileage ──────────────────────────────────────────
 const scatterData = {{ scatter_data|safe }};

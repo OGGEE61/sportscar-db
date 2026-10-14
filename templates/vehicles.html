@@ -54,7 +54,7 @@
 </form>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
-  <p class="text-muted small mb-0">{{ vehicles|length }} result(s)</p>
+  <p class="text-muted small mb-0">{{ total }} result(s){% if pages > 1 %} · page {{ page }}/{{ pages }}{% endif %}</p>
   {% if selected_region %}
   <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
     Region: {{ regions.get(selected_region, selected_region) }}
@@ -70,7 +70,8 @@
     <!-- Photo -->
     <a href="/vehicle/{{ v.vin }}" class="flex-shrink-0 text-decoration-none">
       {% if v.photo %}
-      <img src="/media/{{ v.photo }}" class="rounded shadow-sm"
+      <img src="{{ media_url(v.photo) }}" class="rounded shadow-sm" loading="lazy" decoding="async"
+           width="120" height="80" alt="{{ v.make }} {{ v.model }}"
            style="width: 120px; height: 80px; object-fit: cover;">
       {% else %}
       <div class="bg-secondary rounded shadow-sm d-flex align-items-center justify-content-center"
@@ -145,4 +146,16 @@
   </div>
   {% endfor %}
 </div>
+{% if pages > 1 %}
+{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&sort=' ~ sort %}
+<nav aria-label="Vehicles pages">
+  <ul class="pagination justify-content-center">
+    <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" id="page-prev" href="/vehicles?{{ qs }}&page={{ page - 1 }}">‹ Prev</a></li>
+    {% for p in range([1, page - 2]|max, ([pages, page + 2]|min) + 1) %}
+    <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="/vehicles?{{ qs }}&page={{ p }}">{{ p }}</a></li>
+    {% endfor %}
+    <li class="page-item {% if page >= pages %}disabled{% endif %}"><a class="page-link" id="page-next" href="/vehicles?{{ qs }}&page={{ page + 1 }}">Next ›</a></li>
+  </ul>
+</nav>
+{% endif %}
 {% endblock %}

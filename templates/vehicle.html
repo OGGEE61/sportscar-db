@@ -18,7 +18,7 @@
 <div class="d-flex justify-content-between align-items-start mb-3">
   <div class="d-flex gap-3 align-items-start">
     {% if vehicle.photo %}
-    <img src="/media/{{ vehicle.photo }}" alt="photo"
+    <img src="{{ media_url(vehicle.photo) }}" alt="photo"
          style="width:160px;height:110px;object-fit:cover;border-radius:6px;flex-shrink:0;">
     {% endif %}
     <div>
@@ -577,6 +577,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 {% if price_timeline != '[]' %}
 <script>
 function renderPriceChart() {

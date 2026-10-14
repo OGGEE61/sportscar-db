@@ -8,6 +8,7 @@ bp = Blueprint("auth", __name__)
 # Endpoints called by scrapers/GitHub Actions; authenticated by API_TOKEN instead of a session
 TOKEN_API_PATHS = {
     "/api/ingest", "/api/ingest_pending", "/api/mark_removed", "/api/log_run",
+    "/api/known_listings",
 }
 
 
