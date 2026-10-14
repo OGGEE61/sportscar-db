@@ -363,8 +363,13 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
     return True
 
 
-def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_failed: bool = False):
-    """Główna funkcja synchronizacji raportów CEPiK."""
+def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_failed: bool = False,
+                   model_id: Optional[str] = None, refresh: bool = False):
+    """Główna funkcja synchronizacji raportów CEPiK.
+
+    model_id — id z webapp.model_catalog (np. 'x3_m40i_g01'): tylko auta tej generacji.
+    refresh  — pobierz ponownie także auta, które mają już raport.
+    """
     conn = db.get_db()
     client = CepikClient()
 
@@ -393,6 +398,38 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
                 WHERE v.vin = ? AND v.registration_plate IS NOT NULL AND p.first_registration_date IS NOT NULL
                 LIMIT 1
             """, (single_vin,)).fetchall()
+    elif model_id:
+        from webapp.model_catalog import get_model
+        model = get_model(model_id)
+        if not model:
+            raise SystemExit(f"Nieznany model: {model_id}")
+        log_filter = "" if (retry_failed or refresh) else "AND (l.vin IS NULL OR l.status != 'not_found')"
+        report_filter = "" if refresh else "AND c.vin IS NULL"
+        # Tablica/data z vehicles, a jeśli brak — z najnowszego ogłoszenia
+        rows = conn.execute(f"""
+            SELECT * FROM (
+                SELECT v.vin, v.make, v.model,
+                       COALESCE(NULLIF(v.registration_plate, ''),
+                                (SELECT p.registration_plate FROM pending_listings p
+                                 WHERE p.vin = v.vin AND p.registration_plate != ''
+                                 ORDER BY p.id DESC LIMIT 1)) AS registration_plate,
+                       COALESCE(NULLIF(v.first_registration_date, ''),
+                                (SELECT p.first_registration_date FROM pending_listings p
+                                 WHERE p.vin = v.vin AND p.first_registration_date != ''
+                                 ORDER BY p.id DESC LIMIT 1)) AS first_registration_date
+                FROM vehicles v
+                LEFT JOIN cepik_reports c ON c.vin = v.vin
+                LEFT JOIN cepik_sync_log l ON l.vin = v.vin
+                WHERE ({model['where']})
+                  AND v.vin NOT LIKE 'UNVERIFIED-%'
+                  AND v.vin NOT LIKE 'PLH%'
+                  {report_filter}
+                  {log_filter}
+            )
+            WHERE registration_plate IS NOT NULL AND first_registration_date IS NOT NULL
+            ORDER BY vin
+            LIMIT ?
+        """, (limit,)).fetchall()
     else:
         log_filter = "" if retry_failed else "AND (l.vin IS NULL OR l.status != 'not_found')"
         # Pobierz auta, które mają komplet danych i nie były jeszcze sprawdzone
@@ -485,6 +522,9 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=50, help="Liczba pojazdów do sprawdzenia")
     parser.add_argument("--vin", type=str, default=None, help="Sprawdź pojedynczy numer VIN")
     parser.add_argument("--retry-failed", action="store_true", help="Ponów próbę dla wcześniej nieodnalezionych w CEPiK")
+    parser.add_argument("--model", type=str, default=None, help="Tylko auta danej generacji (id z webapp/model_catalog.py, np. x3_m40i_g01)")
+    parser.add_argument("--refresh", action="store_true", help="Pobierz ponownie także auta z istniejącym raportem")
     args = parser.parse_args()
 
-    run_cepik_sync(limit=args.limit, single_vin=args.vin, retry_failed=args.retry_failed)
+    run_cepik_sync(limit=args.limit, single_vin=args.vin, retry_failed=args.retry_failed,
+                   model_id=args.model, refresh=args.refresh)

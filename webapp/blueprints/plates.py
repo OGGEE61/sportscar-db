@@ -2,8 +2,17 @@ import re
 
 from flask import Blueprint, jsonify, render_template, request
 from db import get_db
+from webapp import invalidate_notifications
 
 bp = Blueprint("plates", __name__)
+
+
+@bp.after_request
+def _refresh_badge(resp):
+    # Reviews/scans change the pending-plates count shown in the navbar
+    if request.method == "POST":
+        invalidate_notifications()
+    return resp
 
 
 # ── Plates Review (Human-in-the-Loop for CV License Plate Recognition) ───────

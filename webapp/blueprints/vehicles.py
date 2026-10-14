@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from flask import Blueprint, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
@@ -11,6 +12,9 @@ bp = Blueprint("vehicles", __name__)
 # VEHICLES LIST
 # ─────────────────────────────────────────────────────────────────────────────
 
+PER_PAGE = 50
+
+
 @bp.route("/vehicles")
 def vehicles_list():
     conn   = get_db()
@@ -19,19 +23,26 @@ def vehicles_list():
     status = request.args.get("status", "")
     region = request.args.get("region", "").strip()
     sort   = request.args.get("sort", "last_seen")
+    page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
+    # Pre-aggregate per VIN (avoids the observations x tags row fan-out)
     base = """
-        SELECT v.*,
-               COUNT(DISTINCT o.id)                  AS obs_count,
-               COUNT(DISTINCT o.source_listing_id)   AS ad_count,
-               MIN(o.price_pln)                      AS min_price,
-               MAX(o.price_pln)                      AS max_price,
-               MAX(o.observed_at)                    AS last_observed,
-               SUM(CASE WHEN o.removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
-               GROUP_CONCAT(DISTINCT t.tag)          AS tags
+        SELECT v.*, o.obs_count, o.ad_count, o.min_price, o.max_price,
+               o.last_observed, o.active_ads, t.tags
         FROM vehicles v
-        LEFT JOIN listing_observations o ON v.vin = o.vin
-        LEFT JOIN tags t ON v.vin = t.vin
+        LEFT JOIN (
+            SELECT vin,
+                   COUNT(*)                          AS obs_count,
+                   COUNT(DISTINCT source_listing_id) AS ad_count,
+                   MIN(price_pln)                    AS min_price,
+                   MAX(price_pln)                    AS max_price,
+                   MAX(observed_at)                  AS last_observed,
+                   SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads
+            FROM listing_observations GROUP BY vin
+        ) o ON o.vin = v.vin
+        LEFT JOIN (
+            SELECT vin, GROUP_CONCAT(tag) AS tags FROM tags GROUP BY vin
+        ) t ON t.vin = v.vin
     """
     wheres, params = [], []
     if q:
@@ -43,35 +54,41 @@ def vehicles_list():
         wheres.append("v.vin_status = ?"); params.append(status)
     if region:
         cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == region]
+        cond = "lo.location_region = ?"
+        rparams = [region]
         if cities_in_region:
-            placeholders = ",".join("?" for _ in cities_in_region)
-            wheres.append(f"o.location_city IN ({placeholders})")
-            params.extend(cities_in_region)
-        else:
-            wheres.append("1=0")
+            cond += f" OR lo.location_city IN ({','.join('?' for _ in cities_in_region)})"
+            rparams += cities_in_region
+        wheres.append(f"v.vin IN (SELECT lo.vin FROM listing_observations lo WHERE {cond})")
+        params += rparams
 
-    if wheres:
-        base += " WHERE " + " AND ".join(wheres)
-    base += " GROUP BY v.vin"
+    where_sql = (" WHERE " + " AND ".join(wheres)) if wheres else ""
 
     sort_map = {
-        "last_seen":  "last_observed DESC, v.updated_at DESC",
+        "last_seen":  "o.last_observed DESC, v.updated_at DESC",
         "updated_at": "v.updated_at DESC",
         "year_desc":  "v.year DESC",
         "year_asc":   "v.year ASC",
         "power":      "v.power_hp DESC",
-        "obs":        "obs_count DESC",
-        "price":      "min_price ASC NULLS LAST",
+        "obs":        "o.obs_count DESC",
+        "price":      "o.min_price ASC NULLS LAST",
     }
-    base += " ORDER BY " + sort_map.get(sort, "last_observed DESC, v.updated_at DESC")
+    order_sql = " ORDER BY " + sort_map.get(sort, sort_map["last_seen"])
 
-    vehicles = conn.execute(base, params).fetchall()
+    total = conn.execute(f"SELECT COUNT(*) FROM vehicles v{where_sql}", params).fetchone()[0]
+    pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
+    page = min(page, pages)
+    vehicles = conn.execute(
+        base + where_sql + order_sql + " LIMIT ? OFFSET ?",
+        [*params, PER_PAGE, (page - 1) * PER_PAGE],
+    ).fetchall()
     makes    = conn.execute("SELECT DISTINCT make FROM vehicles ORDER BY make").fetchall()
     conn.close()
     return render_template("vehicles.html",
         vehicles=vehicles, makes=[m["make"] for m in makes],
         q=q, selected_make=make, status=status, sort=sort,
-        selected_region=region, regions=REGION_NAMES)
+        selected_region=region, regions=REGION_NAMES,
+        page=page, pages=pages, total=total)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -140,7 +157,6 @@ def vehicle_detail(vin):
         "has_conflict": False,
     }
     if orig:
-        import json
         photos = json.loads(orig["photos"]) if orig["photos"] else []
         equipment = json.loads(orig["equipment"]) if orig["equipment"] else []
         raw_desc = orig["raw_description"]
@@ -162,7 +178,6 @@ def vehicle_detail(vin):
     try:
         cepik_row = conn.execute("SELECT * FROM cepik_reports WHERE vin=?", (vin,)).fetchone()
         if cepik_row:
-            import json
             c_dict = dict(cepik_row)
             c_dict["odometer_history"] = json.loads(c_dict["odometer_history_json"]) if c_dict.get("odometer_history_json") else []
             c_dict["events"] = json.loads(c_dict["events_json"]) if c_dict.get("events_json") else []

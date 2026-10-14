@@ -28,6 +28,9 @@ except ImportError:
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "sportscar_market.db")
 
+# Shared keep-alive session: avoids a new TLS handshake for every D1 query
+_D1_SESSION = _http.Session()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # D1 Backend — row / cursor / connection wrappers
@@ -132,7 +135,7 @@ class D1Backend:
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                resp = _http.post(
+                resp = _D1_SESSION.post(
                     self._url,
                     json=payload,
                     headers={

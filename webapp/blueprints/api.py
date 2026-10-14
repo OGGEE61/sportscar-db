@@ -124,28 +124,35 @@ def api_stats():
 def api_mark_removed():
     """Called by scrapers after each run with the listing IDs they observed.
 
-    Any active observation for this source+make+model that is NOT in seen_ids
-    gets removed_at stamped — meaning the listing disappeared (likely sold).
+    Any active observation ingested by this scraper (source+make+model+variant)
+    that is NOT in seen_ids gets removed_at stamped — the listing disappeared
+    (likely sold). Scoping goes through the listing's own pending_listings row,
+    which keeps the scraper's variant, so sibling generations sharing a model
+    (M3 E46/F80, R8 V8/V10, ...) never mark each other's ads as sold.
     """
     if err := check_api_token(): return err
-    
+
     p        = request.get_json(force=True)
     source   = p.get("source")
     make     = p.get("make")
     model    = p.get("model")
+    variant  = p.get("variant")
     seen_ids = p.get("seen_ids", [])
-    if not source or not seen_ids:
-        return jsonify({"marked": 0})
+    if not source or not make or not model or not variant or not seen_ids:
+        # Without a variant the scope is ambiguous: refuse rather than over-mark
+        return jsonify({"marked": 0, "skipped": "source, make, model, variant and seen_ids are required"})
     conn = get_db()
-    
-    # 1. Fetch active observations for this source/make/model
+
+    # 1. Fetch active observations of listings this scraper ingested
     active_rows = conn.execute("""
-        SELECT source_listing_id 
-        FROM listing_observations 
-        WHERE source = ? 
-          AND removed_at IS NULL
-          AND vin IN (SELECT vin FROM vehicles WHERE make = ? AND model = ?)
-    """, (source, make, model)).fetchall()
+        SELECT DISTINCT o.source_listing_id
+        FROM listing_observations o
+        JOIN pending_listings pl
+          ON pl.source = o.source AND pl.source_listing_id = o.source_listing_id
+        WHERE o.source = ?
+          AND o.removed_at IS NULL
+          AND pl.make = ? AND pl.model = ? AND pl.variant = ?
+    """, (source, make, model, variant)).fetchall()
     
     seen_set = set(seen_ids)
     missing_ids = [r["source_listing_id"] for r in active_rows if r["source_listing_id"] not in seen_set]
@@ -196,6 +203,41 @@ def api_log_run():
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@bp.route("/api/known_listings", methods=["POST"])
+def api_known_listings():
+    """Tell scrapers which listings they can skip the detail page for.
+
+    Body: {"items": [[source, source_listing_id], ...]}
+    Returns {"known": {"<source>:<id>": {"status": ..., "complete": bool}}}.
+    complete = rejected, or VIN + plate + first registration already stored,
+    i.e. a detail fetch could not fill anything the duplicate path would use.
+    """
+    if err := check_api_token(): return err
+
+    items = (request.get_json(force=True) or {}).get("items", [])[:500]
+    by_source = {}
+    for source, sid in items:
+        if source and sid:
+            by_source.setdefault(str(source), []).append(str(sid))
+
+    known = {}
+    conn = get_db()
+    for source, sids in by_source.items():
+        for i in range(0, len(sids), 90):  # D1 caps bound parameters at 100
+            chunk = sids[i:i + 90]
+            rows = conn.execute(f"""
+                SELECT source_listing_id, status, vin, registration_plate, first_registration_date
+                FROM pending_listings
+                WHERE source = ? AND source_listing_id IN ({','.join('?' * len(chunk))})
+            """, [source, *chunk]).fetchall()
+            for r in rows:
+                complete = r["status"] == "rejected" or bool(
+                    r["vin"] and r["registration_plate"] and r["first_registration_date"])
+                known[f"{source}:{r['source_listing_id']}"] = {"status": r["status"], "complete": complete}
+    conn.close()
+    return jsonify({"known": known})
 
 
 @bp.route("/api/ingest_pending", methods=["POST"])

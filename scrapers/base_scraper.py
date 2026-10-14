@@ -59,9 +59,32 @@ LOG_URL      = f"{API_BASE}/api/log_run"
 API_TOKEN    = os.environ.get("API_TOKEN") or os.environ.get("CRON_SECRET", "dev-secret")
 API_HEADERS  = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 
+# One keep-alive session for all calls to our own API (ingest, known, mark_removed, log)
+_API_SESSION = requests.Session()
+
+
+def _fetch_known(items: list) -> dict:
+    """Ask the API which (source, listing_id) pairs are already stored with complete data.
+
+    Returns {} on any failure (e.g. the API is not deployed yet), so the
+    scraper falls back to fetching every detail page.
+    """
+    if not items:
+        return {}
+    try:
+        r = _API_SESSION.post(f"{API_BASE}/api/known_listings", json={"items": items},
+                              headers=API_HEADERS, timeout=30)
+        if r.status_code != 200:
+            return {}
+        return r.json().get("known", {})
+    except Exception as e:
+        print(f"  [known] lookup failed: {_safe(str(e))}")
+        return {}
+
+
 def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0):
     try:
-        requests.post(
+        _API_SESSION.post(
             LOG_URL,
             json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count},
             headers=API_HEADERS,
@@ -916,6 +939,10 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     new_count = 0
     dup_count = 0
     rej_count = 0
+    skipped_count = 0
+    # Only a run that walked every list page to its natural end may mark
+    # unseen listings as sold; a blocked/failed page would mark everything after it.
+    clean_finish = True
 
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
@@ -931,10 +958,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 )
             except Exception as e:
                 print(f"  [list error] {_safe(str(e))}")
+                clean_finish = False
                 break
-    
+
             if r.status_code != 200:
                 print(f"  HTTP {r.status_code} -- stopping.")
+                clean_finish = False
                 break
     
             soup = BeautifulSoup(r.text, "html.parser")
@@ -954,7 +983,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 print(f"  All {len(cards)} cards already seen -- stopping.")
                 break
             seen_ids |= page_ids
-    
+
+            def _card_source(c):
+                return "otomoto" if "otomoto.pl" in (c["source_url"] or "") else cfg.source
+
+            known = _fetch_known([[_card_source(c), c["listing_id"]] for c in cards]) if post_to_api else {}
+
             for card in cards:
                 listing_id    = card["listing_id"]
                 title         = card["title"]
@@ -977,7 +1011,33 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         continue
     
                 print(f"  {_safe(title[:65])} | {_safe(price_raw)} | {_safe(location_city or '')}")
-    
+
+                # Already stored with VIN + plate + first registration (or rejected):
+                # the detail page can't add anything, so record the sighting from the card.
+                k = known.get(f"{_card_source(card)}:{listing_id}")
+                if k and k.get("complete"):
+                    skipped_count += 1
+                    if k.get("status") == "rejected":
+                        rej_count += 1
+                        print("    > known (rejected) -- skip")
+                        continue
+                    light = {
+                        "source": _card_source(card), "source_listing_id": listing_id,
+                        "source_url": source_url, "raw_title": title,
+                        "make": cfg.make, "model": cfg.model, "variant": cfg.variant,
+                        "price_pln": price_pln, "location_city": location_city,
+                        "photos": [thumbnail] if thumbnail else [],
+                    }
+                    results.append(light)
+                    try:
+                        resp = _API_SESSION.post(API_URL, json=light, timeout=30, headers=API_HEADERS)
+                        tag = resp.json().get("tag", "duplicate")
+                        print(f"    > SID {listing_id} known, detail skipped [{tag}]")
+                        dup_count += 1
+                    except Exception as e:
+                        print(f"    > API error: {_safe(str(e))}")
+                    continue
+
                 detail = {}
                 if source_url:
                     jitter = random.uniform(0.5, 2.5)
@@ -1080,8 +1140,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     
                 if post_to_api:
                     try:
-                        resp = requests.post(API_URL, json=payload, timeout=15,
-                                             headers=API_HEADERS, impersonate="chrome")
+                        resp = _API_SESSION.post(API_URL, json=payload, timeout=30,
+                                                 headers=API_HEADERS)
                         rj   = resp.json()
                         tag  = rj.get("tag", "new" if rj.get("id", 0) > 0 else "duplicate")
                         print(f"    > SID {payload.get('source_listing_id')} API {resp.status_code} [{tag}]")
@@ -1096,23 +1156,29 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     except Exception as e:
                         print(f"    > API error: {_safe(str(e))}")
     
-    # Sold/removed detection — mark active observations not seen this run
-    if post_to_api and seen_ids:
+    # Sold/removed detection — mark active observations not seen this run.
+    # Skipped when the run stopped early: unseen != sold if we never reached its page.
+    if post_to_api and seen_ids and not clean_finish:
+        print("[sold] Run did not finish cleanly -- NOT marking unseen listings as removed.")
+    elif post_to_api and seen_ids:
         try:
-            r = requests.post(
+            r = _API_SESSION.post(
                 f"{API_BASE}/api/mark_removed",
-                json={"source": cfg.source, "make": cfg.make,
-                      "model": cfg.model, "seen_ids": list(seen_ids)},
-                timeout=5, headers=API_HEADERS, impersonate="chrome",
+                json={"source": cfg.source, "make": cfg.make, "model": cfg.model,
+                      "variant": cfg.variant, "seen_ids": list(seen_ids)},
+                timeout=60, headers=API_HEADERS,
             )
             marked = r.json().get("marked", 0)
             if marked:
                 print(f"[sold] {marked} listing(s) marked as removed (not seen this run).")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[sold] mark_removed failed: {_safe(str(e))}")
 
-    msg = f"Processed '{cfg.variant or cfg.model}' successfully. (New: {new_count}, Dup: {dup_count}, Rej: {rej_count})"
-    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched (New: {new_count}, Dup: {dup_count}, Rej: {rej_count}).")
+    status = "success" if clean_finish else "partial"
+    msg = (f"Processed '{cfg.variant or cfg.model}' {'successfully' if clean_finish else 'PARTIALLY (stopped early, sold-check skipped)'}. "
+           f"(New: {new_count}, Dup: {dup_count}, Rej: {rej_count}, Detail skipped: {skipped_count})")
+    print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched "
+          f"(New: {new_count}, Dup: {dup_count}, Rej: {rej_count}, Detail skipped: {skipped_count}).")
     if post_to_api:
-        _log_run("success", msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count)
+        _log_run(status, msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count)
     return results
