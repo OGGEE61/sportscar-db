@@ -220,7 +220,7 @@ function showToast(title, msg, type='success') {
     <div id="${id}" class="toast align-items-center text-bg-${type} border-0 show mb-2" role="alert" style="pointer-events: auto;">
       <div class="d-flex">
         <div class="toast-body">
-          <strong>${title}</strong><br><span style="font-size: 0.9em">${msg}</span>
+          <strong>${escHtml(title)}</strong><br><span style="font-size: 0.9em">${escHtml(msg)}</span>
         </div>
         <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.closest('.toast').remove()"></button>
       </div>

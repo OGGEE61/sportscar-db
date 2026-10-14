@@ -238,6 +238,21 @@ class TestSourceDisplay(ScrapingTestCase):
         conn.close()
 
 
+class TestNoScriptInjection(ScrapingTestCase):
+    def test_description_and_title_are_escaped(self):
+        self.client.post("/api/ingest_pending", headers=TOKEN, json={
+            "source": "olx", "source_listing_id": "x1", "make": "BMW", "model": "M4",
+            "raw_title": "M4 </script><script>alert(1)</script>",
+            "raw_description": "Zadbany &amp; <img src=x onerror=alert(1)>"})
+        conn = db.get_db()
+        pid = conn.execute("SELECT id FROM pending_listings WHERE source_listing_id='x1'").fetchone()[0]
+        conn.close()
+        page = self.client.get(f"/review/{pid}").get_data(as_text=True)
+        self.assertNotIn("<img src=x onerror", page)
+        self.assertIn("Zadbany &amp; &lt;img", page)  # entity decoded, then escaped once
+        self.assertNotIn("<script>alert(1)", self.client.get("/review").get_data(as_text=True))
+
+
 class TestPages(ScrapingTestCase):
     def test_manual_vehicle_detail_without_review_or_cepik(self):
         conn = db.get_db()

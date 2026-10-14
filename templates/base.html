@@ -74,6 +74,12 @@
   {% block content %}{% endblock %}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Escape text before putting it into HTML built in JS (scraped titles, CEPiK fields)
+function escHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

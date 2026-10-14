@@ -6,7 +6,7 @@ import time
 from flask import Flask
 
 from db import get_db
-from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_plausible_vin, is_valid_registration_plate
+from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_plausible_vin, is_valid_registration_plate, plain_text
 
 
 _NOTIF_CACHE = {"at": 0.0, "data": None}
@@ -72,6 +72,7 @@ def create_app() -> Flask:
     )
 
     app.jinja_env.filters["fromjson"] = json.loads
+    app.jinja_env.filters["plain_text"] = plain_text
     app.jinja_env.tests["plausible_vin"] = is_plausible_vin
     app.jinja_env.tests["valid_plate"] = is_valid_registration_plate
     app.jinja_env.globals["media_url"] = media_url
