@@ -49,7 +49,7 @@
     <button type="button" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
       Reject selected
     </button>
-    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL pending listings that are missing a valid VIN?')) { fetch('/review/bulk_reject_novin', {method: 'POST'}).then(r => window.location.reload()); }">
+    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings that are missing a valid VIN?')) { fetch('/review/bulk_reject_novin?{{ '&source=' ~ source if source else '' }}', {method: 'POST'}).then(r => window.location.reload()); }">
       Reject All w/o VIN
     </button>
     <button type="button" class="btn btn-outline-danger btn-sm" id="reject-all-btn">
@@ -63,7 +63,7 @@
 {% if status_filter == 'approved' %}
 <div class="d-flex align-items-center gap-3 mb-3 p-2 bg-light border rounded">
   <div class="d-flex gap-2 ms-auto">
-    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL approved listings that are missing a valid VIN? This will completely remove their vehicle profiles and observation data.')) { fetch('/review/bulk_reject_approved_novin', {method: 'POST'}).then(r => window.location.reload()); }">
+    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL approved listings that are missing a valid VIN? This will completely remove their vehicle profiles and observation data.')) { fetch('/review/bulk_reject_approved_novin?{{ '&source=' ~ source if source else '' }}', {method: 'POST'}).then(r => window.location.reload()); }">
       Reject All w/o VIN
     </button>
   </div>
@@ -424,14 +424,14 @@ const rejectAllBtn = document.getElementById('reject-all-btn');
 if (rejectAllBtn) {
   rejectAllBtn.onclick = (e) => {
     e.preventDefault();
-    if (!confirm('Reject ALL pending listings?')) return;
+    if (!confirm('Reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings?')) return;
     
     document.querySelectorAll('.list-group-item').forEach(row => {
       row.style.opacity = '0.3';
       row.style.pointerEvents = 'none';
     });
     
-    fetch('/review/reject_all_pending?ajax=1', { method: 'POST' })
+    fetch('/review/reject_all_pending?ajax=1{{ '&source=' ~ source if source else '' }}', { method: 'POST' })
     .then(res => {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
@@ -462,7 +462,7 @@ if (clearRejectedBtn) {
       row.style.pointerEvents = 'none';
     });
     
-    fetch('/review/clear_rejected?ajax=1', { method: 'POST' })
+    fetch('/review/clear_rejected?ajax=1{{ '&source=' ~ source if source else '' }}', { method: 'POST' })
     .then(res => {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();

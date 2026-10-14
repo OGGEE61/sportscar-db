@@ -10,4 +10,4 @@
 [ ] 10. Zapisywać model_id (id z webapp/model_catalog.py) na pojeździe przy zatwierdzeniu: ScraperConfig.model_id -> pending_listings -> vehicles, migracja v12 z backfillem; /models filtruje po model_id zamiast luźnych warunków (np. Cayman 981 i 718 oba łapią rok 2016)
 [ ] 11. Ostrzeżenie o wygasłych cookies otomoto: scraper raportuje stan sesji (ok/expired), baner na dashboardzie gdy VIN-y nie są odsłaniane
 [ ] 12. Mapy (dashboard, /models): przepuszczać tylko znane kody województw z REGION_NAMES
-[ ] 13. Przyciski masowe na /review (np. odrzuć wszystkie) ignorują filtr OLX/Otomoto - uwzględnić filtr albo wyraźnie to oznaczyć
+[x] 13. Przyciski masowe na /review (np. odrzuć wszystkie) ignorują filtr OLX/Otomoto - uwzględnić filtr albo wyraźnie to oznaczyć (Zrobione - akcje masowe przekazują ?source= i działają tylko na przefiltrowanym źródle; potwierdzenia wymieniają źródło)
