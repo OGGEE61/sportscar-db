@@ -225,8 +225,18 @@ def dashboard():
         "SELECT * FROM scraper_logs ORDER BY run_date DESC LIMIT 5"
     ).fetchall()
 
+    try:
+        sess = conn.execute(
+            "SELECT session_status, run_date FROM scraper_logs "
+            "WHERE session_status IS NOT NULL AND session_status != '' ORDER BY run_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+    except Exception:  # column not migrated yet
+        sess = None
+    otomoto_session = dict(sess) if sess and sess["session_status"] != "ok" else None
+
     conn.close()
     return render_template("dashboard.html",
+        otomoto_session=otomoto_session,
         stats=stats, recent=recent,
         makes_dist=script_json([dict(r) for r in makes_dist]),
         price_ranges=script_json([dict(r) for r in price_ranges]),

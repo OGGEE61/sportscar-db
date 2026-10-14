@@ -82,11 +82,11 @@ def _fetch_known(items: list) -> dict:
         return {}
 
 
-def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0, source: str = ""):
+def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0, source: str = "", session_status: str = ""):
     try:
         _API_SESSION.post(
             LOG_URL,
-            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count, "source": source},
+            json={"status": status, "message": message, "processed_count": processed, "list_url": list_url, "found_count": found_count, "new_count": new_count, "dup_count": dup_count, "rej_count": rej_count, "source": source, "session_status": session_status},
             headers=API_HEADERS,
             timeout=5
         )
@@ -936,6 +936,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
         logged_in = check_session(cookies)
     else:
         print("[auth] No cookies -- VINs will stay encrypted.")
+    # Reported with the run log so the dashboard can warn about expired cookies
+    session_status = ("ok" if logged_in else "expired") if cookies else "none"
 
     results  = []
     seen_ids = set()
@@ -1194,5 +1196,6 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
           f"(New: {new_count}, Dup: {dup_count}, Rej: {rej_count}, Detail skipped: {skipped_count}).")
     if post_to_api:
         _log_run(status, msg, total_processed, str(cfg.list_url), len(results), new_count, dup_count, rej_count,
-                 source=cfg.source)
+                 source=cfg.source,
+                 session_status=session_status if cfg.source == "otomoto" else "")
     return results
