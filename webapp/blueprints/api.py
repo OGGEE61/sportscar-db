@@ -372,6 +372,11 @@ def api_ingest_pending():
                         NOW(), NOW(),
                         f"scraper-{source}",
                     ))
+                    # Seen again: any earlier "sold" stamp on this listing was wrong
+                    conn.execute(
+                        "UPDATE listing_observations SET removed_at = NULL "
+                        "WHERE source = ? AND source_listing_id = ? AND removed_at IS NOT NULL",
+                        (source, sid))
                     conn.commit()
                     conn.close()
                     
