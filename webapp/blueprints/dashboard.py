@@ -249,7 +249,9 @@ def model_analytics():
     current_model = get_model(selected_id) or get_model(DEFAULT_MODEL_ID)
 
     # Strict query matching this exact generation - NO loose cross-model fallback!
-    sql = f"""
+    # Cars with a stored model_id are matched by it; only cars not yet assigned
+    # fall back to the catalog rule (so 981 and 718 Caymans stop overlapping).
+    base_sql = """
         SELECT v.*, 
                (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) as has_ai_plate,
                o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title
@@ -260,9 +262,15 @@ def model_analytics():
             FROM listing_observations
             WHERE price_pln IS NOT NULL AND price_pln > 0
         ) o ON v.vin = o.vin AND o.rn = 1
-        WHERE {current_model['where']}
+        WHERE {condition}
     """
-    rows = conn.execute(sql).fetchall()
+    rule = current_model['where']
+    try:
+        rows = conn.execute(
+            base_sql.format(condition=f"(v.model_id = ? OR (v.model_id IS NULL AND ({rule})))"),
+            (current_model['id'],)).fetchall()
+    except Exception:  # model_id column not migrated yet
+        rows = conn.execute(base_sql.format(condition=f"({rule})")).fetchall()
     vehicles = [dict(r) for r in rows]
 
     # Annotate region codes and names for mapping & filtering

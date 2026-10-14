@@ -99,6 +99,40 @@ class TestSeenAgainClearsRemoved(ScrapingTestCase):
         self.assertEqual(left, 0)
 
 
+class TestModelId(ScrapingTestCase):
+    def add_vehicle(self, vin, make, model, variant, year, hp=None, model_id=None):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, power_hp, model_id) VALUES (?,?,?,?,?,?,?)",
+                     (vin, make, model, variant, year, hp, model_id))
+        conn.commit()
+        conn.close()
+
+    def test_resolve_picks_the_single_matching_generation(self):
+        from webapp.model_catalog import resolve_model_ids
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022)
+        self.add_vehicle("ZZZ", "Nobody", "Nothing", None, 2000)
+        conn = db.get_db()
+        out = resolve_model_ids(conn)
+        conn.close()
+        self.assertEqual(out["WBS8M9C50J5K99001"], "x3_m40i_g01")
+        self.assertIsNone(out["ZZZ"])
+
+    def test_assign_never_overwrites_and_prefers_declared_id(self):
+        from webapp.model_catalog import assign_model_id
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m_f97")
+        conn = db.get_db()
+        assign_model_id(conn, "WBS8M9C50J5K99001", "x3_m40i_g01")
+        got = conn.execute("SELECT model_id FROM vehicles WHERE vin='WBS8M9C50J5K99001'").fetchone()[0]
+        conn.close()
+        self.assertEqual(got, "x3_m_f97")
+
+    def test_models_page_uses_stored_model_id(self):
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m_f97")
+        page = self.client.get("/models?model=x3_m40i_g01")
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn(b"WBS8M9C50J5K99001", page.data)
+
+
 class TestKnownListings(ScrapingTestCase):
     def test_complete_incomplete_and_rejected(self):
         self.add_active_listing("full", "WBS8M9C50J5K99001", "F80", plate="WX12345", frd="2016-05-01")

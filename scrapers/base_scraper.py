@@ -130,6 +130,10 @@ class ScraperConfig:
 
     detail_delay: float = 1.0
 
+    # webapp/model_catalog.py id of the generation this scraper targets. Optional:
+    # when unset the app resolves it from make/model/variant at approval time.
+    model_id: Optional[str] = None
+
     # OLX search results are mostly cross-posted otomoto ads, which the otomoto
     # scraper for the same model already collects. True = only OLX's own ads.
     skip_otomoto_hosted: bool = False
@@ -1129,6 +1133,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
                     "origin_market":           final_origin_market,
+                    "model_id":                cfg.model_id,
                     "found_by":                cfg.source,  # scraper; "source" is the ad's host
                 }
     
