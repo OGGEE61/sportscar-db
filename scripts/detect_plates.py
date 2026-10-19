@@ -497,15 +497,18 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
     else:
         scan_log_filter = "AND (id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log) OR id IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log WHERE plates_found = 0))"
 
-    # Pobierz ogłoszenia bez tablicy, które mają zdjęcia, NIE są odrzucone i mają prawdziwy VIN
+    # Pobierz zatwierdzone ogłoszenia z prawdziwym VIN, bez tablicy (ani na ogłoszeniu, ani na pojeździe), ze zdjęciami
     rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
         WHERE (registration_plate IS NULL OR registration_plate = '')
-          AND status != 'rejected'
-          AND vin IS NOT NULL 
-          AND vin != '' 
+          AND status = 'approved'
+          AND vin IS NOT NULL
+          AND vin != ''
           AND vin NOT LIKE 'PLH%'
+          AND vin NOT LIKE 'UNVERIFIED%'
+          AND vin NOT IN (SELECT vin FROM vehicles
+                          WHERE registration_plate IS NOT NULL AND registration_plate != '')
           AND photos IS NOT NULL 
           AND photos != ''
           AND photos != '[]'
