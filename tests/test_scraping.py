@@ -99,6 +99,45 @@ class TestSeenAgainClearsRemoved(ScrapingTestCase):
         self.assertEqual(left, 0)
 
 
+class TestBulkActionsRespectSource(ScrapingTestCase):
+    def add(self, sid, source, status="pending", vin=None):
+        conn = db.get_db()
+        conn.execute("INSERT INTO pending_listings (source, source_listing_id, make, model, variant, status, vin) "
+                     "VALUES (?,?,?,?,?,?,?)", (source, sid, "BMW", "M3", "F80", status, vin))
+        conn.commit()
+        conn.close()
+
+    def status(self, sid):
+        conn = db.get_db()
+        row = conn.execute("SELECT status FROM pending_listings WHERE source_listing_id=?", (sid,)).fetchone()
+        conn.close()
+        return row["status"] if row else None
+
+    def test_reject_all_only_touches_filtered_source(self):
+        self.add("o1", "olx")
+        self.add("m1", "otomoto")
+        self.client.post("/review/reject_all_pending?ajax=1&source=olx")
+        self.assertEqual(self.status("o1"), "rejected")
+        self.assertEqual(self.status("m1"), "pending")
+
+    def test_reject_all_without_filter_rejects_everything(self):
+        self.add("o1", "olx")
+        self.add("m1", "otomoto")
+        self.client.post("/review/reject_all_pending?ajax=1")
+        self.assertEqual(self.status("o1"), "rejected")
+        self.assertEqual(self.status("m1"), "rejected")
+
+    def test_reject_novin_and_clear_rejected_respect_source(self):
+        self.add("o1", "olx")
+        self.add("m1", "otomoto")
+        self.client.post("/review/bulk_reject_novin?source=otomoto")
+        self.assertEqual(self.status("o1"), "pending")
+        self.assertEqual(self.status("m1"), "rejected")
+        self.add("o2", "olx", status="rejected")
+        self.client.post("/review/clear_rejected?ajax=1&source=olx")
+        self.assertIsNone(self.status("o2"))
+        self.assertEqual(self.status("m1"), "rejected")
+
 class TestModelId(ScrapingTestCase):
     def add_vehicle(self, vin, make, model, variant, year, hp=None, model_id=None):
         conn = db.get_db()

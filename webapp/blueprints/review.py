@@ -15,6 +15,15 @@ bp = Blueprint("review", __name__)
 REVIEW_PER_PAGE = 30
 
 
+def _source_scope(column="source"):
+    """SQL fragment + params limiting a mass action to the OLX/Otomoto filter
+    the user is looking at (?source=...). Empty when no filter is active."""
+    source = request.args.get("source", "")
+    if source in ("olx", "otomoto"):
+        return f" AND {column} = ?", [source]
+    return "", []
+
+
 @bp.route("/review")
 def review_queue():
     status_filter = request.args.get("status", "pending")
@@ -93,9 +102,11 @@ def review_approve(pid):
 
 @bp.route("/review/reject_all_pending", methods=["POST"])
 def review_reject_all_pending():
+    src_sql, src_params = _source_scope()
     conn = get_db()
     conn.execute(
-        "UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') WHERE status='pending'"
+        f"UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') WHERE status='pending'{src_sql}",
+        src_params,
     )
     conn.commit()
     conn.close()
@@ -105,8 +116,9 @@ def review_reject_all_pending():
 
 @bp.route("/review/clear_rejected", methods=["POST"])
 def review_clear_rejected():
+    src_sql, src_params = _source_scope()
     conn = get_db()
-    conn.execute("DELETE FROM pending_listings WHERE status='rejected'")
+    conn.execute(f"DELETE FROM pending_listings WHERE status='rejected'{src_sql}", src_params)
     conn.commit()
     conn.close()
     if request.args.get("ajax") == "1":
@@ -139,8 +151,10 @@ def review_bulk_approve():
 
 @bp.route("/review/bulk_reject_novin", methods=["POST"])
 def review_bulk_reject_novin():
+    src_sql, src_params = _source_scope()
     conn = get_db()
-    pending = conn.execute("SELECT id, vin FROM pending_listings WHERE status='pending'").fetchall()
+    pending = conn.execute(
+        f"SELECT id, vin FROM pending_listings WHERE status='pending'{src_sql}", src_params).fetchall()
     count = 0
     for p in pending:
         if not is_plausible_vin(p["vin"]):
@@ -149,13 +163,16 @@ def review_bulk_reject_novin():
     conn.commit()
     conn.close()
     flash(f"Automatically rejected {count} listings with missing or invalid VINs.", "success")
-    return redirect(url_for("review.review_queue"))
+    return redirect(url_for("review.review_queue", source=request.args.get("source") or None))
 
 
 @bp.route("/review/bulk_reject_approved_novin", methods=["POST"])
 def review_bulk_reject_approved_novin():
+    src_sql, src_params = _source_scope()
     conn = get_db()
-    approved = conn.execute("SELECT id, vin, source, source_listing_id FROM pending_listings WHERE status='approved'").fetchall()
+    approved = conn.execute(
+        f"SELECT id, vin, source, source_listing_id FROM pending_listings WHERE status='approved'{src_sql}",
+        src_params).fetchall()
     count = 0
     for p in approved:
         if not is_plausible_vin(p["vin"]):
@@ -168,7 +185,7 @@ def review_bulk_reject_approved_novin():
     conn.commit()
     conn.close()
     flash(f"Retroactively rejected {count} approved listings with missing/invalid VINs and removed their vehicle profiles.", "success")
-    return redirect(url_for("review.review_queue", status="approved"))
+    return redirect(url_for("review.review_queue", status="approved", source=request.args.get("source") or None))
 
 
 @bp.route("/review/bulk_reject", methods=["POST"])

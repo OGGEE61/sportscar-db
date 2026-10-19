@@ -10,7 +10,7 @@
 [x] 10. Store model_id (id from webapp/model_catalog.py) on the vehicle at approval: ScraperConfig.model_id -> pending_listings -> vehicles, migration v13 with backfill; /models filters by model_id instead of loose conditions (e.g. Cayman 981 and 718 both match 2016) (PR #11)
 [x] 11. Warn about expired otomoto cookies: scraper reports session state (ok/expired), dashboard banner when VINs are not revealed; migration v12 (PR #10)
 [x] 12. Maps (dashboard, /models): only pass known voivodeship codes from REGION_NAMES (PR #12)
-[ ] 13. Bulk buttons on /review (e.g. reject all) ignore the OLX/Otomoto filter - respect the filter or label it clearly (PR #13)
+[x] 13. Bulk buttons on /review (e.g. reject all) ignore the OLX/Otomoto filter - respect the filter or label it clearly (PR #13)
 
 ## Operational follow-ups
 [ ] 14. Refresh the OTOMOTO_COOKIES GitHub secret (CI logs "Token refresh failed: Otomoto session has expired"). Use scripts/extract_otomoto_cookies.py --gh-secret. Note: locally scrapers/otomoto_cookies.json is read before .txt, so a fresh cookie placed only in .txt is ignored
