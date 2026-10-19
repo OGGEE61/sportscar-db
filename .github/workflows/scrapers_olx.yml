@@ -25,6 +25,16 @@ on:
           - m2_f87
           - m2_g87
           - c63
+          - cayman
+          - cayman_987
+          - cayman_981
+          - cayman_718
+          - gt4
+          - gr_yaris
+          - s2000
+          - rs4
+          - rs4_b85
+          - rs4_b9
 
 jobs:
   scrape:

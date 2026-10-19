@@ -32,6 +32,15 @@ from olx.bmw_m2_f87 import CONFIG as M2_F87_OLX
 from olx.bmw_m2_g87 import CONFIG as M2_G87_OLX
 from olx.mercedes_c63_w204 import CONFIG as C63_W204_OLX
 
+from olx.porsche_cayman_987 import CONFIG as CAYMAN_987_OLX
+from olx.porsche_cayman_981 import CONFIG as CAYMAN_981_OLX
+from olx.porsche_cayman_718 import CONFIG as CAYMAN_718_OLX
+from olx.porsche_cayman_gt4_981 import CONFIG as CAYMAN_GT4_OLX
+from olx.toyota_gr_yaris import CONFIG as GR_YARIS_OLX
+from olx.honda_s2000 import CONFIG as S2000_OLX
+from olx.audi_rs4_b85 import CONFIG as RS4_B85_OLX
+from olx.audi_rs4_b9 import CONFIG as RS4_B9_OLX
+
 ALL_OLX_FLEET = [
     ALPINA_OLX,
     X3_M_OLX,
@@ -43,6 +52,14 @@ ALL_OLX_FLEET = [
     M2_F87_OLX,
     M2_G87_OLX,
     C63_W204_OLX,
+    CAYMAN_987_OLX,
+    CAYMAN_981_OLX,
+    CAYMAN_718_OLX,
+    CAYMAN_GT4_OLX,
+    GR_YARIS_OLX,
+    S2000_OLX,
+    RS4_B85_OLX,
+    RS4_B9_OLX,
 ]
 
 SCRAPER_MAP = {
@@ -61,6 +78,20 @@ SCRAPER_MAP = {
     "m2_f87":   [M2_F87_OLX],
     "m2_g87":   [M2_G87_OLX],
     "c63":      [C63_W204_OLX],
+    "cayman_987": [CAYMAN_987_OLX],
+    "987": [CAYMAN_987_OLX],
+    "cayman_981": [CAYMAN_981_OLX],
+    "981": [CAYMAN_981_OLX],
+    "cayman_718": [CAYMAN_718_OLX],
+    "718": [CAYMAN_718_OLX],
+    "gt4": [CAYMAN_GT4_OLX],
+    "cayman_gt4": [CAYMAN_GT4_OLX],
+    "gr_yaris": [GR_YARIS_OLX],
+    "s2000": [S2000_OLX],
+    "rs4_b85": [RS4_B85_OLX],
+    "rs4_b9": [RS4_B9_OLX],
+    "cayman":   [CAYMAN_987_OLX, CAYMAN_981_OLX, CAYMAN_718_OLX, CAYMAN_GT4_OLX],
+    "rs4":      [RS4_B85_OLX, RS4_B9_OLX],
     "all":      ALL_OLX_FLEET,
 }
 
