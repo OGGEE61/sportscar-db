@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from jinja2.utils import htmlsafe_json_dumps
 
-from validation import is_plausible_vin, is_valid_registration_plate  # noqa: F401  (re-exported)
+from validation import is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate  # noqa: F401  (re-exported)
 
 
 def script_json(obj):

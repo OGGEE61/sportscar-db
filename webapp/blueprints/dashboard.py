@@ -5,7 +5,7 @@ from db import get_db
 from webapp import invalidate_notifications
 from webapp.helpers import script_json
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
-from webapp.regions import CITY_TO_REGION, REGION_NAMES, REGION_NAME_TO_CODE
+from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
 bp = Blueprint("dashboard", __name__)
 
@@ -169,9 +169,7 @@ def dashboard():
     recent = []
     for r in recent_rows:
         d = dict(r)
-        reg = d.get("location_region")
-        if not reg or len(reg) != 5:
-            reg = CITY_TO_REGION.get(d.get("location_city"), "")
+        reg = resolve_region(d.get("location_region"), d.get("location_city")) or ""
         d["region"] = reg
         d["region_name"] = REGION_NAMES.get(reg, "")
         recent.append(d)
@@ -208,14 +206,7 @@ def dashboard():
     cities = conn.execute("SELECT location_region, location_city, COUNT(DISTINCT vin) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
     region_counts = {}
     for r in cities:
-        reg = r["location_region"]
-        if not reg or len(reg) != 5:
-            city = r["location_city"]
-            if city and city in CITY_TO_REGION:
-                reg = CITY_TO_REGION[city]
-            else:
-                reg = None
-                
+        reg = resolve_region(r["location_region"], r["location_city"])
         if reg:
             region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
     
@@ -225,8 +216,18 @@ def dashboard():
         "SELECT * FROM scraper_logs ORDER BY run_date DESC LIMIT 5"
     ).fetchall()
 
+    try:
+        sess = conn.execute(
+            "SELECT session_status, run_date FROM scraper_logs "
+            "WHERE session_status IS NOT NULL AND session_status != '' ORDER BY run_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+    except Exception:  # column not migrated yet
+        sess = None
+    otomoto_session = dict(sess) if sess and sess["session_status"] != "ok" else None
+
     conn.close()
     return render_template("dashboard.html",
+        otomoto_session=otomoto_session,
         stats=stats, recent=recent,
         makes_dist=script_json([dict(r) for r in makes_dist]),
         price_ranges=script_json([dict(r) for r in price_ranges]),
@@ -249,7 +250,9 @@ def model_analytics():
     current_model = get_model(selected_id) or get_model(DEFAULT_MODEL_ID)
 
     # Strict query matching this exact generation - NO loose cross-model fallback!
-    sql = f"""
+    # Cars with a stored model_id are matched by it; only cars not yet assigned
+    # fall back to the catalog rule (so 981 and 718 Caymans stop overlapping).
+    base_sql = """
         SELECT v.*, 
                (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) as has_ai_plate,
                o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title
@@ -260,26 +263,21 @@ def model_analytics():
             FROM listing_observations
             WHERE price_pln IS NOT NULL AND price_pln > 0
         ) o ON v.vin = o.vin AND o.rn = 1
-        WHERE {current_model['where']}
+        WHERE {condition}
     """
-    rows = conn.execute(sql).fetchall()
+    rule = current_model['where']
+    try:
+        rows = conn.execute(
+            base_sql.format(condition=f"(v.model_id = ? OR (v.model_id IS NULL AND ({rule})))"),
+            (current_model['id'],)).fetchall()
+    except Exception:  # model_id column not migrated yet
+        rows = conn.execute(base_sql.format(condition=f"({rule})")).fetchall()
     vehicles = [dict(r) for r in rows]
 
     # Annotate region codes and names for mapping & filtering
     region_counts = {}
     for v in vehicles:
-        reg = v.get("location_region")
-        if reg and reg in REGION_NAMES:
-            pass
-        elif reg and reg.lower() in REGION_NAME_TO_CODE:
-            reg = REGION_NAME_TO_CODE[reg.lower()]
-        else:
-            city = v.get("location_city")
-            if city and city in CITY_TO_REGION:
-                reg = CITY_TO_REGION[city]
-            else:
-                reg = None
-                
+        reg = resolve_region(v.get("location_region"), v.get("location_city"))
         if reg:
             region_counts[reg] = region_counts.get(reg, 0) + 1
             v["region"] = reg

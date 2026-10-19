@@ -10,7 +10,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from validation import VIN_RE, is_plausible_vin, is_valid_registration_plate
+from datetime import date
+
+from validation import VIN_RE, is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate
 
 
 class TestVin(unittest.TestCase):
@@ -76,6 +78,29 @@ class TestSingleImplementation(unittest.TestCase):
             self.assertIs(mod.is_plausible_vin, validation.is_plausible_vin)
             self.assertIs(mod.is_valid_registration_plate, validation.is_valid_registration_plate)
         self.assertIs(base_scraper.VIN_RE, validation.VIN_RE)
+
+
+class TestFirstRegistrationDate(unittest.TestCase):
+    TODAY = date(2026, 10, 14)
+
+    def test_accepts_plausible_dates(self):
+        for v in ["2016-05-01", "1980-01-01", "2026-10-14", " 2019-12-31 "]:
+            self.assertTrue(is_valid_first_registration_date(v, self.TODAY), v)
+
+    def test_rejects_future_old_and_malformed(self):
+        for v in [None, "", "2026-10-15", "2031-01-01", "1979-12-31", "1900-01-01",
+                  "2016-13-01", "01-05-2016", "2016/05/01", "abc", 2016]:
+            self.assertFalse(is_valid_first_registration_date(v, self.TODAY), v)
+
+
+class TestModelNamesAreNotPlates(unittest.TestCase):
+    def test_rejects_model_names(self):
+        for v in ["BMWm40i", "BMW M40i", "M40i X3", "xDrive20"]:
+            self.assertFalse(is_valid_registration_plate(v), v)
+
+    def test_real_plates_still_pass(self):
+        for v in ["WX12345", "WW 488 GV", "KR-1AB23", "PZ4567K"]:
+            self.assertTrue(is_valid_registration_plate(v), v)
 
 
 if __name__ == "__main__":

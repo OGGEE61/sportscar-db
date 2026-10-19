@@ -138,6 +138,105 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertIsNone(self.status("o2"))
         self.assertEqual(self.status("m1"), "rejected")
 
+class TestModelId(ScrapingTestCase):
+    def add_vehicle(self, vin, make, model, variant, year, hp=None, model_id=None):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, power_hp, model_id) VALUES (?,?,?,?,?,?,?)",
+                     (vin, make, model, variant, year, hp, model_id))
+        conn.commit()
+        conn.close()
+
+    def test_resolve_picks_the_single_matching_generation(self):
+        from webapp.model_catalog import resolve_model_ids
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022)
+        self.add_vehicle("ZZZ", "Nobody", "Nothing", None, 2000)
+        conn = db.get_db()
+        out = resolve_model_ids(conn)
+        conn.close()
+        self.assertEqual(out["WBS8M9C50J5K99001"], "x3_m40i_g01")
+        self.assertIsNone(out["ZZZ"])
+
+    def test_assign_never_overwrites_and_prefers_declared_id(self):
+        from webapp.model_catalog import assign_model_id
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m_f97")
+        conn = db.get_db()
+        assign_model_id(conn, "WBS8M9C50J5K99001", "x3_m40i_g01")
+        got = conn.execute("SELECT model_id FROM vehicles WHERE vin='WBS8M9C50J5K99001'").fetchone()[0]
+        conn.close()
+        self.assertEqual(got, "x3_m_f97")
+
+    def test_models_page_uses_stored_model_id(self):
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m_f97")
+        page = self.client.get("/models?model=x3_m40i_g01")
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn(b"WBS8M9C50J5K99001", page.data)
+
+class TestSessionHealth(ScrapingTestCase):
+    def log(self, status):
+        return self.client.post("/api/log_run", headers=TOKEN, json={
+            "status": "success", "message": "m", "source": "otomoto", "session_status": status})
+
+    def test_expired_session_shows_banner(self):
+        self.log("expired")
+        self.assertIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+
+    def test_ok_session_has_no_banner(self):
+        self.log("expired")
+        self.log("ok")
+        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+
+    def test_unknown_value_is_ignored(self):
+        self.log("garbage")
+        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+
+class TestPlateDateQuality(ScrapingTestCase):
+    def ingest(self, sid, **extra):
+        body = {"source": "otomoto", "source_listing_id": sid, "make": "BMW", "model": "X3 M",
+                "variant": "M40i", "raw_title": "BMW X3"}
+        body.update(extra)
+        return self.client.post("/api/ingest_pending", headers=TOKEN, json=body)
+
+    def stored(self, sid):
+        conn = db.get_db()
+        row = conn.execute("SELECT registration_plate, first_registration_date FROM pending_listings "
+                           "WHERE source_listing_id=?", (sid,)).fetchone()
+        conn.close()
+        return row
+
+    def test_invalid_dates_are_not_stored(self):
+        self.ingest("future", first_registration_date="2999-01-01", registration_plate="WX12345")
+        self.ingest("ancient", first_registration_date="1950-01-01")
+        self.ingest("good", first_registration_date="2019-03-04")
+        self.assertIsNone(self.stored("future")["first_registration_date"])
+        self.assertEqual(self.stored("future")["registration_plate"], "WX12345")
+        self.assertIsNone(self.stored("ancient")["first_registration_date"])
+        self.assertEqual(self.stored("good")["first_registration_date"], "2019-03-04")
+
+    def test_model_name_is_not_stored_as_plate(self):
+        self.ingest("m40i", registration_plate="BMWm40i")
+        self.assertIsNone(self.stored("m40i")["registration_plate"])
+
+    def test_fix_tab_and_fix_endpoint(self):
+        conn = db.get_db()
+        conn.execute("CREATE TABLE IF NOT EXISTS cepik_sync_log (vin TEXT PRIMARY KEY, status TEXT, "
+                     "message TEXT, attempted_at TEXT DEFAULT (datetime('now')))")
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, registration_plate, first_registration_date) "
+                     "VALUES ('WBS8M9C50J5K99001','BMW','X3 M','M40i',2024,'BMWm40i','2024-01-01')")
+        conn.commit()
+        conn.close()
+        page = self.client.get("/cepik?tab=fix")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"WBS8M9C50J5K99001", page.data)
+        self.assertIn("Niepoprawna tablica".encode(), page.data)
+
+        bad = self.client.post("/api/cepik/fix/WBS8M9C50J5K99001", json={
+            "plate": "BMWm40i", "first_registration_date": "2024-01-01"})
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.post("/api/cepik/fix/WBS8M9C50J5K99001", json={
+            "plate": "wx 12345", "first_registration_date": "2024-02-03"})
+        self.assertEqual(ok.get_json()["plate"], "WX12345")
+        self.assertNotIn(b"WBS8M9C50J5K99001", self.client.get("/cepik?tab=fix").data.split(b"<tbody>")[1])
+
 
 class TestKnownListings(ScrapingTestCase):
     def test_complete_incomplete_and_rejected(self):

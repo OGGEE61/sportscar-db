@@ -1,6 +1,7 @@
 from db import make_placeholder_vin
 from webapp.helpers import is_valid_registration_plate, safe_float, safe_int
 from webapp.regions import CITY_TO_REGION
+from webapp.model_catalog import assign_model_id
 def infer_vehicle_specs(make, model, variant="", raw_title=""):
     """Infer known model specs for performance cars if fields are empty."""
     text = f"{make or ''} {model or ''} {variant or ''} {raw_title or ''}".lower()
@@ -254,6 +255,11 @@ def _approve_listing(conn, listing, overrides=None):
             "UPDATE vehicles SET photo=? WHERE vin=? AND (photo IS NULL OR photo='')",
             (local_photo, vin)
         )
+
+    try:
+        assign_model_id(conn, vin, listing.get("model_id"))
+    except Exception as e:  # model_id column not migrated yet
+        print(f"[model_id] not assigned for {vin}: {e}")
 
     # Jeśli tablica pochodzi ze zdjęcia (plate_review_queue), dodaj tag 'photo extracted'
     try:

@@ -6,6 +6,7 @@ one implementation so a VIN accepted by a scraper is never rejected by the app.
 Change it only together with tests in tests/test_validation.py.
 """
 import re
+from datetime import date
 
 # Used both to validate a whole string and to find VIN candidates inside free text
 VIN_RE = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
@@ -77,9 +78,24 @@ def is_valid_registration_plate(plate: str) -> bool:
         return False
     if not (re.search(r"[A-Z]", cleaned) and re.search(r"[0-9]", cleaned)):
         return False
-    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX", "ALEJA", "STAN", "NOWY", "DEALER", "BEZWYP"]
+    blacklist = ["SALONPL", "BRAK", "AUTO", "TEST", "NIE", "XXX", "ALEJA", "STAN", "NOWY", "DEALER", "BEZWYP",
+                 "BMW", "M40I", "XDRIVE"]  # model names mistaken for plates
     if any(bad in cleaned for bad in blacklist):
         return False
     if len(set(cleaned)) <= 1:
         return False
     return True
+
+
+MIN_FIRST_REGISTRATION_YEAR = 1980
+
+
+def is_valid_first_registration_date(value, today=None) -> bool:
+    """True for an ISO date (YYYY-MM-DD) that is not in the future and not before 1980."""
+    if not value or not isinstance(value, str):
+        return False
+    try:
+        d = date.fromisoformat(value.strip())
+    except ValueError:
+        return False
+    return d.year >= MIN_FIRST_REGISTRATION_YEAR and d <= (today or date.today())

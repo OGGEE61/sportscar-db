@@ -353,3 +353,41 @@ DEFAULT_MODEL_ID = "x3_m40i_g01"
 def get_model(model_id):
     """Return the catalog entry for model_id, or None."""
     return next((m for m in STANDARD_MODELS if m["id"] == model_id), None)
+
+
+def _pick_model_id(ids, variant):
+    """One catalog id out of the generations whose rule matched, or None when ambiguous."""
+    if len(ids) == 1:
+        return ids[0]
+    want = (variant or "").strip().lower()
+    exact = [i for i in ids if want and get_model(i)["variant"].lower() == want]
+    return exact[0] if len(exact) == 1 else None
+
+
+def resolve_model_ids(conn, vin=None):
+    """Map vin -> catalog model_id (or None if no rule or several rules match).
+
+    One query evaluates every catalog rule, so it is cheap on D1 as well.
+    Pass vin to resolve a single vehicle.
+    """
+    cols = ", ".join(f"({m['where']}) AS m{i}" for i, m in enumerate(STANDARD_MODELS))
+    sql = f"SELECT v.vin, v.variant, {cols} FROM vehicles v"
+    params = []
+    if vin:
+        sql += " WHERE v.vin = ?"
+        params.append(vin)
+    out = {}
+    for row in conn.execute(sql, params).fetchall():
+        ids = [m["id"] for i, m in enumerate(STANDARD_MODELS) if row[f"m{i}"]]
+        out[row["vin"]] = _pick_model_id(ids, row["variant"])
+    return out
+
+
+def assign_model_id(conn, vin, preferred=None):
+    """Store vehicles.model_id for vin: the scraper-declared id if it is in the
+    catalog, otherwise the one the catalog rules resolve. Never overwrites a
+    value that is already set. Returns the id or None."""
+    model_id = preferred if get_model(preferred) else resolve_model_ids(conn, vin).get(vin)
+    if model_id:
+        conn.execute("UPDATE vehicles SET model_id = ? WHERE vin = ? AND model_id IS NULL", (model_id, vin))
+    return model_id
