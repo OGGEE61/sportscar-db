@@ -13,7 +13,7 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.audi_r8_v8 import CONFIG as OTOMOTO
-from olx._common import engine_cc_validator
+from olx._common import all_of, engine_cc_validator, year_required
 
 
 CONFIG = dataclasses.replace(
