@@ -1,4 +1,5 @@
 """SportsCar DB web app: Flask app factory and blueprint registration."""
+import hashlib
 import json
 import os
 import time
@@ -11,6 +12,15 @@ from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_plausible_vin, is_valid_r
 
 _NOTIF_CACHE = {"at": 0.0, "data": None}
 _NOTIF_TTL = 60  # seconds
+
+
+def _static_version(filename):
+    """Short content hash of a static file, used to bust browser/CDN caches when it changes."""
+    try:
+        with open(os.path.join(ROOT_DIR, "static", filename), "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()[:8]
+    except OSError:
+        return "0"
 
 
 def invalidate_notifications():
@@ -77,6 +87,7 @@ def create_app() -> Flask:
     app.jinja_env.tests["valid_plate"] = is_valid_registration_plate
     app.jinja_env.globals["media_url"] = media_url
     app.context_processor(_inject_notifications)
+    app.jinja_env.globals["css_version"] = _static_version("style.css")
 
     from webapp.blueprints import api, auth, cepik, dashboard, plates, review, vehicles
     for module in (auth, dashboard, vehicles, review, plates, cepik, api):
