@@ -99,6 +99,24 @@ class TestSeenAgainClearsRemoved(ScrapingTestCase):
         self.assertEqual(left, 0)
 
 
+class TestSessionHealth(ScrapingTestCase):
+    def log(self, status):
+        return self.client.post("/api/log_run", headers=TOKEN, json={
+            "status": "success", "message": "m", "source": "otomoto", "session_status": status})
+
+    def test_expired_session_shows_banner(self):
+        self.log("expired")
+        self.assertIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+
+    def test_ok_session_has_no_banner(self):
+        self.log("expired")
+        self.log("ok")
+        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+
+    def test_unknown_value_is_ignored(self):
+        self.log("garbage")
+        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+
 class TestPlateDateQuality(ScrapingTestCase):
     def ingest(self, sid, **extra):
         body = {"source": "otomoto", "source_listing_id": sid, "make": "BMW", "model": "X3 M",

@@ -203,6 +203,8 @@ def api_log_run():
     conn.commit()
     if p.get("source"):
         _set_optional_column(conn, "scraper_logs", "source", p["source"], cur.lastrowid)
+    if p.get("session_status") in ("ok", "expired", "none"):
+        _set_optional_column(conn, "scraper_logs", "session_status", p["session_status"], cur.lastrowid)
     conn.close()
     return jsonify({"ok": True})
 
