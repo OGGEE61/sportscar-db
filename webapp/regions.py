@@ -122,3 +122,20 @@ REGION_NAME_TO_CODE = {
     'wielkopolskie': 'PL-WP',
     'zachodniopomorskie': 'PL-ZP'
 }
+
+
+def resolve_region(region, city=None):
+    """Return a known voivodeship code (a key of REGION_NAMES) or None.
+
+    Accepts a code, a Polish region name, or falls back to the city. Anything
+    else (e.g. a stray 5-char string) is dropped so maps never get unknown keys.
+    """
+    if region:
+        region = region.strip()
+        if region in REGION_NAMES:
+            return region
+        code = REGION_NAME_TO_CODE.get(region.lower())
+        if code:
+            return code
+    code = CITY_TO_REGION.get(city) if city else None
+    return code if code in REGION_NAMES else None

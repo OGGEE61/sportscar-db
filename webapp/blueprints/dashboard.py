@@ -5,7 +5,7 @@ from db import get_db
 from webapp import invalidate_notifications
 from webapp.helpers import script_json
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
-from webapp.regions import CITY_TO_REGION, REGION_NAMES, REGION_NAME_TO_CODE
+from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
 bp = Blueprint("dashboard", __name__)
 
@@ -169,9 +169,7 @@ def dashboard():
     recent = []
     for r in recent_rows:
         d = dict(r)
-        reg = d.get("location_region")
-        if not reg or len(reg) != 5:
-            reg = CITY_TO_REGION.get(d.get("location_city"), "")
+        reg = resolve_region(d.get("location_region"), d.get("location_city")) or ""
         d["region"] = reg
         d["region_name"] = REGION_NAMES.get(reg, "")
         recent.append(d)
@@ -208,14 +206,7 @@ def dashboard():
     cities = conn.execute("SELECT location_region, location_city, COUNT(DISTINCT vin) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
     region_counts = {}
     for r in cities:
-        reg = r["location_region"]
-        if not reg or len(reg) != 5:
-            city = r["location_city"]
-            if city and city in CITY_TO_REGION:
-                reg = CITY_TO_REGION[city]
-            else:
-                reg = None
-                
+        reg = resolve_region(r["location_region"], r["location_city"])
         if reg:
             region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
     
@@ -286,18 +277,7 @@ def model_analytics():
     # Annotate region codes and names for mapping & filtering
     region_counts = {}
     for v in vehicles:
-        reg = v.get("location_region")
-        if reg and reg in REGION_NAMES:
-            pass
-        elif reg and reg.lower() in REGION_NAME_TO_CODE:
-            reg = REGION_NAME_TO_CODE[reg.lower()]
-        else:
-            city = v.get("location_city")
-            if city and city in CITY_TO_REGION:
-                reg = CITY_TO_REGION[city]
-            else:
-                reg = None
-                
+        reg = resolve_region(v.get("location_region"), v.get("location_city"))
         if reg:
             region_counts[reg] = region_counts.get(reg, 0) + 1
             v["region"] = reg

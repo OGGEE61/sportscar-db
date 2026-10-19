@@ -9,7 +9,7 @@
 [x] 9. Plate and first-registration date quality for CEPiK: validate the date at ingest (not in the future, not before 1980), "Do poprawy" tab on /cepik with plate/date editing and re-check (12/29 X3 M40i have no report, e.g. plate "BMWm40i", date "2024-01-01"). Note: plate validation lives in validation.py - change only with tests (PR #9)
 [x] 10. Store model_id (id from webapp/model_catalog.py) on the vehicle at approval: ScraperConfig.model_id -> pending_listings -> vehicles, migration v13 with backfill; /models filters by model_id instead of loose conditions (e.g. Cayman 981 and 718 both match 2016) (PR #11)
 [x] 11. Warn about expired otomoto cookies: scraper reports session state (ok/expired), dashboard banner when VINs are not revealed; migration v12 (PR #10)
-[ ] 12. Maps (dashboard, /models): only pass known voivodeship codes from REGION_NAMES (PR #12)
+[x] 12. Maps (dashboard, /models): only pass known voivodeship codes from REGION_NAMES (PR #12)
 [ ] 13. Bulk buttons on /review (e.g. reject all) ignore the OLX/Otomoto filter - respect the filter or label it clearly (PR #13)
 
 ## Operational follow-ups
