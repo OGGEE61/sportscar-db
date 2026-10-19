@@ -99,6 +99,55 @@ class TestSeenAgainClearsRemoved(ScrapingTestCase):
         self.assertEqual(left, 0)
 
 
+class TestPlateDateQuality(ScrapingTestCase):
+    def ingest(self, sid, **extra):
+        body = {"source": "otomoto", "source_listing_id": sid, "make": "BMW", "model": "X3 M",
+                "variant": "M40i", "raw_title": "BMW X3"}
+        body.update(extra)
+        return self.client.post("/api/ingest_pending", headers=TOKEN, json=body)
+
+    def stored(self, sid):
+        conn = db.get_db()
+        row = conn.execute("SELECT registration_plate, first_registration_date FROM pending_listings "
+                           "WHERE source_listing_id=?", (sid,)).fetchone()
+        conn.close()
+        return row
+
+    def test_invalid_dates_are_not_stored(self):
+        self.ingest("future", first_registration_date="2999-01-01", registration_plate="WX12345")
+        self.ingest("ancient", first_registration_date="1950-01-01")
+        self.ingest("good", first_registration_date="2019-03-04")
+        self.assertIsNone(self.stored("future")["first_registration_date"])
+        self.assertEqual(self.stored("future")["registration_plate"], "WX12345")
+        self.assertIsNone(self.stored("ancient")["first_registration_date"])
+        self.assertEqual(self.stored("good")["first_registration_date"], "2019-03-04")
+
+    def test_model_name_is_not_stored_as_plate(self):
+        self.ingest("m40i", registration_plate="BMWm40i")
+        self.assertIsNone(self.stored("m40i")["registration_plate"])
+
+    def test_fix_tab_and_fix_endpoint(self):
+        conn = db.get_db()
+        conn.execute("CREATE TABLE IF NOT EXISTS cepik_sync_log (vin TEXT PRIMARY KEY, status TEXT, "
+                     "message TEXT, attempted_at TEXT DEFAULT (datetime('now')))")
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, registration_plate, first_registration_date) "
+                     "VALUES ('WBS8M9C50J5K99001','BMW','X3 M','M40i',2024,'BMWm40i','2024-01-01')")
+        conn.commit()
+        conn.close()
+        page = self.client.get("/cepik?tab=fix")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"WBS8M9C50J5K99001", page.data)
+        self.assertIn("Niepoprawna tablica".encode(), page.data)
+
+        bad = self.client.post("/api/cepik/fix/WBS8M9C50J5K99001", json={
+            "plate": "BMWm40i", "first_registration_date": "2024-01-01"})
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.post("/api/cepik/fix/WBS8M9C50J5K99001", json={
+            "plate": "wx 12345", "first_registration_date": "2024-02-03"})
+        self.assertEqual(ok.get_json()["plate"], "WX12345")
+        self.assertNotIn(b"WBS8M9C50J5K99001", self.client.get("/cepik?tab=fix").data.split(b"<tbody>")[1])
+
+
 class TestKnownListings(ScrapingTestCase):
     def test_complete_incomplete_and_rejected(self):
         self.add_active_listing("full", "WBS8M9C50J5K99001", "F80", plate="WX12345", frd="2016-05-01")
