@@ -5,7 +5,10 @@ import re
 
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
-from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate, safe_float, safe_int
+from webapp.model_catalog import get_model
+from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
+
+from webapp.helpers import is_valid_first_registration_date
 from webapp.regions import CITY_TO_REGION
 from webapp.services.photos import save_photo
 
@@ -399,6 +402,8 @@ def api_ingest_pending():
         lid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         if p.get("found_by"):
             _set_optional_column(conn, "pending_listings", "found_by", p["found_by"], lid)
+        if get_model(p.get("model_id")):
+            _set_optional_column(conn, "pending_listings", "model_id", p["model_id"], lid)
 
         # ── Download + compress photo ─────────────────────────────────────────
         photos_list = p.get("photos") or []
