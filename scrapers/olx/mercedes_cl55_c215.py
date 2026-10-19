@@ -24,6 +24,8 @@ CONFIG = dataclasses.replace(
         "&page={page}"
     ),
     max_year = 2006,
+    # 'ml 55 amg' / 'c55 amg' also match the generic '55 amg' keyword
+    title_must_contain = ['cl55', 'cl 55', 'cl-55'],
     skip_otomoto_hosted = True,
 )
 

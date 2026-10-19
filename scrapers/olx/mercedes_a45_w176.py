@@ -13,6 +13,7 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.mercedes_a45_w176 import CONFIG as OTOMOTO
+from olx._common import all_of, min_power_validator
 
 
 CONFIG = dataclasses.replace(
@@ -26,6 +27,9 @@ CONFIG = dataclasses.replace(
     ),
     min_year = 2016,
     max_year = 2020,
+    # card-title filter: the otomoto one also accepts any 'klasa a' / any GLA
+    title_must_contain = ['a45', 'a 45', 'a-45', 'amg 45', '45 amg', '45amg'],
+    validator = all_of(OTOMOTO.validator, min_power_validator(350, 'a45')),
     skip_otomoto_hosted = True,
 )
 

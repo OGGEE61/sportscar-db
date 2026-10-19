@@ -24,6 +24,8 @@ CONFIG = dataclasses.replace(
         "&page={page}"
     ),
     max_year = 2012,
+    # g550 contains 'g55'; c55/ml55 match the generic '55 amg' keyword
+    title_must_not_contain = OTOMOTO.title_must_not_contain + ['g550', 'g 550', 'c55', 'c 55', 'ml55', 'ml 55', 'e55', 'e 55', 'cl55', 'cl 55'],
     skip_otomoto_hosted = True,
 )
 

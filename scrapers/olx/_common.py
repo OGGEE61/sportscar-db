@@ -14,3 +14,10 @@ def min_power_validator(min_hp: int, label: str):
             return False
         return True
     return validate
+
+
+def all_of(*validators):
+    """Combine validators (None entries ignored): a listing must pass every one."""
+    checks = [v for v in validators if v]
+    return lambda detail: all(v(detail) for v in checks)
+
