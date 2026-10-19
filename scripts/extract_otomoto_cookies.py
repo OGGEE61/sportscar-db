@@ -3,6 +3,7 @@
 Usage:
     pip install selenium
     python scripts/extract_otomoto_cookies.py            # writes scrapers/otomoto_cookies.json
+    python scripts/extract_otomoto_cookies.py --wait 300   # no Enter needed: waits for the login
     python scripts/extract_otomoto_cookies.py --gh-secret  # also updates the OTOMOTO_COOKIES secret
 
 A dedicated Chrome profile (~/.otomoto_chrome_profile) is reused between runs,
@@ -36,6 +37,9 @@ KEY_COOKIES = ("id_token", "refresh_token", "client_id")
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=OUT_FILE)
+    ap.add_argument("--wait", type=int, default=0, metavar="SECONDS",
+                    help="don't wait for Enter: poll until the login cookies appear "
+                         "(up to SECONDS), for runs without a terminal")
     ap.add_argument("--gh-secret", action="store_true",
                     help="also run `gh secret set OTOMOTO_COOKIES` with the result")
     args = ap.parse_args()
@@ -47,8 +51,17 @@ def main():
     driver = webdriver.Chrome(options=opts)
     try:
         driver.get(URL)
-        input("Log into otomoto.pl in the opened Chrome window (accept cookies, "
-              "sign in), then press Enter here... ")
+        if args.wait:
+            print(f"Log into otomoto.pl in the opened Chrome window (waiting up to {args.wait}s)...")
+            deadline = time.time() + args.wait
+            while time.time() < deadline:
+                names = {c["name"] for c in driver.get_cookies()}
+                if all(k in names for k in KEY_COOKIES):
+                    break
+                time.sleep(2)
+        else:
+            input("Log into otomoto.pl in the opened Chrome window (accept cookies, "
+                  "sign in), then press Enter here... ")
         # Reload so cookies set by JS after login are present
         driver.get(URL)
         time.sleep(3)
