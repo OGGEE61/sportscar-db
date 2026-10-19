@@ -12,7 +12,7 @@ _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
-from olx._common import all_of, year_required
+from olx._common import year_required
 from otomoto.mercedes_sl55_r230 import CONFIG as OTOMOTO
 
 
