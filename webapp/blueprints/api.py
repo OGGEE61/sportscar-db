@@ -8,7 +8,7 @@ from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
 from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
-from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate, safe_float, safe_int
+from webapp.helpers import is_valid_first_registration_date
 from webapp.regions import CITY_TO_REGION
 from webapp.services.photos import save_photo
 
