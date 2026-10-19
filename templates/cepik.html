@@ -79,6 +79,12 @@
     </a>
   </li>
   <li class="nav-item">
+    <a class="nav-link {% if tab == 'fix' %}active{% endif %}" href="/cepik?tab=fix">
+      Do poprawy
+      <span class="badge bg-warning text-dark ms-1">{{ stats.fix_count }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
     <a class="nav-link {% if tab == 'log' %}active{% endif %}" href="/cepik?tab=log">
       Historia zapytań
     </a>
@@ -102,6 +108,7 @@
       <button type="submit" class="btn btn-primary btn-sm px-3 shadow-sm">Szukaj</button>
       <span class="text-muted small">Wyników: 
         {% if tab == 'missing' %}{{ missing_items|length }}
+        {% elif tab == 'fix' %}{{ fix_items|length }}
         {% elif tab == 'log' %}{{ sync_logs|length }}
         {% else %}{{ reports|length }}
         {% endif %}
@@ -342,6 +349,43 @@
             Wszystkie kwalifikujące się pojazdy zostały już sprawdzone w CEPiK.
           </td>
         </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Zawartość: Zakładka "Do poprawy" -->
+{% if tab == 'fix' %}
+<div class="card border shadow-sm rounded-3 overflow-hidden bg-white mb-4">
+  <div class="p-3 border-bottom bg-light">
+    <h6 class="mb-0 fw-bold text-dark">Pojazdy z błędną tablicą lub datą 1. rejestracji</h6>
+    <small class="text-muted">Popraw dane i zapisz &ndash; po zapisaniu raport zostanie od razu pobrany ponownie z CEPiK.</small>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+      <thead class="table-light text-muted small text-uppercase" style="font-size: 0.72rem;">
+        <tr><th>Pojazd & VIN</th><th>Problem</th><th>Tablica</th><th>Data 1. Rej.</th><th class="text-end">Akcje</th></tr>
+      </thead>
+      <tbody>
+        {% for f in fix_items %}
+        <tr data-vin="{{ f.vin }}">
+          <td>
+            <div class="fw-bold text-dark">{{ f.make }} {{ f.model }} {% if f.year %}<span class="text-muted fw-normal">({{ f.year }})</span>{% endif %}</div>
+            <a href="/vehicle/{{ f.vin }}" class="font-monospace small text-decoration-none text-dark">{{ f.vin }}</a>
+          </td>
+          <td>
+            {% for pr in f.problems %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle d-block mb-1">{{ pr }}</span>{% endfor %}
+          </td>
+          <td><input type="text" class="form-control form-control-sm font-monospace fix-plate" value="{{ f.registration_plate or '' }}" maxlength="10" style="text-transform: uppercase; width: 8rem;"></td>
+          <td><input type="date" class="form-control form-control-sm fix-date" value="{{ f.first_registration_date or '' }}" style="width: 10rem;"></td>
+          <td class="text-end">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveAndRecheck('{{ f.vin }}', this)">Zapisz i sprawdź</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center py-5 text-muted">Brak pojazdów wymagających poprawy.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -615,6 +659,34 @@ async function refreshVehicleCepik(vin, btn) {
     btn.disabled = false;
     btn.innerHTML = originalHtml;
   }
+}
+
+async function saveAndRecheck(vin, btn) {
+  const row = btn.closest('tr');
+  const body = JSON.stringify({
+    plate: row.querySelector('.fix-plate').value,
+    first_registration_date: row.querySelector('.fix-date').value
+  });
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const fix = await fetch(`/api/cepik/fix/${encodeURIComponent(vin)}`, { method: 'POST', headers, body });
+    const fixData = await fix.json();
+    if (!fix.ok) {
+      alert(fixData.message || 'Nie udało się zapisać');
+    } else {
+      const res = await fetch(`/api/cepik/fetch/${encodeURIComponent(vin)}`, { method: 'POST', headers, body });
+      const data = await res.json();
+      if (res.ok && data.status === 'ok') { window.location.href = '/cepik?tab=all'; return; }
+      alert('Zapisano, ale CEPiK: ' + (data.message || 'nie odnaleziono rekordu'));
+    }
+  } catch (err) {
+    alert('Błąd połączenia: ' + err.message);
+  }
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
 }
 
 async function fetchSingleMissing(vin, plate, firstReg, btn) {
