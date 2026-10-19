@@ -4,6 +4,7 @@ Usage:
     python scrapers/run_olx.py              # runs all OLX models
     python scrapers/run_olx.py all          # runs all OLX models
     python scrapers/run_olx.py alpina       # runs only BMW Alpina OLX scraper
+    python scrapers/run_olx.py next_4       # rotating window of 4 scrapers (used by the schedule)
 """
 import sys
 import os
@@ -155,7 +156,16 @@ if __name__ == "__main__":
     if not target:
         target = "all"
 
-    scrapers_to_run = SCRAPER_MAP.get(target, ALL_OLX_FLEET)
+    if target.startswith("next_") and target[5:].isdigit():
+        # Rotating window: `count` consecutive scrapers, shifted by one every
+        # `interval_hours`. Windows overlap on purpose, so a skipped or delayed
+        # GitHub schedule run (they are best-effort) does not leave any scraper
+        # out of the rotation.
+        count = int(target[5:])
+        slot = int(time.time() // (4 * 3600))
+        scrapers_to_run = [ALL_OLX_FLEET[(slot + i) % len(ALL_OLX_FLEET)] for i in range(count)]
+    else:
+        scrapers_to_run = SCRAPER_MAP.get(target, ALL_OLX_FLEET)
     print(f"Running OLX scraper target: {target} ({len(scrapers_to_run)} scraper(s))")
 
     totals = {"total": 0, "new": 0, "duplicate": 0}
