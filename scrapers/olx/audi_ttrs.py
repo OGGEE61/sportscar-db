@@ -13,7 +13,7 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.audi_ttrs import CONFIG as OTOMOTO
-from olx._common import min_power_validator
+from olx._common import all_of, min_power_validator, year_required
 
 
 CONFIG = dataclasses.replace(
@@ -26,7 +26,7 @@ CONFIG = dataclasses.replace(
     ),
     title_must_contain = ['tt rs', 'ttrs', 'tt-rs'],
     min_year = 2009,
-    validator = min_power_validator(330, 'tt-rs'),
+    validator = all_of(min_power_validator(330, 'tt-rs'), year_required('tt-rs')),
     skip_otomoto_hosted = True,
 )
 

@@ -24,9 +24,9 @@ CONFIG = dataclasses.replace(
         "?"
         "&page={page}"
     ),
-    title_must_contain = ['r8'],
+    title_must_contain = ['audi r8', 'r8 v8', 'r8 coupe', 'r8 spyder'],
     title_must_not_contain = ['v10', '5.2'],
-    validator = engine_cc_validator(None, 4500, 'r8-v8'),
+    validator = all_of(engine_cc_validator(None, 4500, 'r8-v8'), year_required('r8-v8')),
     skip_otomoto_hosted = True,
 )
 

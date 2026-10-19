@@ -13,7 +13,7 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.bmw_1m_e82 import CONFIG as OTOMOTO
-from olx._common import all_of, min_power_validator
+from olx._common import all_of, min_power_validator, year_required
 
 
 CONFIG = dataclasses.replace(
@@ -25,10 +25,10 @@ CONFIG = dataclasses.replace(
         "&search[filter_float_year:to]=2012"
         "&page={page}"
     ),
-    title_must_contain = ['1m', '1 m'],
+    title_must_contain = ['bmw 1m', '1m coupe', '1m coupé', '1m e82', 'e82 1m', '1 m coupe', 'bmw 1 m'],
     min_year = 2011,
     max_year = 2012,
-    validator = all_of(OTOMOTO.validator, min_power_validator(330, '1m')),
+    validator = all_of(OTOMOTO.validator, min_power_validator(330, '1m'), year_required('1m')),
     skip_otomoto_hosted = True,
 )
 

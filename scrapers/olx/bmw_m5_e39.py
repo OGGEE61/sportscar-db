@@ -13,7 +13,7 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.bmw_m5_e39 import CONFIG as OTOMOTO
-from olx._common import min_power_validator
+from olx._common import all_of, min_power_validator, year_required
 
 
 CONFIG = dataclasses.replace(
@@ -28,7 +28,7 @@ CONFIG = dataclasses.replace(
     title_must_contain = ['m5'],
     min_year = 1998,
     max_year = 2003,
-    validator = min_power_validator(390, 'm5-e39'),
+    validator = all_of(min_power_validator(390, 'm5-e39'), year_required('m5-e39')),
     skip_otomoto_hosted = True,
 )
 

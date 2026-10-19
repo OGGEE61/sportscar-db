@@ -32,3 +32,17 @@ def engine_cc_validator(min_cc: int | None, max_cc: int | None, label: str):
             return False
         return True
     return validate
+
+
+def year_required(label: str):
+    """Reject listings without a model year.
+
+    OLX text searches also return toys, parts and tools that mention the model
+    name; real car ads always carry a year in their parameters.
+    """
+    def validate(detail: dict) -> bool:
+        if detail.get("year"):
+            return True
+        print(f"  [reject-{label}] no model year -- not a car ad.")
+        return False
+    return validate

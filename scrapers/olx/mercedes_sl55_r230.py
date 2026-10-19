@@ -12,6 +12,7 @@ _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
+from olx._common import all_of, year_required
 from otomoto.mercedes_sl55_r230 import CONFIG as OTOMOTO
 
 
@@ -26,6 +27,7 @@ CONFIG = dataclasses.replace(
     title_must_contain = ['sl55', 'sl 55', 'sl-55'],
     title_must_not_contain = OTOMOTO.title_must_not_contain + ['sl550', 'sl 550', 'ml55', 'ml 55'],
     max_year = 2008,
+    validator = year_required('sl55'),
     skip_otomoto_hosted = True,
 )
 

@@ -13,7 +13,7 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.bmw_135i_e82 import CONFIG as OTOMOTO
-from olx._common import min_power_validator
+from olx._common import all_of, min_power_validator, year_required
 
 
 CONFIG = dataclasses.replace(
@@ -26,9 +26,11 @@ CONFIG = dataclasses.replace(
         "&page={page}"
     ),
     title_must_contain = ['135i', '135 i'],
+    # M135i is the F20 generation (title also contains '135i')
+    title_must_not_contain = OTOMOTO.title_must_not_contain + ['m135i', 'm 135i'],
     min_year = 2007,
     max_year = 2013,
-    validator = min_power_validator(300, '135i'),
+    validator = all_of(min_power_validator(300, '135i'), year_required('135i')),
     skip_otomoto_hosted = True,
 )
 
