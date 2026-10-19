@@ -4,9 +4,9 @@
               also returns cross-posted otomoto ads) #}
 {% macro source_badge(source, found_by=None) -%}
 {%- set s = (source or '')|lower -%}
-{%- if s == 'olx' -%}<span class="badge src-badge src-olx">OLX</span>
-{%- elif s == 'otomoto' -%}<span class="badge src-badge src-otomoto">Otomoto</span>
-{%- elif s -%}<span class="badge src-badge src-other">{{ source }}</span>
+{%- if s == 'olx' -%}<span class="badge src-badge src-olx" style="background:#0f766e;color:#fff">OLX</span>
+{%- elif s == 'otomoto' -%}<span class="badge src-badge src-otomoto" style="background:#c2410c;color:#fff">Otomoto</span>
+{%- elif s -%}<span class="badge src-badge src-other" style="background:#475569;color:#fff">{{ source }}</span>
 {%- endif -%}
 {%- if found_by and (found_by|lower) != s %} <span class="text-muted small text-nowrap">via {{ 'OLX' if (found_by|lower) == 'olx' else found_by|capitalize }}</span>{% endif -%}
 {%- endmacro %}
