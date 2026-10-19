@@ -53,6 +53,7 @@ on:
           - m5
           - z3_m
           - r8
+          - macan
 
 jobs:
   scrape:

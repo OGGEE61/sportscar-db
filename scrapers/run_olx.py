@@ -56,6 +56,7 @@ from olx.bmw_1m_e82 import CONFIG as ONE_M_E82_OLX
 from olx.bmw_135i_e82 import CONFIG as I135_E82_OLX
 from olx.bmw_m5_e39 import CONFIG as M5_E39_OLX
 from olx.bmw_z3_m_coupe import CONFIG as Z3_M_OLX
+from olx.porsche_macan_gen1 import CONFIG as MACAN_OLX
 
 ALL_OLX_FLEET = [
     ALPINA_OLX,
@@ -92,6 +93,7 @@ ALL_OLX_FLEET = [
     I135_E82_OLX,
     M5_E39_OLX,
     Z3_M_OLX,
+    MACAN_OLX,
 ]
 
 SCRAPER_MAP = {
@@ -142,6 +144,7 @@ SCRAPER_MAP = {
     "m5": [M5_E39_OLX],
     "z3_m": [Z3_M_OLX],
     "r8": [R8_V8_OLX, R8_V10_OLX],
+    "macan": [MACAN_OLX],
     "all":      ALL_OLX_FLEET,
 }
 
