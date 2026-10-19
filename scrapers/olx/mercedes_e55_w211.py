@@ -13,18 +13,13 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.mercedes_e55_w211 import CONFIG as OTOMOTO
-from olx._common import min_power_validator
+from olx._common import min_power_validator, olx_url
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/mercedes-benz/q-e55/"
-        "?search[filter_float_year:from]=2003"
-        "&search[filter_float_year:to]=2006"
-        "&page={page}"
-    ),
+    list_url = olx_url('mercedes-benz', ['e-class'], year_from=2003, year_to=2006, power_from=460),
     min_year = 2003,
     max_year = 2006,
     validator = min_power_validator(460, 'e55'),

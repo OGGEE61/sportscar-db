@@ -13,18 +13,13 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.mercedes_a45_w176 import CONFIG as OTOMOTO
-from olx._common import all_of, min_power_validator
+from olx._common import all_of, min_power_validator, olx_url
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/mercedes-benz/q-a45/"
-        "?search[filter_float_year:from]=2016"
-        "&search[filter_float_year:to]=2020"
-        "&page={page}"
-    ),
+    list_url = olx_url('mercedes-benz', ['a-class'], year_from=2016, year_to=2020, power_from=350, power_to=400),
     min_year = 2016,
     max_year = 2020,
     # card-title filter: the otomoto one also accepts any 'klasa a' / any GLA

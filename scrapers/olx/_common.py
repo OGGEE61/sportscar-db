@@ -46,3 +46,25 @@ def year_required(label: str):
         print(f"  [reject-{label}] no model year -- not a car ad.")
         return False
     return validate
+
+
+def olx_url(make: str, models: list[str], *, year_from=None, year_to=None,
+            power_from=None, power_to=None, size_from=None, size_to=None) -> str:
+    """OLX list URL (with a {page} placeholder) using OLX's own filters.
+
+    `models` are OLX model slugs (filter_enum_model, e.g. 'cayman', 'rs4-avant').
+    Filtering by model, year, power (HP) and engine size (cm3) on OLX's side keeps
+    toys, parts and look-alike cars out of the result pages, so far fewer pages and
+    detail requests are needed. Results are newest first, which lets the scraper
+    stop at the first page of already-known listings. Ads that leave a filtered
+    field (e.g. power) blank are not returned, same as the otomoto URLs.
+    """
+    params = [f"search[filter_enum_model][{i}]={m}" for i, m in enumerate(models)]
+    for name, lo, hi in (("year", year_from, year_to), ("enginepower", power_from, power_to),
+                         ("enginesize", size_from, size_to)):
+        if lo:
+            params.append(f"search[filter_float_{name}:from]={lo}")
+        if hi:
+            params.append(f"search[filter_float_{name}:to]={hi}")
+    params.append("search[order]=created_at:desc")
+    return f"https://www.olx.pl/motoryzacja/samochody/{make}/?" + "&".join(params) + "&page={page}"

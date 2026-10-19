@@ -13,17 +13,13 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.audi_ttrs import CONFIG as OTOMOTO
-from olx._common import all_of, min_power_validator, year_required
+from olx._common import all_of, min_power_validator, olx_url, year_required
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/audi/q-tt-rs/"
-        "?search[filter_float_year:from]=2009"
-        "&page={page}"
-    ),
+    list_url = olx_url('audi', ['tt-rs', 'tt-rs-roadster'], year_from=2009),
     title_must_contain = ['tt rs', 'ttrs', 'tt-rs'],
     min_year = 2009,
     validator = all_of(min_power_validator(330, 'tt-rs'), year_required('tt-rs')),

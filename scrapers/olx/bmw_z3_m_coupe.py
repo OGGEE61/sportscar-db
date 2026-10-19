@@ -13,17 +13,13 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.bmw_z3_m_coupe import CONFIG as OTOMOTO
-from olx._common import all_of, min_power_validator, year_required
+from olx._common import all_of, min_power_validator, olx_url, year_required
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/bmw/z3/"
-        "?"
-        "&page={page}"
-    ),
+    list_url = olx_url('bmw', ['z3'], power_from=300),
     title_must_contain = ['z3m', 'z3 m', 'z3-m', 'm coupe', 'm roadster'],
     validator = all_of(min_power_validator(300, 'z3-m'), year_required('z3-m')),
     skip_otomoto_hosted = True,

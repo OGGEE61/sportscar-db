@@ -13,18 +13,13 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from otomoto.porsche_cayman_981 import CONFIG as OTOMOTO
-from olx._common import min_power_validator
+from olx._common import min_power_validator, olx_url
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/porsche/cayman/"
-        "?search[filter_float_year:from]=2013"
-        "&search[filter_float_year:to]=2016"
-        "&page={page}"
-    ),
+    list_url = olx_url('porsche', ['cayman'], year_from=2013, year_to=2016, power_from=320),
     title_must_contain = ['cayman'],
     title_must_not_contain = ['boxster', '911', 'carrera', 'macan', 'panamera', 'cayenne', 'taycan'],
     min_year = 2013,
