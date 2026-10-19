@@ -35,6 +35,14 @@ on:
           - rs4
           - rs4_b85
           - rs4_b9
+          - a45
+          - gla45
+          - cl55
+          - clk63
+          - cls55
+          - e55
+          - g55
+          - s55
 
 jobs:
   scrape:
