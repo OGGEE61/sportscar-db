@@ -6,7 +6,7 @@
 {%- set s = (source or '')|lower -%}
 {%- if s == 'olx' -%}<span class="badge src-badge src-olx">OLX</span>
 {%- elif s == 'otomoto' -%}<span class="badge src-badge src-otomoto">Otomoto</span>
-{%- elif s -%}<span class="badge src-badge bg-light text-dark border">{{ source }}</span>
+{%- elif s -%}<span class="badge src-badge src-other">{{ source }}</span>
 {%- endif -%}
 {%- if found_by and (found_by|lower) != s %} <span class="text-muted small text-nowrap">via {{ 'OLX' if (found_by|lower) == 'olx' else found_by|capitalize }}</span>{% endif -%}
 {%- endmacro %}

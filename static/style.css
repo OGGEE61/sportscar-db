@@ -570,7 +570,8 @@ body {
   transform: scale(1.01);
 }
 
-/* Listing / scraper source badges (OLX vs otomoto) */
-.src-badge { font-size: 0.7em; font-weight: 600; letter-spacing: .02em; }
-.src-olx { background: #e3f4f1; color: #00594c; border: 1px solid #a7d8cf; }
-.src-otomoto { background: #fdecee; color: #a1001a; border: 1px solid #f3b4bd; }
+/* Listing / scraper source badges (OLX vs otomoto): solid colours, explicit text colour */
+.src-badge { font-size: 0.78em; font-weight: 600; letter-spacing: .02em; padding: 0.4em 0.7em; }
+.badge.src-olx { background-color: #0f766e !important; color: #ffffff !important; border: 1px solid #0b5a54; }
+.badge.src-otomoto { background-color: #c2410c !important; color: #ffffff !important; border: 1px solid #9a3412; }
+.badge.src-other { background-color: #475569 !important; color: #ffffff !important; border: 1px solid #334155; }
