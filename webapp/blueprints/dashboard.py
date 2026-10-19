@@ -5,7 +5,7 @@ from db import get_db
 from webapp import invalidate_notifications
 from webapp.helpers import script_json
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
-from webapp.regions import CITY_TO_REGION, REGION_NAMES, REGION_NAME_TO_CODE, resolve_region
+from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
 bp = Blueprint("dashboard", __name__)
 
