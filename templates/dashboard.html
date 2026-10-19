@@ -14,6 +14,17 @@
 
 
 
+{% if otomoto_session %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+  <div>
+    <strong>Sesja Otomoto wygasła &ndash; VIN-y nie są odsłaniane.</strong>
+    {% if otomoto_session.session_status == 'none' %}Scraper nie ma ciasteczek.{% else %}Ciasteczka są nieaktualne.{% endif %}
+    Zaktualizuj sekrety z ciasteczkami (ostatnie uruchomienie: {{ (otomoto_session.run_date or '')[:16] }}).
+  </div>
+</div>
+{% endif %}
+
 <!-- Stat cards -->
 <div class="row g-3 mb-4">
   {% set cards = [

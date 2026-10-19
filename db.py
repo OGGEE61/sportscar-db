@@ -532,6 +532,13 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_model_id ON vehicles(model_id)")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(13,'model_id')")
 
+    # Migration v12: otomoto session health reported by the scraper (ok/expired/none),
+    # so the dashboard can warn when VINs are no longer being revealed.
+    have = {r[1] for r in db.execute("PRAGMA table_info(scraper_logs)").fetchall()}
+    if "session_status" not in have:
+        db.execute("ALTER TABLE scraper_logs ADD COLUMN session_status TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(12,'scraper_session_status')")
+
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
     db.execute("""
