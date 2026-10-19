@@ -21,3 +21,14 @@ def all_of(*validators):
     checks = [v for v in validators if v]
     return lambda detail: all(v(detail) for v in checks)
 
+
+
+def engine_cc_validator(min_cc: int | None, max_cc: int | None, label: str):
+    """Reject listings whose stated engine capacity is outside [min_cc, max_cc]."""
+    def validate(detail: dict) -> bool:
+        cc = detail.get("engine_cc") or 0
+        if cc and ((min_cc and cc < min_cc) or (max_cc and cc > max_cc)):
+            print(f"  [reject-{label}] {cc} cm3 outside {min_cc}-{max_cc} -- not a {label}.")
+            return False
+        return True
+    return validate

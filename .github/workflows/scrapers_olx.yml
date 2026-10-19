@@ -43,6 +43,16 @@ on:
           - e55
           - g55
           - s55
+          - sl55
+          - r8_v8
+          - r8_v10
+          - ttrs
+          - 1m
+          - 135i
+          - m5_e39
+          - m5
+          - z3_m
+          - r8
 
 jobs:
   scrape:
