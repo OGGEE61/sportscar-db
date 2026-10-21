@@ -35,9 +35,7 @@
         <li class="nav-item">
           <a class="nav-link position-relative {% if request.path.startswith('/plates') %}active{% endif %}" href="/plates">
             Tablice (Foto)
-            {% if pending_plates_count and pending_plates_count > 0 %}
-            <span class="badge rounded-pill bg-primary ms-1" style="font-size: 0.65rem;">{{ pending_plates_count }}</span>
-            {% endif %}
+            <span id="badge-plates" class="badge rounded-pill bg-primary ms-1 d-none" style="font-size: 0.65rem;"></span>
           </a>
         </li>
         <li class="nav-item">
@@ -51,11 +49,7 @@
         <li class="nav-item">
           <a class="nav-link position-relative text-muted" href="/logs" title="System Logs">
             <i class="bi bi-bell fs-5"></i>
-            {% if unread_notifications_count and unread_notifications_count > 0 %}
-            <span class="position-absolute top-25 start-75 translate-middle badge rounded-pill bg-danger" style="font-size: 0.6rem;">
-              {{ unread_notifications_count }}
-            </span>
-            {% endif %}
+            <span id="badge-logs" class="position-absolute top-25 start-75 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6rem;"></span>
           </a>
         </li>
       </ul>
@@ -79,6 +73,14 @@
 function escHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
+// Navbar counters load after paint so no page waits on the database for them
+fetch('/api/badges').then(r => r.ok ? r.json() : null).then(d => {
+  if (!d) return;
+  [['badge-plates', d.pending_plates_count], ['badge-logs', d.unread_notifications_count]].forEach(([id, n]) => {
+    const el = document.getElementById(id);
+    if (el && n > 0) { el.textContent = n; el.classList.remove('d-none'); }
+  });
+}).catch(() => {});
 </script>
 {% block scripts %}{% endblock %}
 </body>

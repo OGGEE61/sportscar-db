@@ -1,0 +1,51 @@
+{% from "_source.html" import source_badge %}
+        {% for r in recent %}
+        <tr>
+          <td style="width: 52px; text-align: center; padding: 4px;">
+            {% if r.photo %}
+            <a href="/vehicle/{{ r.vin }}" title="View vehicle">
+              <img src="{{ media_url(r.photo) }}" loading="lazy" decoding="async" alt="{{ r.make }} {{ r.model }}"
+                   style="width: 46px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #dee2e6; display: block; margin: 0 auto;"
+                   loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\'text-muted\' style=\'font-size: 10px;\'>No pic</span>';">
+            </a>
+            {% else %}
+            <div style="width: 46px; height: 32px; border-radius: 4px; background: #e9ecef; display: flex; align-items: center; justify-content: center; margin: 0 auto; color: #adb5bd; font-size: 13px;">
+              <i class="bi bi-car-front"></i>
+            </div>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a><br>
+            {% if not r.registration_plate %}
+            <span class="badge bg-warning text-dark" style="font-size: 0.65rem;" title="Registration plate is missing">Missing plates</span>
+            {% elif r.has_ai_plate %}
+            <a href="/?ai_plates=1" class="badge bg-light text-dark border text-decoration-none font-monospace" style="font-size: 0.65rem;" title="Kliknij, aby wyświetlić auta z tablicą odczytaną ze zdjęcia"><i class="bi bi-camera text-secondary me-1"></i>photo extracted</a>
+            {% endif %}
+          </td>
+          <td>{{ r.make }}</td>
+          <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
+          <td>{{ r.year or '—' }}</td>
+          <td>{{ r.power_hp or '—' }}</td>
+          <td><span class="fw-semibold" style="color: #1d4ed8;">{{ "{:,.0f} zł".format(r.price_pln) if r.price_pln else '—' }}</span></td>
+          <td>{{ "{:,} km".format(r.mileage_km) if r.mileage_km else '—' }}</td>
+          <td>
+            <span class="small">{{ r.location_city or '—' }}</span>
+            {% if r.region %}
+            <br><span class="badge bg-light text-dark border" style="font-size: 9px;">{{ r.region }}</span>
+            {% endif %}
+          </td>
+          <td>{{ source_badge(r.source) }}</td>
+          <td class="text-nowrap small text-muted">{{ r.observed_at[:16] }}</td>
+          <td>
+            {% if r.vin_status == 'verified' %}
+            <span class="badge bg-success text-white">verified</span>
+            {% elif r.vin_status == 'placeholder' %}
+            <span class="badge bg-warning text-dark">placeholder</span>
+            {% else %}
+            <span class="badge bg-secondary text-white">unverified</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="12" class="text-center text-muted py-4">No matching observations found</td></tr>
+        {% endfor %}

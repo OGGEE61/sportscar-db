@@ -575,3 +575,15 @@ body {
 .badge.src-olx { background-color: #0f766e !important; color: #ffffff !important; border: 1px solid #0b5a54; }
 .badge.src-otomoto { background-color: #c2410c !important; color: #ffffff !important; border: 1px solid #9a3412; }
 .badge.src-other { background-color: #475569 !important; color: #ffffff !important; border: 1px solid #334155; }
+
+/* Loading placeholders for sections filled in after the page shell renders */
+.skeleton {
+  border-radius: 4px;
+  background: linear-gradient(90deg, #eef0f3 25%, #f6f7f9 37%, #eef0f3 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}

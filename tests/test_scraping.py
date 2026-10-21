@@ -171,6 +171,21 @@ class TestModelId(ScrapingTestCase):
         self.assertEqual(page.status_code, 200)
         self.assertNotIn(b"WBS8M9C50J5K99001", page.data)
 
+class TestDashboardLoading(ScrapingTestCase):
+    def test_shell_renders_without_data_and_loads_sections_async(self):
+        page = self.client.get("/")
+        self.assertEqual(page.status_code, 200)
+        for url in (b"/api/dashboard/summary", b"/api/dashboard/recent"):
+            self.assertIn(url, page.data)
+
+    def test_section_endpoints(self):
+        self.assertEqual(self.client.get("/api/dashboard/summary").status_code, 200)
+        self.assertEqual(self.client.get("/api/dashboard/recent?make=BMW").status_code, 200)
+        charts = self.client.get("/api/dashboard/charts").get_json()
+        self.assertEqual(set(charts), {"makes", "prices", "weekly", "map"})
+        self.assertEqual(set(self.client.get("/api/badges").get_json()),
+                         {"unread_notifications_count", "pending_plates_count"})
+
 class TestSessionHealth(ScrapingTestCase):
     def log(self, status):
         return self.client.post("/api/log_run", headers=TOKEN, json={
@@ -178,16 +193,16 @@ class TestSessionHealth(ScrapingTestCase):
 
     def test_expired_session_shows_banner(self):
         self.log("expired")
-        self.assertIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+        self.assertIn("Sesja Otomoto wygasła".encode(), self.client.get("/api/dashboard/summary").data)
 
     def test_ok_session_has_no_banner(self):
         self.log("expired")
         self.log("ok")
-        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/api/dashboard/summary").data)
 
     def test_unknown_value_is_ignored(self):
         self.log("garbage")
-        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/").data)
+        self.assertNotIn("Sesja Otomoto wygasła".encode(), self.client.get("/api/dashboard/summary").data)
 
 class TestPlateDateQuality(ScrapingTestCase):
     def ingest(self, sid, **extra):
