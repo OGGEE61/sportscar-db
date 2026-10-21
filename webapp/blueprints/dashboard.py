@@ -1,8 +1,9 @@
 import os
+import time
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
-from webapp import invalidate_notifications
+from webapp import _inject_notifications, invalidate_notifications
 from webapp.helpers import script_json
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
@@ -83,47 +84,36 @@ def logs():
     invalidate_notifications()  # badge should drop to 0 right away
     return render_template("logs.html", logs=logs_data, page=page, pages=pages, source=source)
 
-@bp.route("/")
-def dashboard():
-    conn = get_db()
+_CACHE = {}
+_CACHE_TTL = 60  # seconds; dashboard aggregates may lag the scrapers by up to a minute
 
-    s = conn.execute("""
-        SELECT
-            (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins,
-            (SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder')                          AS placeholder_vins,
-            (SELECT COUNT(*) FROM listing_observations)                                              AS total_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
-             WHERE source_listing_id IS NOT NULL)                                                    AS unique_ads,
-            (SELECT AVG(price_pln) FROM listing_observations
-             WHERE removed_at IS NULL AND price_pln > 0)                                            AS avg_price
-    """).fetchone()
-    stats = {
-        "total_vins":       s["total_vins"],
-        "placeholder_vins": s["placeholder_vins"],
-        "total_obs":        s["total_obs"],
-        "active_obs":       s["active_obs"],
-        "unique_ads":       s["unique_ads"],
-        "avg_price":        round(s["avg_price"]) if s["avg_price"] else 0,
-    }
 
-    # Filters from interactive charts / query params
-    filter_region = request.args.get("region", "").strip()
-    filter_make = request.args.get("make", "").strip()
-    filter_price = request.args.get("price", "").strip()
-    filter_ai_plates = request.args.get("ai_plates", "").strip()
+def _cached(key, fn, ttl=_CACHE_TTL):
+    """Per-instance memo for the unfiltered dashboard aggregates (each D1 query is an HTTP round trip)."""
+    if current_app.testing:
+        return fn()
+    hit = _CACHE.get(key)
+    now = time.time()
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    value = fn()
+    _CACHE[key] = (now, value)
+    return value
 
-    recent_sql = """
-        SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
-               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.source, o.source_method, o.observed_at, o.source_url,
-               (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) AS has_ai_plate
-        FROM listing_observations o
-        JOIN vehicles v ON o.vin = v.vin
-    """
-    wheres = []
-    params = []
-    active_filter = None
 
+def _private_cache(resp, seconds=30):
+    resp.headers["Cache-Control"] = f"private, max-age={seconds}"
+    return resp
+
+
+def _recent_filter(args):
+    """WHERE clauses, params and the label of the active filter chosen from interactive charts."""
+    filter_region = args.get("region", "").strip()
+    filter_make = args.get("make", "").strip()
+    filter_price = args.get("price", "").strip()
+    filter_ai_plates = args.get("ai_plates", "").strip()
+
+    wheres, params, active_filter = [], [], None
     if filter_ai_plates == "1":
         wheres.append("(SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) IS NOT NULL")
         active_filter = {"type": "ai_plates", "val": "1", "label": "Tablice odczytane ze zdjęcia"}
@@ -158,22 +148,58 @@ def dashboard():
             params.append(filter_region)
         reg_name = REGION_NAMES.get(filter_region, filter_region)
         active_filter = {"type": "region", "val": filter_region, "label": f"Voivodeship: {reg_name} ({filter_region})"}
+    return wheres, params, active_filter
 
-    if wheres:
-        recent_sql += " WHERE " + " AND ".join(wheres)
 
-    limit = 50 if active_filter else 10
-    recent_sql += f" ORDER BY o.observed_at DESC LIMIT {limit}"
+@bp.route("/")
+def dashboard():
+    """Page shell only: no database work here. The sections load from /api/dashboard/*."""
+    _, _, active_filter = _recent_filter(request.args)
+    return render_template("dashboard.html", active_filter=active_filter)
 
-    recent_rows = conn.execute(recent_sql, params).fetchall()
-    recent = []
-    for r in recent_rows:
-        d = dict(r)
-        reg = resolve_region(d.get("location_region"), d.get("location_city")) or ""
-        d["region"] = reg
-        d["region_name"] = REGION_NAMES.get(reg, "")
-        recent.append(d)
 
+def _load_summary():
+    conn = get_db()
+    s = conn.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins,
+            (SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder')                          AS placeholder_vins,
+            (SELECT COUNT(*) FROM listing_observations)                                              AS total_obs,
+            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
+            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
+             WHERE source_listing_id IS NOT NULL)                                                    AS unique_ads,
+            (SELECT AVG(price_pln) FROM listing_observations
+             WHERE removed_at IS NULL AND price_pln > 0)                                            AS avg_price
+    """).fetchone()
+    stats = {
+        "total_vins":       s["total_vins"],
+        "placeholder_vins": s["placeholder_vins"],
+        "total_obs":        s["total_obs"],
+        "active_obs":       s["active_obs"],
+        "unique_ads":       s["unique_ads"],
+        "avg_price":        round(s["avg_price"]) if s["avg_price"] else 0,
+    }
+    try:
+        sess = conn.execute(
+            "SELECT session_status, run_date FROM scraper_logs "
+            "WHERE session_status IS NOT NULL AND session_status != '' ORDER BY run_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+    except Exception:  # column not migrated yet
+        sess = None
+    conn.close()
+    otomoto_session = dict(sess) if sess and sess["session_status"] != "ok" else None
+    return stats, otomoto_session
+
+
+@bp.route("/api/dashboard/summary")
+def dashboard_summary():
+    stats, otomoto_session = _cached("summary", _load_summary)
+    resp = make_response(render_template("_dashboard_summary.html", stats=stats, otomoto_session=otomoto_session))
+    return _private_cache(resp)
+
+
+def _load_charts():
+    conn = get_db()
     makes_dist = conn.execute("""
         SELECT make, COUNT(*) AS cnt FROM vehicles
         WHERE vin_status != 'placeholder'
@@ -204,38 +230,58 @@ def dashboard():
     """).fetchall()
 
     cities = conn.execute("SELECT location_region, location_city, COUNT(DISTINCT vin) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
+    conn.close()
     region_counts = {}
     for r in cities:
         reg = resolve_region(r["location_region"], r["location_city"])
         if reg:
             region_counts[reg] = region_counts.get(reg, 0) + r["cnt"]
-    
-    map_data = [["State", "Observations"]] + [[k, v] for k, v in region_counts.items()]
 
-    scraper_logs = conn.execute(
-        "SELECT * FROM scraper_logs ORDER BY run_date DESC LIMIT 5"
-    ).fetchall()
+    return {
+        "makes": [dict(r) for r in makes_dist],
+        "prices": [dict(r) for r in price_ranges],
+        "weekly": [dict(r) for r in weekly],
+        "map": [["State", "Observations"]] + [[k, v] for k, v in region_counts.items()],
+    }
 
-    try:
-        sess = conn.execute(
-            "SELECT session_status, run_date FROM scraper_logs "
-            "WHERE session_status IS NOT NULL AND session_status != '' ORDER BY run_date DESC, id DESC LIMIT 1"
-        ).fetchone()
-    except Exception:  # column not migrated yet
-        sess = None
-    otomoto_session = dict(sess) if sess and sess["session_status"] != "ok" else None
 
+@bp.route("/api/dashboard/charts")
+def dashboard_charts():
+    return _private_cache(jsonify(_cached("charts", _load_charts)))
+
+
+@bp.route("/api/dashboard/recent")
+def dashboard_recent():
+    wheres, params, active_filter = _recent_filter(request.args)
+    sql = """
+        SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
+               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.source, o.source_method, o.observed_at, o.source_url,
+               (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) AS has_ai_plate
+        FROM listing_observations o
+        JOIN vehicles v ON o.vin = v.vin
+    """
+    if wheres:
+        sql += " WHERE " + " AND ".join(wheres)
+    limit = 50 if active_filter else 10
+    sql += f" ORDER BY o.observed_at DESC LIMIT {limit}"
+
+    conn = get_db()
+    rows = conn.execute(sql, params).fetchall()
     conn.close()
-    return render_template("dashboard.html",
-        otomoto_session=otomoto_session,
-        stats=stats, recent=recent,
-        makes_dist=script_json([dict(r) for r in makes_dist]),
-        price_ranges=script_json([dict(r) for r in price_ranges]),
-        weekly=script_json([dict(r) for r in weekly]),
-        map_data=script_json(map_data),
-        active_filter=active_filter,
-        scraper_logs=[dict(r) for r in scraper_logs]
-    )
+    recent = []
+    for r in rows:
+        d = dict(r)
+        reg = resolve_region(d.get("location_region"), d.get("location_city")) or ""
+        d["region"] = reg
+        d["region_name"] = REGION_NAMES.get(reg, "")
+        recent.append(d)
+    return _private_cache(make_response(render_template("_dashboard_recent.html", recent=recent)))
+
+
+@bp.route("/api/badges")
+def badges():
+    """Navbar counters, fetched after paint so no page waits on them."""
+    return _private_cache(jsonify(_inject_notifications()), 10)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

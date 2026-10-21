@@ -86,7 +86,6 @@ def create_app() -> Flask:
     app.jinja_env.tests["plausible_vin"] = is_plausible_vin
     app.jinja_env.tests["valid_plate"] = is_valid_registration_plate
     app.jinja_env.globals["media_url"] = media_url
-    app.context_processor(_inject_notifications)
     app.jinja_env.globals["css_version"] = _static_version("style.css")
 
     from webapp.blueprints import api, auth, cepik, dashboard, plates, review, vehicles
