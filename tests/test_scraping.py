@@ -442,8 +442,8 @@ class TestPages(ScrapingTestCase):
         page1 = self.client.get("/review").get_data(as_text=True)
         page2 = self.client.get("/review?page=2").get_data(as_text=True)
         self.assertIn("page=2", page1)
-        self.assertEqual(page1.count("list-group-item d-flex"), 30)
-        self.assertEqual(page2.count("list-group-item d-flex"), 5)
+        self.assertEqual(page1.count("list-group-item vehicle-row"), 30)
+        self.assertEqual(page2.count("list-group-item vehicle-row"), 5)
 
     def test_logs_page_paged(self):
         self.assertEqual(self.client.get("/logs?page=3").status_code, 200)

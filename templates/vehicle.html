@@ -16,10 +16,10 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-3">
-  <div class="d-flex gap-3 align-items-start">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 vehicle-header">
+  <div class="d-flex flex-wrap gap-3 align-items-start min-w-0">
     {% if vehicle.photo %}
-    <img src="{{ media_url(vehicle.photo) }}" alt="photo"
+    <img src="{{ media_url(vehicle.photo) }}" alt="photo" class="vehicle-hero-img"
          style="width:160px;height:110px;object-fit:cover;border-radius:6px;flex-shrink:0;">
     {% endif %}
     <div>
