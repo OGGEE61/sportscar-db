@@ -12,5 +12,8 @@
       "dest": "app.py"
     }
   ],
-  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" = \"master\" ] || [ \"$VERCEL_GIT_COMMIT_REF\" = \"preview\" ]; [ $? -eq 0 ] && exit 1 || exit 0"
+  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" = \"master\" ] || [ \"$VERCEL_GIT_COMMIT_REF\" = \"preview\" ]; [ $? -eq 0 ] && exit 1 || exit 0",
+  "regions": [
+    "fra1"
+  ]
 }
