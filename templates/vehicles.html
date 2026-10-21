@@ -73,7 +73,7 @@
 
 <div class="list-group mb-4">
   {% for v in vehicles %}
-  <div class="list-group-item d-flex gap-3 py-3 align-items-center">
+  <div class="list-group-item vehicle-row d-flex gap-3 py-3 align-items-center">
     
     <!-- Photo -->
     <a href="/vehicle/{{ v.vin }}" class="flex-shrink-0 text-decoration-none">
@@ -91,7 +91,7 @@
 
     <!-- Details -->
     <div class="flex-grow-1 min-w-0">
-      <div class="d-flex justify-content-between align-items-start mb-1">
+      <div class="d-flex flex-wrap justify-content-between align-items-start mb-1">
         <a href="/vehicle/{{ v.vin }}" class="text-decoration-none text-dark text-truncate fw-semibold"
            style="max-width: 70%;" title="{{ v.make }} {{ v.model }}">
           {{ v.make }} {{ v.model }}
@@ -122,7 +122,7 @@
         <span class="border-start ps-2">{{ v.ad_count }} ads</span>
       </div>
 
-      <div class="d-flex align-items-center gap-2 mt-2">
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
         <code class="small text-secondary font-monospace">{{ v.vin }}</code>
         
         {% if v.registration_plate %}

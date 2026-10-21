@@ -587,3 +587,26 @@ body {
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
+
+/* Bootstrap has no min-w-0; without it long rows cannot shrink inside flex cards */
+.min-w-0 { min-width: 0; }
+
+/* Phones: vehicle / review rows wrap instead of running off the card */
+@media (max-width: 575.98px) {
+  .vehicle-row { flex-wrap: wrap; }
+  .vehicle-row > .flex-grow-1 { flex: 1 1 calc(100% - 100px); }
+  .vehicle-row img,
+  .vehicle-row .bg-secondary { width: 84px !important; height: 56px !important; }
+  .vehicle-row .text-truncate { max-width: 100% !important; }
+  .vehicle-row > .flex-column {
+    flex-direction: row !important;
+    width: 100%;
+    margin-left: 0 !important;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .vehicle-header code { word-break: break-all; }
+  .vehicle-hero-img { width: 100% !important; height: auto !important; max-height: 200px; }
+}
