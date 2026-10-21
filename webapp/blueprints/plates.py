@@ -3,6 +3,7 @@ import re
 from flask import Blueprint, jsonify, render_template, request
 from db import get_db
 from webapp import invalidate_notifications
+from webapp.services.plates import allow_cepik_retry, clear_plate
 
 bp = Blueprint("plates", __name__)
 
@@ -156,6 +157,8 @@ def api_plates_review():
                 conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'photo extracted', 'photo-extracted')", (vin,))
             except Exception:
                 pass
+        if vin:
+            allow_cepik_retry(conn, vin, final_plate)
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action, "plate": final_plate})
@@ -167,23 +170,8 @@ def api_plates_review():
             WHERE id=?
         """, (cid,))
 
-        if prev_status == "approved" and old_plate:
-            if lid:
-                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (lid, old_plate))
-            if vin:
-                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
-                conn.execute("""
-                    UPDATE vehicles 
-                    SET registration_plate=NULL, 
-                        vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'unverified' END 
-                    WHERE vin=? AND registration_plate=?
-                """, (vin, old_plate))
-                conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
-                try:
-                    conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('photo extracted', 'AI extracted plate')", (vin,))
-                    conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'missing plates', 'system')", (vin,))
-                except Exception:
-                    pass
+        if prev_status == "approved":
+            clear_plate(conn, vin, lid, old_plate)
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action})
@@ -195,23 +183,8 @@ def api_plates_review():
             WHERE id=?
         """, (cid,))
 
-        if prev_status == "approved" and old_plate:
-            if lid:
-                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (lid, old_plate))
-            if vin:
-                conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
-                conn.execute("""
-                    UPDATE vehicles 
-                    SET registration_plate=NULL, 
-                        vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'unverified' END 
-                    WHERE vin=? AND registration_plate=?
-                """, (vin, old_plate))
-                conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, old_plate))
-                try:
-                    conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('photo extracted', 'AI extracted plate')", (vin,))
-                    conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'missing plates', 'system')", (vin,))
-                except Exception:
-                    pass
+        if prev_status == "approved":
+            clear_plate(conn, vin, lid, old_plate)
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action})
