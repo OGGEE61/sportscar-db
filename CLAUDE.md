@@ -10,3 +10,8 @@ Hobby limits Functions Storage to 10 GB per rolling 30 days, and every deploymen
 - After checking, open a PR to `master`. Merging to `master` deploys production.
 - Keep only one live deployment per environment. After a deploy, prune old ones with `scripts/vercel_prune.sh` (keeps the current production deployment and the newest preview, deletes the rest). It uses `--safe`, so a deployment that still carries a branch alias must be removed by hand with `npx vercel remove <url>`.
 - Keep the function bundle small: see [.vercelignore](.vercelignore). Do not add large files (DBs, models, logs, dumps) to the deployed tree.
+
+## Performance notes
+
+- Production reads Cloudflare D1 over HTTP (each query is a round trip). D1 runs in EEUR, so the function is pinned to `fra1` in [vercel.json](vercel.json); keep them close together.
+- Keep pages as a fast shell and load data sections via `/api/...` endpoints (see the dashboard), and avoid sequential queries in a route.
