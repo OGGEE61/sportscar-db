@@ -102,6 +102,7 @@ class CepikClient:
 
     def fetch_vehicle_data(self, vin: str, plate: str, first_reg_date: str) -> Optional[Dict[str, Any]]:
         """Pobiera dane techniczne i osi czasu dla danego pojazdu."""
+        self.last_status = None  # HTTP status of the last vehicle-data call (404 = CEPiK has no such vehicle)
         if not self._initialized:
             if not self.init_session():
                 return None
@@ -136,6 +137,7 @@ class CepikClient:
                     self.init_session()
                     v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
 
+                self.last_status = v_resp.status_code
                 if v_resp.status_code != 200:
                     logger.warning(f"Błąd vehicle-data ({v_resp.status_code}) dla {norm_plate}/{norm_vin}: {v_resp.text[:160]}")
                     return None
@@ -272,6 +274,23 @@ class CepikClient:
             "odometer_history_json": json.dumps(odometer_history, ensure_ascii=False),
             "events_json": json.dumps(clean_events, ensure_ascii=False),
         }
+
+
+def record_cepik_failure(conn, client, vin: str, plate: str) -> str:
+    """Log a failed lookup. When CEPiK genuinely does not know the VIN + plate (404), send the
+    plate back to /plates for a human check; other failures (timeouts, 5xx) are logged as
+    'error' and simply retried on the next run."""
+    from webapp.services.plates import requeue_for_plate_check, normalize_plate
+    if getattr(client, "last_status", None) == 404:
+        conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) "
+                     "VALUES (?, 'not_found', ?, datetime('now'))",
+                     (vin, f"Pojazd nie odnaleziony w CEPiK (tablica {normalize_plate(plate)})"))
+        conn.commit()
+        return requeue_for_plate_check(conn, vin, plate)
+    conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) "
+                 "VALUES (?, 'error', 'Blad zapytania do CEPiK', datetime('now'))", (vin,))
+    conn.commit()
+    return "error"
 
 
 def save_cepik_report(report: Dict[str, Any], conn) -> bool:
@@ -504,11 +523,13 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
             print(f"  ✓ Zapisano dane CEPiK! OC: {oc_txt} | Badanie SKP: {skp_txt} | Ostatni licznik: {odo_txt} | Właściciele: {data['total_owners']}")
         else:
             try:
-                conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) VALUES (?, 'not_found', 'Pojazd nie odnaleziony w CEPiK', datetime('now'))", (vin,))
-                conn.commit()
+                outcome = record_cepik_failure(conn, client, vin, plate)
             except Exception:
-                pass
-            print("  ⚠️ Nie udało się pobrać raportu z CEPiK (sprawdź poprawność tablicy lub daty rejestracji).")
+                outcome = "error"
+            if outcome in ("reverted", "queued"):
+                print("  ⚠️ CEPiK nie zna tej pary VIN + tablica - tablica wraca do weryfikacji na /plates.")
+            else:
+                print("  ⚠️ Nie udało się pobrać raportu z CEPiK (sprawdź poprawność tablicy lub daty rejestracji).")
 
         time.sleep(2.0)
 

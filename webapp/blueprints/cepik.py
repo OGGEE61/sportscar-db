@@ -251,10 +251,15 @@ def api_cepik_fetch_vin(vin):
         client = CepikClient()
         report = client.fetch_vehicle_data(vin, plate, first_reg)
         if not report:
+            from scripts.fetch_cepik import record_cepik_failure
+            outcome = record_cepik_failure(conn, client, vin, plate)
             conn.close()
+            if outcome == "error":
+                return jsonify({"status": "error", "message": "Nie udało się połączyć z CEPiK, spróbuj ponownie"}), 502
             return jsonify({
                 "status": "error",
-                "message": "Serwer CEPiK nie odnalazł rekordu (sprawdź zgodność tablicy i daty pierwszej rejestracji)"
+                "message": "Serwer CEPiK nie odnalazł rekordu (sprawdź zgodność tablicy i daty pierwszej rejestracji). "
+                           "Tablica wróciła do weryfikacji na /plates."
             }), 404
 
         save_cepik_report(report, conn)

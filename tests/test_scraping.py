@@ -28,7 +28,8 @@ class ScrapingTestCase(unittest.TestCase):
         self.client = app.test_client()
         patcher = mock.patch.dict(os.environ)
         patcher.start()
-        os.environ.pop("ADMIN_PASSWORD", None)
+        # "" rather than pop: importing scripts.* runs load_dotenv, which would put the real one back
+        os.environ["ADMIN_PASSWORD"] = ""
         self.addCleanup(patcher.stop)
 
     def tearDown(self):
@@ -454,3 +455,91 @@ class TestPages(ScrapingTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCepikNotFoundRequeue(ScrapingTestCase):
+    VIN = "WBS11DM0308D29565"
+
+    def setUp(self):
+        super().setUp()
+        conn = db.get_db()
+        conn.execute("""CREATE TABLE IF NOT EXISTS cepik_sync_log (
+            vin TEXT PRIMARY KEY, status TEXT, message TEXT, attempted_at TEXT DEFAULT (datetime('now')))""")
+        conn.commit()
+        conn.close()
+
+    def car(self, plate="AB12345", approved_from_photo=True):
+        self.add_active_listing("L1", self.VIN, "Competition", model="M2", plate=plate, frd="2023-07-06")
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET registration_plate=? WHERE vin=?", (plate, self.VIN))
+        if approved_from_photo:
+            conn.execute("""INSERT INTO plate_review_queue (vin, detected_plate, reviewed_plate, confidence, status)
+                            VALUES (?, ?, ?, 0.8, 'approved')""", (self.VIN, plate, plate))
+        conn.commit()
+        conn.close()
+
+    def queue(self):
+        conn = db.get_db()
+        rows = [dict(r) for r in conn.execute("SELECT * FROM plate_review_queue WHERE vin=?", (self.VIN,)).fetchall()]
+        plate = conn.execute("SELECT registration_plate FROM vehicles WHERE vin=?", (self.VIN,)).fetchone()[0]
+        conn.close()
+        return rows, plate
+
+    def fail(self, status):
+        from scripts.fetch_cepik import record_cepik_failure
+        conn = db.get_db()
+        out = record_cepik_failure(conn, mock.Mock(last_status=status), self.VIN, "AB12345")
+        conn.close()
+        return out
+
+    def test_photo_plate_goes_back_to_pending_and_is_cleared(self):
+        self.car()
+        self.assertEqual(self.fail(404), "reverted")
+        rows, plate = self.queue()
+        self.assertEqual([r["status"] for r in rows], ["pending"])
+        self.assertIsNone(plate)
+
+    def test_listing_plate_gets_a_pending_entry_and_keeps_the_plate(self):
+        self.car(approved_from_photo=False)
+        self.assertEqual(self.fail(404), "queued")
+        rows, plate = self.queue()
+        self.assertEqual([(r["status"], r["detected_plate"]) for r in rows], [("pending", "AB12345")])
+        self.assertEqual(plate, "AB12345")
+
+    def test_not_queued_twice(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        self.assertEqual(self.fail(404), "already_pending")
+        self.assertEqual(len(self.queue()[0]), 1)
+
+    def test_transient_error_is_not_a_plate_problem(self):
+        self.car()
+        self.assertEqual(self.fail(500), "error")
+        rows, plate = self.queue()
+        self.assertEqual([r["status"] for r in rows], ["approved"])
+        self.assertEqual(plate, "AB12345")
+        conn = db.get_db()
+        self.assertEqual(conn.execute("SELECT status FROM cepik_sync_log").fetchone()[0], "error")
+        conn.close()
+
+    def test_new_plate_unblocks_cepik_retry_but_same_plate_does_not(self):
+        from webapp.services.plates import allow_cepik_retry
+        self.car()
+        self.fail(404)
+        conn = db.get_db()
+        allow_cepik_retry(conn, self.VIN, "AB-123 45")
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_sync_log").fetchone()[0], 1)
+        allow_cepik_retry(conn, self.VIN, "CD99999")
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_sync_log").fetchone()[0], 0)
+        conn.close()
+
+    def test_approving_a_corrected_plate_via_api_allows_retry(self):
+        self.car()
+        self.fail(404)
+        qid = self.queue()[0][0]["id"]
+        resp = self.client.post("/api/plates/review", json={"id": qid, "action": "approve", "plate": "CD99999"})
+        self.assertEqual(resp.status_code, 200)
+        conn = db.get_db()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_sync_log").fetchone()[0], 0)
+        conn.close()
+        self.assertEqual(self.queue()[1], "CD99999")
