@@ -86,8 +86,8 @@ jobs:
         BASE_URL: ${{ secrets.API_BASE }}
         # Otomoto session cookies to decrypt VINs (optional JSON string)
         OTOMOTO_COOKIES: ${{ secrets.OTOMOTO_COOKIES }}
-        # Target selector: 'single' (1 model slot) by default, or specific model / all
-        SCRAPER_TARGET: ${{ github.event.inputs.target || 'single' }}
+        # Target selector: 'next_3' (rotating window of 3 models) by default, or specific model / all
+        SCRAPER_TARGET: ${{ github.event.inputs.target || 'next_3' }}
       run: |
         # Write cookies file if secret is provided
         if [ -n "$OTOMOTO_COOKIES" ]; then

@@ -12,17 +12,14 @@ _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
+from olx._common import olx_url
 from otomoto.mercedes_g55_w463 import CONFIG as OTOMOTO
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/mercedes-benz/q-g55/"
-        "?search[filter_float_year:to]=2012"
-        "&page={page}"
-    ),
+    list_url = olx_url('mercedes-benz', ['g-class'], year_to=2012, size_from=5300, size_to=5600),
     max_year = 2012,
     # g550 contains 'g55'; c55/ml55 match the generic '55 amg' keyword
     title_must_not_contain = OTOMOTO.title_must_not_contain + ['g550', 'g 550', 'c55', 'c 55', 'ml55', 'ml 55', 'e55', 'e 55', 'cl55', 'cl 55'],

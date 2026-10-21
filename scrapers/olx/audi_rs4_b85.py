@@ -12,18 +12,14 @@ _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
+from olx._common import olx_url
 from otomoto.audi_rs4_b85 import CONFIG as OTOMOTO
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/audi/q-rs4/"
-        "?search[filter_float_year:from]=2013"
-        "&search[filter_float_year:to]=2015"
-        "&page={page}"
-    ),
+    list_url = olx_url('audi', ['rs4-avant'], year_from=2013, year_to=2015),
     title_must_contain = ['RS4', 'RS 4'],
     min_year = 2013,
     max_year = 2015,

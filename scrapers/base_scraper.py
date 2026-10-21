@@ -957,7 +957,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
     for url_tmpl in list_urls:
+        olx_total = None       # "Znaleźliśmy N ogłoszeń" on OLX list pages
+        url_ids = set()
         for page in range(1, 201): # Arbitrary large number, breaks when no cards are found
+            if olx_total is not None and len(url_ids) >= olx_total:
+                print(f"  All {olx_total} results seen -- stopping (the rest is OLX 'recommended' filler).")
+                break
             url = url_tmpl.format(page=page)
             print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
     
@@ -982,6 +987,14 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 cards = _parse_otomoto_cards(soup, r.text)
             else:
                 cards = _parse_olx_cards(soup)
+                if olx_total is None:
+                    m = re.search(r"Znaleźliśmy\s+([\d\s\xa0]+?)\s*ogłosz", r.text)
+                    if m:
+                        olx_total = int(re.sub(r"\D", "", m.group(1)) or 0)
+                        if olx_total == 0:
+                            # OLX fills an empty result with unrelated 'recommended' ads
+                            print("  OLX reports 0 results for these filters -- stopping.")
+                            break
     
             if not cards:
                 print("  No cards found -- stopping.")
@@ -989,6 +1002,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     
             total_processed += len(cards)
             page_ids = {c["listing_id"] for c in cards}
+            url_ids |= page_ids
             if page_ids and page_ids.issubset(seen_ids):
                 print(f"  All {len(cards)} cards already seen -- stopping.")
                 break

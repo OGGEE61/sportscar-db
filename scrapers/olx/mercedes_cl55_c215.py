@@ -12,17 +12,14 @@ _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
+from olx._common import olx_url
 from otomoto.mercedes_cl55_c215 import CONFIG as OTOMOTO
 
 
 CONFIG = dataclasses.replace(
     OTOMOTO,
     source   = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/mercedes-benz/q-cl55/"
-        "?search[filter_float_year:to]=2006"
-        "&page={page}"
-    ),
+    list_url = olx_url('mercedes-benz', ['cl-class'], year_to=2006, size_from=5300, size_to=5600),
     max_year = 2006,
     # 'ml 55 amg' / 'c55 amg' also match the generic '55 amg' keyword
     title_must_contain = ['cl55', 'cl 55', 'cl-55'],

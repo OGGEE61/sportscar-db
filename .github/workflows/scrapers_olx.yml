@@ -2,8 +2,8 @@ name: Run OLX Scrapers
 
 on:
   schedule:
-    # Run twice daily at 07:45 and 19:45 UTC
-    - cron: '45 7,19 * * *'
+    # Every 4 hours at :45 (6 runs/day), each run scrapes a rotating window of 4 scrapers
+    - cron: '45 */4 * * *'
   workflow_dispatch:
     inputs:
       target:
@@ -13,6 +13,7 @@ on:
         type: choice
         options:
           - all
+          - next_4
           - alpina
           - x3m
           - x3_m40i
@@ -43,6 +44,17 @@ on:
           - e55
           - g55
           - s55
+          - sl55
+          - r8_v8
+          - r8_v10
+          - ttrs
+          - 1m
+          - 135i
+          - m5_e39
+          - m5
+          - z3_m
+          - r8
+          - macan
 
 jobs:
   scrape:
@@ -69,7 +81,7 @@ jobs:
         API_TOKEN: ${{ secrets.API_TOKEN }}
         BASE_URL: ${{ secrets.API_BASE }}
         OTOMOTO_COOKIES: ${{ secrets.OTOMOTO_COOKIES }}
-        SCRAPER_TARGET: ${{ github.event.inputs.target || 'all' }}
+        SCRAPER_TARGET: ${{ github.event.inputs.target || 'next_4' }}
       run: |
         if [ -n "$OTOMOTO_COOKIES" ]; then
           echo "$OTOMOTO_COOKIES" > scrapers/otomoto_cookies.json
