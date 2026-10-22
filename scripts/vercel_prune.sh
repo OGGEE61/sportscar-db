@@ -24,10 +24,10 @@ for d in ds:
         seen.add(env); keep.add(d["uid"])
 for d in ds:
     if d["uid"] not in keep and d["state"] in ("READY", "ERROR", "CANCELED"):
-        print(d["uid"], d.get("target") or "preview", d["state"])
+        print(d["url"], d.get("target") or "preview", d["state"])
 ' > "$LIST" || { echo "Aborted: nothing deleted."; exit 1; }
 
 echo "Will delete $(wc -l < "$LIST") deployments of $PROJECT"
 cat "$LIST"
 [ "$YES" = "--yes" ] || { echo "Dry run. Re-run with --yes to delete."; exit 0; }
-while read -r uid _; do npx vercel remove "$uid" --safe --yes || true; done < "$LIST"
+while read -r url _; do npx vercel remove "$url" --safe --yes || echo "FAILED: $url (alias attached? remove by hand)"; done < "$LIST"
