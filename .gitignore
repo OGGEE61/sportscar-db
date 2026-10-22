@@ -24,3 +24,5 @@ static/plate_crops/*.jpg
 # curl cookie jars
 cookies.txt
 false_sold_backup_*.json
+.vercel
+.env.local

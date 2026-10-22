@@ -12,7 +12,17 @@
 [x] 12. Maps (dashboard, /models): only pass known voivodeship codes from REGION_NAMES (PR #12)
 [x] 13. Bulk buttons on /review (e.g. reject all) ignore the OLX/Otomoto filter - respect the filter or label it clearly (PR #13)
 
-## Operational follow-ups
-[ ] 14. Refresh the OTOMOTO_COOKIES GitHub secret (CI logs "Token refresh failed: Otomoto session has expired"). Use scripts/extract_otomoto_cookies.py --gh-secret. Note: locally scrapers/otomoto_cookies.json is read before .txt, so a fresh cookie placed only in .txt is ignored
-[ ] 15. After merging PRs #9-#13 on production: run `python db.py` (migrations; production D1 does not have scraper_logs.source from v11 yet), then scripts/maintenance/backfill_model_id.py --dry-run and fix_false_sold.py --dry-run (both ask for confirmation before writing to D1)
-[ ] 16. Check scraper freshness after the GitHub schedule delays (some otomoto scrapers had not run since 2026-10-13). If runs stay sparse: schedule target `next_3`, or an external trigger (Cloudflare Worker cron calling workflow_dispatch). Never use target=all (job timeout is 15 min); run one target at a time. "success" alone does not prove cookies work - look for `[auth] Logged in as` / `id_token refreshed` in the log
+## Operational follow-ups (closed 2026-10-22, verified against production D1 / GitHub)
+[x] 14. OTOMOTO_COOKIES secret refreshed (secret dated 2026-10-14; Otomoto scraper wrote 611 VINs, latest observation 2026-10-22 04:44). Note: locally scrapers/otomoto_cookies.json is read before .txt, so a fresh cookie placed only in .txt is ignored
+[x] 15. D1 migrations at v13; model_id backfilled (1 of 637 vehicles still empty); no false "sold" rows left (0 removed_at rows with last_seen_at after it)
+[x] 16. Scrapers are running on schedule (Run Scrapers + Run OLX Scrapers succeed several times a day). Reminder: never use target=all (15 min timeout); "success" alone does not prove cookies work - look for `[auth] Logged in as` / `id_token refreshed` in the log
+
+## Vercel / deploy (from roadmap.txt, 2026-10-21)
+Done: PR #29 (CEPiK not-found requeue) and PR #30 (mobile layout) merged and live.
+Incident: #30's first production build was deleted ("Deployment has been deleted"); likely cause is scripts/vercel_prune.sh also deleting BUILDING/QUEUED deploys. Fixed by manual `npx vercel --prod`.
+[x] 17. vercel_prune.sh: skip BUILDING/QUEUED; delete only ERROR/CANCELED + old READY. Never prune until the new deploy shows Ready. (Alternative: set a Deployment Retention policy in the Vercel project settings and drop the script)
+[x] 18. Prune the one extra READY production deployment (sportscar-bjepruuor, older than the current one)
+[x] 19. .vercelignore lists "vercel-prune.sh" but the file is scripts/vercel_prune.sh - fix the entry
+[x] 20. Commit the .gitignore change (.vercel added by vercel link) and add .env.local too
+[x] 21. Delete stale remote branches (feat/*, chore/*, fix/*, perf/*; keep master and preview)
+Notes: preview = `git push origin <branch>:preview`, then PR -> master. Answer "n" to "pull env vars into .env.local" in `vercel link`.
