@@ -260,8 +260,11 @@ def dashboard_recent():
         FROM listing_observations o
         JOIN vehicles v ON o.vin = v.vin
     """
-    if wheres:
-        sql += " WHERE " + " AND ".join(wheres)
+    # Show each VIN once, by its newest observation (display only; history stays in the DB).
+    # The filter then applies to that newest observation, so a car that moved isn't listed in its old region.
+    wheres = ["NOT EXISTS (SELECT 1 FROM listing_observations n WHERE n.vin = o.vin "
+              "AND (n.observed_at > o.observed_at OR (n.observed_at = o.observed_at AND n.id > o.id)))"] + wheres
+    sql += " WHERE " + " AND ".join(wheres)
     limit = 50 if active_filter else 10
     sql += f" ORDER BY o.observed_at DESC LIMIT {limit}"
 
