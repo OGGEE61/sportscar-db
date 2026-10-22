@@ -12,7 +12,7 @@ scrapers/
 advert_dump.json
 test.html
 todo.md
-vercel-prune.sh
+scripts/vercel_prune.sh
 run_full_scrape.sh
 requirements-cv.txt
 .pytest_cache/
