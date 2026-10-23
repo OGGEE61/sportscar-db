@@ -127,6 +127,13 @@ class ScraperConfig:
     max_year: Optional[int] = None
     validator: Optional[Callable[[dict], bool]] = None
 
+    # Sellers sometimes file a car under a sibling model (an M40i listed as X3 M).
+    # Called with the detail dict; returns the config of the model the car really
+    # is when the VIN settles it (this config or a sibling), else None. The returned
+    # config's make/model/variant/model_id/defaults/years are used and the validator
+    # is skipped. Siblings should share list URLs so no one marks the other's ads sold.
+    reassign: Optional[Callable[[dict], Optional["ScraperConfig"]]] = None
+
 
     detail_delay: float = 1.0
 
@@ -1092,6 +1099,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
 
     results  = []
     seen_ids = set()
+    processed_ids = set()
     total_processed = 0
     new_count = 0
     dup_count = 0
@@ -1159,10 +1167,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     
             total_processed += len(cards)
             page_ids = {c["listing_id"] for c in cards}
-            url_ids |= page_ids
-            if page_ids and page_ids.issubset(seen_ids):
+            # Per URL: a page repeating this search's earlier pages means the end.
+            # Ads already met under another list URL of this config are no reason to stop.
+            if page_ids and page_ids.issubset(url_ids):
                 print(f"  All {len(cards)} cards already seen -- stopping.")
                 break
+            url_ids |= page_ids
             seen_ids |= page_ids
 
             def _card_source(c):
@@ -1180,6 +1190,10 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 if _skip_hosted(card):
                     continue
                 listing_id    = card["listing_id"]
+                # A config with several list URLs can meet the same ad twice in one run
+                if listing_id in processed_ids:
+                    continue
+                processed_ids.add(listing_id)
                 title         = card["title"]
                 price_raw     = card["price_raw"]
                 source_url    = card["source_url"]
@@ -1227,6 +1241,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         print(f"    > API error: {_safe(str(e))}")
                     continue
 
+                car = cfg   # the model this listing is saved under (see ScraperConfig.reassign)
+                vetted = False
                 detail = {}
                 if source_url:
                     jitter = random.uniform(0.5, 2.5)
@@ -1249,18 +1265,26 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             print("    VIN: brak poprawnego numeru w ogłoszeniu")
                     elif vc == "found_in_schema":
                         print("    VIN: brak poprawnego numeru w ogłoszeniu")
+
+                    target = cfg.reassign(detail) if cfg.reassign and detail else None
+                    if target:
+                        car, vetted = target, True
+                        if (target.model, target.variant) != (cfg.model, cfg.variant):
+                            print(f"    [reassign] VIN {detail['vin'][:3]}... is a {target.model} {target.variant}, "
+                                  f"not {cfg.model} {cfg.variant} -- saved as {target.variant}")
+
                     if detail.get("year"):
                         print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
                               f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
-    
-                        if cfg.min_year and detail['year'] < cfg.min_year:
-                            print(f"  [skip] Year {detail['year']} < min {cfg.min_year}")
+
+                        if car.min_year and detail['year'] < car.min_year:
+                            print(f"  [skip] Year {detail['year']} < min {car.min_year}")
                             continue
-                        if cfg.max_year and detail['year'] > cfg.max_year:
-                            print(f"  [skip] Year {detail['year']} > max {cfg.max_year}")
+                        if car.max_year and detail['year'] > car.max_year:
+                            print(f"  [skip] Year {detail['year']} > max {car.max_year}")
                             continue
 
-                    if cfg.validator and not cfg.validator(detail):
+                    if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
     
                 photo         = detail.get("photo_url") or thumbnail
@@ -1274,7 +1298,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 
                 # Let resolver do a combined check if VIN is present
                 if raw_vin:
-                    resolved = resolve_market(raw_vin, desc, make=cfg.make)
+                    resolved = resolve_market(raw_vin, desc, make=car.make)
                     if resolved:
                         final_origin_market = resolved
 
@@ -1285,9 +1309,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "source_url":        source_url,
                     "raw_title":         title,
                     "raw_description":   detail.get("raw_description"),
-                    "make":              cfg.make,
-                    "model":             cfg.model,
-                    "variant":           cfg.variant,
+                    "make":              car.make,
+                    "model":             car.model,
+                    "variant":           car.variant,
                     "year":              detail.get("year"),
                     "body_type":         detail.get("body_type"),
                     "engine_cc":         detail.get("engine_cc"),
@@ -1306,12 +1330,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
                     "origin_market":           final_origin_market,
-                    "model_id":                cfg.model_id,
+                    "model_id":                car.model_id,
                     "found_by":                cfg.source,  # scraper; "source" is the ad's host
                 }
-    
+
                 # Fill gaps with known model defaults
-                for key, value in cfg.defaults.items():
+                for key, value in car.defaults.items():
                     if not payload.get(key):
                         payload[key] = value
     

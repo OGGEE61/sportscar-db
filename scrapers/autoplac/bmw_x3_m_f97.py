@@ -1,7 +1,9 @@
 """BMW X3 M F97 (2019–2024) (autoplac.pl) — run directly to scrape.
 
-autoplac has no separate X3 M model: X3 filtered to 440+ HP. The OLX validator
-rejects M40i/M40d (also those badged as X3 M).
+Same make/model/variant and specs as the OLX scraper, so autoplac finds land on the
+same model in analytics. Shares its searches with the X3 M40i scraper; the VIN
+decides which of the two a car is (see _x3_g01.py), so an M40i badged as X3 M is
+saved as an M40i, not rejected. Cars without a VIN go through the OLX validator.
 """
 import dataclasses
 import os
@@ -11,13 +13,16 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import run
 from olx.bmw_x3_m_f97 import CONFIG as BASE
-from autoplac._common import autoplac_url
+from autoplac._x3_g01 import X3_G01_URLS, reassign_x3_g01
 
 
 CONFIG = dataclasses.replace(
     BASE,
     source   = "autoplac",
-    list_url = autoplac_url("bmw", "x3", year_from=2019, year_to=2024, power_from=440),
+    list_url = X3_G01_URLS,
+    # The OLX config skips "M40i" titles before the detail page; here the VIN decides
+    title_must_not_contain = ["M40d", "M40 d", "diesel"],
+    reassign = reassign_x3_g01,
 )
 
 if __name__ == "__main__":

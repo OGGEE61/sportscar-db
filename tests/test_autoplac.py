@@ -155,6 +155,62 @@ class TestAutoplacRun(unittest.TestCase):
         self.assertEqual(log.kwargs["json"]["status"], "partial")
 
 
+class TestX3G01Reassign(unittest.TestCase):
+    """An M40i filed as X3 M (and the other way around) is saved under the right model."""
+
+    def classify(self, vin, **detail):
+        from autoplac._x3_g01 import classify_x3_g01
+        return classify_x3_g01({"vin": vin, "fuel_type": "petrol", "engine_cc": 2998, **detail})
+
+    def test_vin_maker_code_decides(self):
+        self.assertEqual(self.classify("WBS11EC0009W81579", power_hp=510), "X3 M")
+        self.assertEqual(self.classify("5YMTS0C02LLT10845", power_hp=510), "X3 M")
+        self.assertEqual(self.classify("WBATS31020LP72826", power_hp=360), "M40i")
+        self.assertEqual(self.classify("5UX83DP0XN9L06777", power_hp=480), "M40i")  # X3 M power typed in
+
+    def test_not_settled_by_vin(self):
+        self.assertIsNone(self.classify(None, power_hp=360))
+        self.assertIsNone(self.classify("WBATS31020LP72826", fuel_type="diesel"))           # M40d
+        self.assertIsNone(self.classify("5UXTS3C57J0Z00282", engine_cc=1998, power_hp=252))  # 30i
+        self.assertIsNone(self.classify("WAPXXXXXXXXXXXX12"))                                # Alpina XD3
+
+    def run_cfg(self, cfg, detail):
+        api = mock.MagicMock()
+        api.post.side_effect = lambda url, **kw: FakeResp(data={"known": {}} if "known_listings" in url
+                                                          else {"tag": "pending", "marked": 0})
+        pages = {cfg.list_url[0].format(page=1): search_page([1], 1),
+                 cfg.list_url[1].format(page=1): search_page([1, 2], 2)}
+        with mock.patch.object(base_scraper.requests, "get", side_effect=lambda url, **k: FakeResp(pages[url])), \
+             mock.patch.object(base_scraper, "fetch_detail", return_value=detail) as fetch, \
+             mock.patch.object(base_scraper, "_API_SESSION", api), \
+             mock.patch.object(base_scraper.time, "sleep"):
+            base_scraper.run(cfg)
+        ingested = [c.kwargs["json"] for c in api.post.call_args_list if c.args[0].endswith("/api/ingest_pending")]
+        return ingested, fetch, api
+
+    def test_x3m_listed_under_m40i_is_saved_as_x3m(self):
+        from autoplac.bmw_x3_m40i_g01 import CONFIG as M40I
+        detail = {"vin": "WBS11EC0009W81579", "fuel_type": "petrol", "engine_cc": 2993, "power_hp": 510,
+                  "year": 2024, "title": "BMW X3 M40i"}
+        ingested, _, _ = self.run_cfg(M40I, detail)
+        self.assertEqual({(p["model"], p["variant"]) for p in ingested}, {("X3 M", "F97")})
+
+    def test_m40i_badged_as_x3m_is_not_rejected(self):
+        # The X3 M validator alone would reject this title
+        from autoplac.bmw_x3_m_f97 import CONFIG as X3_M
+        detail = {"vin": "WBATS31020LP72826", "fuel_type": "petrol", "engine_cc": 2998, "power_hp": 360,
+                  "year": 2018, "title": "BMW X3 M40i OEM X3M Competition"}
+        ingested, _, _ = self.run_cfg(X3_M, detail)
+        self.assertEqual({(p["model"], p["variant"], p["power_hp"]) for p in ingested}, {("X3", "M40i G01", 360)})
+
+    def test_shared_searches_fetch_each_ad_once_and_cover_both_urls(self):
+        from autoplac.bmw_x3_m_f97 import CONFIG as X3_M
+        ingested, fetch, api = self.run_cfg(X3_M, {"vin": "WBS11EC0009W81579", "fuel_type": "petrol", "year": 2024})
+        self.assertEqual(fetch.call_count, 2)   # ad 1 is in both searches, fetched once
+        sold = next(c for c in api.post.call_args_list if "mark_removed" in c.args[0])
+        self.assertEqual(set(sold.kwargs["json"]["seen_ids"]), {"1", "2"})
+
+
 class TestAutoplacConfigs(unittest.TestCase):
     def test_url_helper(self):
         from autoplac._common import autoplac_url
