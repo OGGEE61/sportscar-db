@@ -1,0 +1,1 @@
+# autoplac.pl scrapers package

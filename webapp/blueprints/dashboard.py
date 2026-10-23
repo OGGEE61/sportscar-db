@@ -59,11 +59,12 @@ def serve_media(filename):
 def logs():
     page = max(request.args.get("page", 1, type=int) or 1, 1)
     source = request.args.get("source", "")
-    source = source if source in ("olx", "otomoto") else ""
+    source = source if source in ("olx", "otomoto", "autoplac") else ""
     conn = get_db()
     # Older rows have no source: fall back to the run's list URL
     url_src = ("CASE WHEN list_url LIKE '%olx.pl%' THEN 'olx' "
-               "WHEN list_url LIKE '%otomoto.pl%' THEN 'otomoto' END")
+               "WHEN list_url LIKE '%otomoto.pl%' THEN 'otomoto' "
+               "WHEN list_url LIKE '%autoplac.pl%' THEN 'autoplac' END")
     try:
         conn.execute("SELECT source FROM scraper_logs LIMIT 1").fetchall()
         src_expr = f"COALESCE(source, {url_src})"

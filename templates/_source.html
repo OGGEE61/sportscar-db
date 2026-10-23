@@ -6,6 +6,7 @@
 {%- set s = (source or '')|lower -%}
 {%- if s == 'olx' -%}<span class="badge src-badge src-olx" style="background:#0f766e;color:#fff">OLX</span>
 {%- elif s == 'otomoto' -%}<span class="badge src-badge src-otomoto" style="background:#c2410c;color:#fff">Otomoto</span>
+{%- elif s == 'autoplac' -%}<span class="badge src-badge src-autoplac" style="background:#1d4ed8;color:#fff">Autoplac</span>
 {%- elif s -%}<span class="badge src-badge src-other" style="background:#475569;color:#fff">{{ source }}</span>
 {%- endif -%}
 {%- if found_by and (found_by|lower) != s %} <span class="text-muted small text-nowrap">via {{ 'OLX' if (found_by|lower) == 'olx' else found_by|capitalize }}</span>{% endif -%}
@@ -17,5 +18,6 @@
   <a href="{{ base_url }}" class="btn btn-outline-secondary {% if not current %}active{% endif %}">All</a>
   <a href="{{ base_url }}source=otomoto" class="btn btn-outline-secondary {% if current == 'otomoto' %}active{% endif %}">Otomoto</a>
   <a href="{{ base_url }}source=olx" class="btn btn-outline-secondary {% if current == 'olx' %}active{% endif %}">OLX</a>
+  <a href="{{ base_url }}source=autoplac" class="btn btn-outline-secondary {% if current == 'autoplac' %}active{% endif %}">Autoplac</a>
 </div>
 {%- endmacro %}

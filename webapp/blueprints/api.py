@@ -80,7 +80,7 @@ def api_ingest():
         safe_int(p.get("engine_cc")), safe_int(p.get("engine_cyl")), safe_int(p.get("power_hp")),
         p.get("drivetrain"), p.get("transmission"), p.get("color_ext"),
         "placeholder" if is_placeholder else "unverified",
-        f"scraper-{source}" if source in ("otomoto","olx") else "api",
+        f"scraper-{source}" if source in ("otomoto", "olx", "autoplac") else "api",
     ))
 
     c = conn.execute("""
@@ -101,7 +101,7 @@ def api_ingest():
         p.get("observed_at")   or NOW(),
         p.get("last_seen_at"),
         p.get("removed_at"),
-        f"scraper-{source}" if source in ("otomoto","olx") else "api",
+        f"scraper-{source}" if source in ("otomoto", "olx", "autoplac") else "api",
         p.get("notes"),
     ))
     conn.commit()
