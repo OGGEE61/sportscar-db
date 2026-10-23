@@ -1,0 +1,97 @@
+# Manual only (Actions -> Run Autoplac Scrapers -> Run workflow); add a `schedule:` cron
+# under `on:` to run it automatically. The first run opens every detail page (~35 models);
+# known listings with VIN + plate skip it afterwards, so later runs are short.
+name: Run Autoplac Scrapers
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Autoplac cars to scrape'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - bmw
+          - mercedes
+          - audi
+          - porsche
+          - x3_m40i
+          - x3m
+          - m2
+          - m2_f87
+          - m2_g87
+          - m3
+          - m3_f80
+          - m3_e46
+          - m4
+          - 1m
+          - 135i
+          - m5_e39
+          - z3_m
+          - alpina
+          - c63
+          - e55
+          - cls55
+          - clk63
+          - a45
+          - gla45
+          - g55
+          - s55
+          - sl55
+          - cl55
+          - rs3
+          - rs4
+          - rs4_b85
+          - rs4_b9
+          - ttrs
+          - r8
+          - r8_v8
+          - r8_v10
+          - cayman
+          - cayman_987
+          - cayman_981
+          - gt4
+          - cayman_718
+          - macan
+          - gr_yaris
+          - s2000
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Autoplac Scrapers
+      env:
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        BASE_URL: ${{ secrets.API_BASE }}
+        SCRAPER_TARGET: ${{ github.event.inputs.target || 'all' }}
+      run: python scrapers/run_autoplac.py
+
+    - name: Notify failure to SportsCar-DB
+      if: failure()
+      env:
+        API_TOKEN: ${{ secrets.API_TOKEN }}
+        BASE_URL: ${{ secrets.API_BASE }}
+      run: |
+        curl -s -X POST "$BASE_URL/api/log_run" \
+          -H "Authorization: Bearer $API_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{\"status\": \"error\", \"source\": \"autoplac\", \"message\": \"Autoplac Scrapers runner crashed or failed ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\"}" || true

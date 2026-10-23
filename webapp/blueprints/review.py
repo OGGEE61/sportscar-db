@@ -16,10 +16,10 @@ REVIEW_PER_PAGE = 30
 
 
 def _source_scope(column="source"):
-    """SQL fragment + params limiting a mass action to the OLX/Otomoto filter
+    """SQL fragment + params limiting a mass action to the source filter
     the user is looking at (?source=...). Empty when no filter is active."""
     source = request.args.get("source", "")
-    if source in ("olx", "otomoto"):
+    if source in ("olx", "otomoto", "autoplac"):
         return f" AND {column} = ?", [source]
     return "", []
 
@@ -28,7 +28,7 @@ def _source_scope(column="source"):
 def review_queue():
     status_filter = request.args.get("status", "pending")
     source = request.args.get("source", "")
-    source = source if source in ("olx", "otomoto") else ""
+    source = source if source in ("olx", "otomoto", "autoplac") else ""
     page = max(request.args.get("page", 1, type=int) or 1, 1)
     src_sql, src_params = (" AND source = ?", [source]) if source else ("", [])
     conn = get_db()

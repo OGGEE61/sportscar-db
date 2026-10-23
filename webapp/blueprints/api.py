@@ -80,7 +80,7 @@ def api_ingest():
         safe_int(p.get("engine_cc")), safe_int(p.get("engine_cyl")), safe_int(p.get("power_hp")),
         p.get("drivetrain"), p.get("transmission"), p.get("color_ext"),
         "placeholder" if is_placeholder else "unverified",
-        f"scraper-{source}" if source in ("otomoto","olx") else "api",
+        f"scraper-{source}" if source in ("otomoto", "olx", "autoplac") else "api",
     ))
 
     c = conn.execute("""
@@ -101,7 +101,7 @@ def api_ingest():
         p.get("observed_at")   or NOW(),
         p.get("last_seen_at"),
         p.get("removed_at"),
-        f"scraper-{source}" if source in ("otomoto","olx") else "api",
+        f"scraper-{source}" if source in ("otomoto", "olx", "autoplac") else "api",
         p.get("notes"),
     ))
     conn.commit()
@@ -230,6 +230,7 @@ def api_known_listings():
     Returns {"known": {"<source>:<id>": {"status": ..., "complete": bool}}}.
     complete = rejected, or VIN + plate + first registration already stored,
     i.e. a detail fetch could not fill anything the duplicate path would use.
+    autoplac never shows a first registration date, so VIN + plate is enough there.
     """
     if err := check_api_token(): return err
 
@@ -251,7 +252,8 @@ def api_known_listings():
             """, [source, *chunk]).fetchall()
             for r in rows:
                 complete = r["status"] == "rejected" or bool(
-                    r["vin"] and r["registration_plate"] and r["first_registration_date"])
+                    r["vin"] and r["registration_plate"]
+                    and (r["first_registration_date"] or source == "autoplac"))
                 known[f"{source}:{r['source_listing_id']}"] = {"status": r["status"], "complete": complete}
     conn.close()
     return jsonify({"known": known})

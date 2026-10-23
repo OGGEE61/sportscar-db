@@ -267,6 +267,22 @@ class TestKnownListings(ScrapingTestCase):
         self.assertTrue(known["otomoto:rej"]["complete"])
         self.assertNotIn("otomoto:new", known)
 
+    def test_autoplac_is_complete_without_first_registration(self):
+        # autoplac never shows the date, so VIN + plate is all a detail fetch can give
+        conn = db.get_db()
+        for source, sid, plate in (("autoplac", "ap-full", "WX12345"), ("autoplac", "ap-noplate", None),
+                                   ("otomoto", "oto-nodate", "WX12345")):
+            conn.execute("INSERT INTO pending_listings (source, source_listing_id, make, model, vin, status, "
+                         "registration_plate) VALUES (?, ?, 'BMW', 'X3', 'WBATS31020LP72826', 'approved', ?)",
+                         (source, sid, plate))
+        conn.commit()
+        conn.close()
+        known = self.client.post("/api/known_listings", headers=TOKEN, json={"items": [
+            ["autoplac", "ap-full"], ["autoplac", "ap-noplate"], ["otomoto", "oto-nodate"]]}).get_json()["known"]
+        self.assertTrue(known["autoplac:ap-full"]["complete"])
+        self.assertFalse(known["autoplac:ap-noplate"]["complete"])
+        self.assertFalse(known["otomoto:oto-nodate"]["complete"])
+
     def test_requires_token(self):
         res = self.client.post("/api/known_listings", json={"items": []})
         self.assertEqual(res.status_code, 401)

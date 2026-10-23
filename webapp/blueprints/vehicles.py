@@ -23,7 +23,7 @@ def vehicles_list():
     status = request.args.get("status", "")
     region = request.args.get("region", "").strip()
     source = request.args.get("source", "")
-    source = source if source in ("olx", "otomoto") else ""
+    source = source if source in ("olx", "otomoto", "autoplac") else ""
     sort   = request.args.get("sort", "last_seen")
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 

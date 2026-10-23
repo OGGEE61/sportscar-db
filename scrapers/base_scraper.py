@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Shared scraping engine for OLX / Otomoto listings.
+Shared scraping engine for OLX / Otomoto / autoplac listings.
 Each model scraper imports `run` from here and passes a ScraperConfig.
 
 Cookie auth (otomoto VIN decryption)
@@ -104,6 +104,10 @@ HEADERS      = {
 }
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "otomoto_cookies.json")
 
+# Detail pages fetched by this process, by URL. Scrapers that share a search (the two X3
+# ones) meet the same ads, which would otherwise be fetched once per scraper.
+_DETAIL_CACHE: dict = {}
+
 
 # ── config ────────────────────────────────────────────────────────────────────
 
@@ -113,7 +117,7 @@ class ScraperConfig:
     model:   str
     variant: Optional[str] = None       # e.g. "8V", "B8", "W204"
 
-    # "otomoto" or "olx"
+    # "otomoto", "olx" or "autoplac"
     source: str = "otomoto"
 
     # List-page URL template(s) — must contain {page}
@@ -126,6 +130,13 @@ class ScraperConfig:
     min_year: Optional[int] = None
     max_year: Optional[int] = None
     validator: Optional[Callable[[dict], bool]] = None
+
+    # Sellers sometimes file a car under a sibling model (an M40i listed as X3 M).
+    # Called with the detail dict; returns the config of the model the car really
+    # is when the VIN settles it (this config or a sibling), else None. The returned
+    # config's make/model/variant/model_id/defaults/years are used and the validator
+    # is skipped. Siblings should share list URLs so no one marks the other's ads sold.
+    reassign: Optional[Callable[[dict], Optional["ScraperConfig"]]] = None
 
 
     detail_delay: float = 1.0
@@ -531,12 +542,132 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
     }
 
 
+AUTOPLAC_API = "https://api.autoplac.pl/"
+
+
+def _autoplac_state(html: str) -> dict:
+    """Angular SSR state of an autoplac.pl page (<script id="ng-state">).
+
+    Holds the api.autoplac.pl responses the page was rendered from, keyed by API
+    URL. The API itself refuses direct calls (403), the rendered page does not.
+    """
+    m = re.search(r'<script id="ng-state"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(1))
+    except ValueError:
+        return {}
+
+
+def _fetch_autoplac_detail(html: str, url: str) -> dict:
+    """Extract structured vehicle data from an autoplac.pl offer page.
+
+    VIN and registration plate are served in plain text, no login needed.
+    """
+    hashed_id = url.split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+    body = (_autoplac_state(html).get(f"{AUTOPLAC_API}offer/{hashed_id}") or {}).get("body") or {}
+    ad = body.get("offer") or {}
+    if not ad:
+        return {}
+
+    desc_clean = re.sub(r"<[^>]+>", " ", ad.get("description") or "").strip()
+
+    # VIN
+    vin_found = None
+    vin_confidence = "none"
+    invalid_vin = None
+    if ad.get("vin"):
+        clean_v = re.sub(r"[^A-Za-z0-9]", "", str(ad["vin"])).upper()
+        if is_plausible_vin(clean_v):
+            vin_found = clean_v
+            vin_confidence = "found_in_schema"
+        else:
+            invalid_vin = clean_v
+            vin_confidence = "invalid_vin"
+
+    if not vin_found:
+        for candidate in VIN_RE.findall(desc_clean):
+            if not re.fullmatch(r"[0-9A-F]{17}", candidate) and is_plausible_vin(candidate):
+                vin_found = candidate
+                vin_confidence = "found_in_description"
+                break
+
+    registration_plate = None
+    raw_plate = ad.get("licensePlateNumber")
+    if raw_plate and is_valid_registration_plate(raw_plate):
+        registration_plate = re.sub(r"\s+", " ", raw_plate).strip().upper()
+
+    power_kw = ad.get("enginePowerKW")
+    power_hp = round(power_kw * 1.35962) if power_kw else None
+
+    fuel_raw = (ad.get("fuelType") or "").upper()
+    if fuel_raw == "GASOLINE":    fuel_type = "petrol"
+    elif fuel_raw == "DIESEL":    fuel_type = "diesel"
+    elif "HYBRID" in fuel_raw:    fuel_type = "hybrid"
+    elif fuel_raw == "EV":        fuel_type = "electric"
+    else:                         fuel_type = fuel_raw.lower() or None
+
+    trans_raw = (ad.get("transmissionType") or "").upper()
+    transmission = {"AUTOMATIC": "automatic", "MANUAL": "manual"}.get(trans_raw, trans_raw.lower() or None)
+
+    drivetrain = {"FOUR_WHEEL": "AWD", "REAR_WHEEL": "RWD", "FRONT_WHEEL": "FWD"}.get(ad.get("driveType"))
+
+    body_type = {"COUPE": "Coupe", "SEDAN": "Sedan", "KOMBI": "Kombi", "CABRIO": "Kabriolet",
+                 "SUV": "SUV", "HATCHBACK": "Hatchback"}.get((ad.get("bodyType") or "").upper(),
+                                                             ad.get("bodyTypeText"))
+
+    # Same shape as otomoto's equipment: [{label, values: [{label}]}]
+    groups = ad.get("equipmentGroups") or {}
+    equipment = [{"label": g.get("name"), "values": [{"label": e} for e in g.get("elements") or []]}
+                 for g in (groups.get("autoplac") or {}).get("groups") or []]
+    for extra in ("ie", "manual"):
+        g = groups.get(extra) or {}
+        if g.get("elements"):
+            equipment.append({"label": g.get("groupName"), "values": [{"label": e} for e in g["elements"]]})
+
+    photos = sorted(body.get("photoList") or [], key=lambda p: p.get("sortNumber") or 0)
+    photo_urls = [u for u in (p.get("webpUrl") or p.get("url") for p in photos) if u][:10]
+
+    loc = ad.get("locationInfo") or {}
+    city, region = loc.get("city"), loc.get("voivodeshipName")
+    location_str = f"{city}, {region}" if city and region else (city or region)
+
+    return {
+        "title":                   ad.get("title"),      # read by title-checking validators
+        "raw_title":               ad.get("title"),      # ... and the Mercedes A45/GLA45 ones
+        "year":                    ad.get("productionYear"),
+        "mileage_km":              ad.get("mileage"),
+        "power_hp":                power_hp,
+        "engine_cc":               ad.get("engineCapacity"),
+        "body_type":               body_type,
+        "drivetrain":              drivetrain,
+        "doors":                   ad.get("doors"),
+        "fuel_type":               fuel_type,
+        "transmission":            transmission,
+        "color_ext":               ad.get("colorText"),
+        "color_int":               None,
+        "equipment":               json.dumps(equipment, ensure_ascii=False) if equipment else None,
+        "vin":                     vin_found,
+        "vin_confidence":          vin_confidence,
+        "invalid_vin":             invalid_vin,
+        "registration_plate":      registration_plate,
+        "first_registration_date": None,
+        "photo_url":               photo_urls[0] if photo_urls else None,
+        "photo_urls":              photo_urls,
+        "raw_description":         desc_clean,
+        "price_from_detail":       ((ad.get("priceInfo") or {}).get("primary") or {}).get("price"),
+        "location_from_detail":    location_str,
+        "origin_market":           resolve_market(vin_found, desc_clean, make=ad.get("brand") or ""),
+    }
+
+
 # ── detail page ───────────────────────────────────────────────────────────────
 
 def fetch_detail(url: str, cookies: dict = None) -> dict:
-    """Fetch an otomoto or OLX listing detail page and extract structured data.
+    """Fetch an otomoto, OLX or autoplac listing detail page and extract structured data.
 
-    Data lives in __NEXT_DATA__ (Otomoto) or __PRERENDERED_STATE__ (OLX).
+    Data lives in __NEXT_DATA__ (Otomoto), __PRERENDERED_STATE__ (OLX) or ng-state (autoplac).
     """
     try:
         r = requests.get(
@@ -550,6 +681,8 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
 
         if "olx.pl" in url:
             return _fetch_olx_detail(r.text, url)
+        if "autoplac.pl" in url:
+            return _fetch_autoplac_detail(r.text, url)
 
         nd_m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
         if not nd_m:
@@ -929,22 +1062,49 @@ def _parse_olx_cards(soup: BeautifulSoup):
     return cards
 
 
+def _parse_autoplac_cards(html: str):
+    """Cards and total result count from an autoplac.pl list page (ng-state).
+
+    The total matters: asking for a page past the last one returns page 1 again.
+    """
+    state = _autoplac_state(html)
+    body = next((v.get("body") or {} for k, v in state.items()
+                 if k.startswith(f"{AUTOPLAC_API}offers/search") and isinstance(v, dict)), {})
+    cards = []
+    for item in body.get("offerList") or []:
+        ad = item.get("offer") or {}
+        if not ad.get("id"):
+            continue
+        photos = item.get("photoList") or []
+        cards.append({
+            "listing_id":    str(ad["id"]),
+            "title":         ad.get("title") or "N/A",
+            "price_raw":     ((ad.get("priceInfo") or {}).get("primary") or {}).get("value") or "",
+            "source_url":    "https://autoplac.pl" + ad["webUrl"] if ad.get("webUrl") else None,
+            "thumbnail":     (photos[0].get("webpUrl") or photos[0].get("url")) if photos else None,
+            "location_city": ad.get("city") or (ad.get("locationInfo") or {}).get("city"),
+        })
+    return cards, body.get("offerCount")
+
+
 # ── main runner ───────────────────────────────────────────────────────────────
 
 def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
-    cookies     = load_cookies()
+    # autoplac serves VINs in plain text; never send it the otomoto session
+    cookies     = load_cookies() if cfg.source != "autoplac" else {}
     logged_in   = False
     if cookies:
         print(f"[auth] Cookies loaded ({len(cookies)} cookies) -- attempting token refresh...")
         cookies   = refresh_session(cookies)
         logged_in = check_session(cookies)
-    else:
+    elif cfg.source != "autoplac":
         print("[auth] No cookies -- VINs will stay encrypted.")
     # Reported with the run log so the dashboard can warn about expired cookies
     session_status = ("ok" if logged_in else "expired") if cookies else "none"
 
     results  = []
     seen_ids = set()
+    processed_ids = set()
     total_processed = 0
     new_count = 0
     dup_count = 0
@@ -957,11 +1117,13 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     list_urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
 
     for url_tmpl in list_urls:
-        olx_total = None       # "Znaleźliśmy N ogłoszeń" on OLX list pages
+        # Result count the site reports ("Znaleźliśmy N ogłoszeń" on OLX, offerCount
+        # on autoplac): past it OLX shows 'recommended' filler, autoplac wraps to page 1
+        site_total = None
         url_ids = set()
         for page in range(1, 201): # Arbitrary large number, breaks when no cards are found
-            if olx_total is not None and len(url_ids) >= olx_total:
-                print(f"  All {olx_total} results seen -- stopping (the rest is OLX 'recommended' filler).")
+            if site_total is not None and len(url_ids) >= site_total:
+                print(f"  All {site_total} results seen -- stopping.")
                 break
             url = url_tmpl.format(page=page)
             print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
@@ -985,13 +1147,21 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     
             if cfg.source == "otomoto":
                 cards = _parse_otomoto_cards(soup, r.text)
+            elif cfg.source == "autoplac":
+                cards, site_total = _parse_autoplac_cards(r.text)
+                if site_total is None:
+                    # No search state = not a results page (block page, layout change);
+                    # "no cards" here must not end the run cleanly and mark ads sold
+                    print("  No autoplac search data on the page -- stopping.")
+                    clean_finish = False
+                    break
             else:
                 cards = _parse_olx_cards(soup)
-                if olx_total is None:
+                if site_total is None:
                     m = re.search(r"Znaleźliśmy\s+([\d\s\xa0]+?)\s*ogłosz", r.text)
                     if m:
-                        olx_total = int(re.sub(r"\D", "", m.group(1)) or 0)
-                        if olx_total == 0:
+                        site_total = int(re.sub(r"\D", "", m.group(1)) or 0)
+                        if site_total == 0:
                             # OLX fills an empty result with unrelated 'recommended' ads
                             print("  OLX reports 0 results for these filters -- stopping.")
                             break
@@ -1002,10 +1172,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     
             total_processed += len(cards)
             page_ids = {c["listing_id"] for c in cards}
-            url_ids |= page_ids
-            if page_ids and page_ids.issubset(seen_ids):
+            # Per URL: a page repeating this search's earlier pages means the end.
+            # Ads already met under another list URL of this config are no reason to stop.
+            if page_ids and page_ids.issubset(url_ids):
                 print(f"  All {len(cards)} cards already seen -- stopping.")
                 break
+            url_ids |= page_ids
             seen_ids |= page_ids
 
             def _card_source(c):
@@ -1023,6 +1195,10 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 if _skip_hosted(card):
                     continue
                 listing_id    = card["listing_id"]
+                # A config with several list URLs can meet the same ad twice in one run
+                if listing_id in processed_ids:
+                    continue
+                processed_ids.add(listing_id)
                 title         = card["title"]
                 price_raw     = card["price_raw"]
                 source_url    = card["source_url"]
@@ -1070,11 +1246,18 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         print(f"    > API error: {_safe(str(e))}")
                     continue
 
+                car = cfg   # the model this listing is saved under (see ScraperConfig.reassign)
+                vetted = False
                 detail = {}
                 if source_url:
-                    jitter = random.uniform(0.5, 2.5)
-                    time.sleep(cfg.detail_delay + jitter)
-                    detail = fetch_detail(source_url, cookies=cookies)
+                    if source_url in _DETAIL_CACHE:
+                        detail = _DETAIL_CACHE[source_url]   # fetched by an earlier scraper of this process
+                    else:
+                        jitter = random.uniform(0.5, 2.5)
+                        time.sleep(cfg.detail_delay + jitter)
+                        detail = fetch_detail(source_url, cookies=cookies)
+                        if detail:
+                            _DETAIL_CACHE[source_url] = detail
                     vc = detail.get("vin_confidence", "none")
                     if detail.get("vin") and vc == "found_in_description":
                         print(f"    VIN (desc):   {detail['vin']}")
@@ -1092,18 +1275,26 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             print("    VIN: brak poprawnego numeru w ogłoszeniu")
                     elif vc == "found_in_schema":
                         print("    VIN: brak poprawnego numeru w ogłoszeniu")
+
+                    target = cfg.reassign(detail) if cfg.reassign and detail else None
+                    if target:
+                        car, vetted = target, True
+                        if (target.model, target.variant) != (cfg.model, cfg.variant):
+                            print(f"    [reassign] VIN {detail['vin'][:3]}... is a {target.model} {target.variant}, "
+                                  f"not {cfg.model} {cfg.variant} -- saved as {target.variant}")
+
                     if detail.get("year"):
                         print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
                               f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
-    
-                        if cfg.min_year and detail['year'] < cfg.min_year:
-                            print(f"  [skip] Year {detail['year']} < min {cfg.min_year}")
+
+                        if car.min_year and detail['year'] < car.min_year:
+                            print(f"  [skip] Year {detail['year']} < min {car.min_year}")
                             continue
-                        if cfg.max_year and detail['year'] > cfg.max_year:
-                            print(f"  [skip] Year {detail['year']} > max {cfg.max_year}")
+                        if car.max_year and detail['year'] > car.max_year:
+                            print(f"  [skip] Year {detail['year']} > max {car.max_year}")
                             continue
 
-                    if cfg.validator and not cfg.validator(detail):
+                    if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
     
                 photo         = detail.get("photo_url") or thumbnail
@@ -1117,7 +1308,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 
                 # Let resolver do a combined check if VIN is present
                 if raw_vin:
-                    resolved = resolve_market(raw_vin, desc, make=cfg.make)
+                    resolved = resolve_market(raw_vin, desc, make=car.make)
                     if resolved:
                         final_origin_market = resolved
 
@@ -1128,9 +1319,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "source_url":        source_url,
                     "raw_title":         title,
                     "raw_description":   detail.get("raw_description"),
-                    "make":              cfg.make,
-                    "model":             cfg.model,
-                    "variant":           cfg.variant,
+                    "make":              car.make,
+                    "model":             car.model,
+                    "variant":           car.variant,
                     "year":              detail.get("year"),
                     "body_type":         detail.get("body_type"),
                     "engine_cc":         detail.get("engine_cc"),
@@ -1149,12 +1340,12 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
                     "origin_market":           final_origin_market,
-                    "model_id":                cfg.model_id,
+                    "model_id":                car.model_id,
                     "found_by":                cfg.source,  # scraper; "source" is the ad's host
                 }
-    
+
                 # Fill gaps with known model defaults
-                for key, value in cfg.defaults.items():
+                for key, value in car.defaults.items():
                     if not payload.get(key):
                         payload[key] = value
     
