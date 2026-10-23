@@ -1,7 +1,7 @@
 """BMW X3 M40i G01 (autoplac.pl) — run directly to scrape.
 
 Shares its searches with the X3 M F97 scraper; the VIN decides which of the two a
-car is (see _x3_g01.py), so a mislabeled car is saved under the right model instead
+car is (see x3_g01.py), so a mislabeled car is saved under the right model instead
 of being rejected. Cars without a VIN go through the OLX M40i validator (rejected).
 """
 import sys, os
@@ -10,8 +10,15 @@ if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import ScraperConfig, run
 from olx.bmw_x3_m40i_g01 import validate_x3_m40i
-from autoplac._x3_g01 import X3_G01_URLS, reassign_x3_g01
+from x3_g01 import reassign_x3_g01
+from autoplac._common import autoplac_url
 
+# Shared with the X3 M scraper: the title search finds M40i filed anywhere, the model
+# page finds every 340+ HP X3 whatever its title says
+X3_G01_URLS = [
+    autoplac_url(query="bmw x3 m40"),
+    autoplac_url("bmw", "x3", year_from=2017, year_to=2024, power_from=340),
+]
 
 CONFIG = ScraperConfig(
     make    = "BMW",
@@ -23,7 +30,7 @@ CONFIG = ScraperConfig(
     max_year = 2024,
     title_must_not_contain = ["M40d", "M40 d", "diesel"],
     validator = validate_x3_m40i,
-    reassign = reassign_x3_g01,
+    reassign = reassign_x3_g01("autoplac"),
     defaults = {
         "power_hp":     360,
         "engine_cc":    2998,

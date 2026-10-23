@@ -2,12 +2,18 @@
 
 Hits OLX's BMW X3-M category. Strictly isolates genuine X3 M F97 models
 (S58 3.0 biturbo, 480/510 HP Competition) and rejects M40i, M40d, 2.0d/3.0d, and non-VIN listings.
+
+Shares its searches with the X3 M40i scraper; the VIN decides which of the two a
+car is (see x3_g01.py), so an M40i badged as X3 M is saved as an M40i, not rejected.
+Cars without a VIN go through validate_x3m below.
 """
 import sys, os
 _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import ScraperConfig, run
+from x3_g01 import reassign_x3_g01
+from olx.bmw_x3_m40i_g01 import X3_G01_URLS
 
 
 def validate_x3m(detail: dict) -> bool:
@@ -47,17 +53,13 @@ CONFIG = ScraperConfig(
     model   = "X3 M",
     variant = "F97",
     source  = "olx",
-    list_url = (
-        "https://www.olx.pl/motoryzacja/samochody/bmw/x3-m/"
-        "?search[filter_float_year:from]=2019"
-        "&search[filter_float_year:to]=2024"
-        "&search[filter_float_price:from]=100000"
-        "&page={page}"
-    ),
+    list_url = X3_G01_URLS,
     min_year = 2019,
     max_year = 2024,
-    title_must_not_contain = ["M40i", "M40d", "M40"],
+    # The VIN decides M40i vs X3 M, so M40i titles are no longer skipped here
+    title_must_not_contain = ["M40d", "M40 d", "diesel"],
     validator = validate_x3m,
+    reassign = reassign_x3_g01("olx"),
     defaults = {
         "power_hp":     510,
         "engine_cc":    2993,

@@ -1,10 +1,9 @@
+# Manual only (Actions -> Run Autoplac Scrapers -> Run workflow); add a `schedule:` cron
+# under `on:` to run it automatically. The first run opens every detail page (~35 models);
+# known listings with VIN + plate skip it afterwards, so later runs are short.
 name: Run Autoplac Scrapers
 
 on:
-  schedule:
-    # Twice a day; autoplac has few results per model and needs no cookies.
-    # Known complete listings skip the detail page, so later runs are short
-    - cron: '15 7,19 * * *'
   workflow_dispatch:
     inputs:
       target:
@@ -15,6 +14,9 @@ on:
         options:
           - all
           - bmw
+          - mercedes
+          - audi
+          - porsche
           - x3_m40i
           - x3m
           - m2
@@ -29,11 +31,37 @@ on:
           - m5_e39
           - z3_m
           - alpina
+          - c63
+          - e55
+          - cls55
+          - clk63
+          - a45
+          - gla45
+          - g55
+          - s55
+          - sl55
+          - cl55
+          - rs3
+          - rs4
+          - rs4_b85
+          - rs4_b9
+          - ttrs
+          - r8
+          - r8_v8
+          - r8_v10
+          - cayman
+          - cayman_987
+          - cayman_981
+          - gt4
+          - cayman_718
+          - macan
+          - gr_yaris
+          - s2000
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
 
     steps:
     - name: Checkout repository

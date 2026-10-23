@@ -159,7 +159,7 @@ class TestX3G01Reassign(unittest.TestCase):
     """An M40i filed as X3 M (and the other way around) is saved under the right model."""
 
     def classify(self, vin, **detail):
-        from autoplac._x3_g01 import classify_x3_g01
+        from x3_g01 import classify_x3_g01
         return classify_x3_g01({"vin": vin, "fuel_type": "petrol", "engine_cc": 2998, **detail})
 
     def test_vin_maker_code_decides(self):
@@ -174,6 +174,34 @@ class TestX3G01Reassign(unittest.TestCase):
         self.assertIsNone(self.classify("5UXTS3C57J0Z00282", engine_cc=1998, power_hp=252))  # 30i
         self.assertIsNone(self.classify("WAPXXXXXXXXXXXX12"))                                # Alpina XD3
 
+    def test_every_market_reassigns_to_its_own_sibling(self):
+        import importlib
+        from x3_g01 import reassign_x3_g01
+        for market in ("autoplac", "olx", "otomoto"):
+            with self.subTest(market=market):
+                m40i = importlib.import_module(f"{market}.bmw_x3_m40i_g01").CONFIG
+                x3m = importlib.import_module(f"{market}.bmw_x3_m_f97").CONFIG
+                self.assertEqual((m40i.source, x3m.source), (market, market))
+                self.assertIs(m40i.list_url, x3m.list_url)      # shared searches
+                for cfg in (m40i, x3m):
+                    self.assertEqual(cfg.reassign({"vin": "WBATS31020LP72826", "engine_cc": 2998}).variant, "M40i G01")
+                    self.assertEqual(cfg.reassign({"vin": "WBS11EC0009W81579", "engine_cc": 2993}).variant, "F97")
+                    self.assertIsNone(cfg.reassign({"power_hp": 360}))
+                self.assertIs(reassign_x3_g01(market)({"vin": "WBS11EC0009W81579"}), x3m)
+
+    def test_otomoto_searches_cover_both_models_without_a_power_ceiling(self):
+        from otomoto.bmw_x3_m40i_g01 import CONFIG
+        self.assertEqual([u.split("?")[0].rsplit("/", 1)[1] for u in CONFIG.list_url], ["x3", "x3-m"])
+        self.assertFalse(any("engine_power%3Ato" in u for u in CONFIG.list_url))
+
+    def test_fallback_power_check_when_the_vin_does_not_settle_it(self):
+        from x3_g01 import x3_g01_power_validator
+        m40i, x3m = x3_g01_power_validator("M40i"), x3_g01_power_validator("X3 M")
+        self.assertTrue(m40i({"power_hp": 360}) and m40i({}))
+        self.assertFalse(m40i({"power_hp": 510}))
+        self.assertTrue(x3m({"power_hp": 510}) and x3m({}))
+        self.assertFalse(x3m({"power_hp": 360}))
+
     def run_cfg(self, cfg, detail):
         api = mock.MagicMock()
         api.post.side_effect = lambda url, **kw: FakeResp(data={"known": {}} if "known_listings" in url
@@ -183,6 +211,7 @@ class TestX3G01Reassign(unittest.TestCase):
         with mock.patch.object(base_scraper.requests, "get", side_effect=lambda url, **k: FakeResp(pages[url])), \
              mock.patch.object(base_scraper, "fetch_detail", return_value=detail) as fetch, \
              mock.patch.object(base_scraper, "_API_SESSION", api), \
+             mock.patch.dict(base_scraper._DETAIL_CACHE, clear=True), \
              mock.patch.object(base_scraper.time, "sleep"):
             base_scraper.run(cfg)
         ingested = [c.kwargs["json"] for c in api.post.call_args_list if c.args[0].endswith("/api/ingest_pending")]
@@ -210,6 +239,24 @@ class TestX3G01Reassign(unittest.TestCase):
         sold = next(c for c in api.post.call_args_list if "mark_removed" in c.args[0])
         self.assertEqual(set(sold.kwargs["json"]["seen_ids"]), {"1", "2"})
 
+    def test_second_scraper_reuses_the_detail_pages_of_the_first(self):
+        from autoplac.bmw_x3_m40i_g01 import CONFIG as M40I
+        from autoplac.bmw_x3_m_f97 import CONFIG as X3_M
+        api = mock.MagicMock()
+        api.post.side_effect = lambda url, **kw: FakeResp(data={"known": {}} if "known_listings" in url
+                                                          else {"tag": "pending", "marked": 0})
+        pages = {M40I.list_url[0].format(page=1): search_page([1], 1),
+                 M40I.list_url[1].format(page=1): search_page([1, 2], 2)}
+        detail = {"vin": "WBS11EC0009W81579", "fuel_type": "petrol", "engine_cc": 2993, "year": 2024}
+        with mock.patch.object(base_scraper.requests, "get", side_effect=lambda url, **k: FakeResp(pages[url])), \
+             mock.patch.object(base_scraper, "fetch_detail", return_value=detail) as fetch, \
+             mock.patch.object(base_scraper, "_API_SESSION", api), \
+             mock.patch.dict(base_scraper._DETAIL_CACHE, clear=True), \
+             mock.patch.object(base_scraper.time, "sleep"):
+            base_scraper.run(M40I)
+            base_scraper.run(X3_M)
+        self.assertEqual(fetch.call_count, 2)   # not 4: the X3 M run found both pages cached
+
 
 class TestAutoplacConfigs(unittest.TestCase):
     def test_url_helper(self):
@@ -217,6 +264,9 @@ class TestAutoplacConfigs(unittest.TestCase):
         self.assertEqual(autoplac_url("bmw", "m-3", year_from=2014, year_to=2020, power_from=420),
                          "https://autoplac.pl/oferty/samochody-osobowe/bmw/m-3"
                          "?yearFrom=2014&yearTo=2020&enginePowerFrom=420&p={page}")
+        self.assertEqual(autoplac_url("mercedes-benz", "klasa-s", year_to=2005, cc_from=5300, cc_to=5500),
+                         "https://autoplac.pl/oferty/samochody-osobowe/mercedes-benz/klasa-s"
+                         "?yearTo=2005&engineCapacityFrom=5300&engineCapacityTo=5500&p={page}")
         self.assertEqual(autoplac_url(query="bmw x3 m40"),
                          "https://autoplac.pl/oferty/samochody-osobowe?fullTextQuery=bmw%20x3%20m40&p={page}")
 
@@ -229,6 +279,42 @@ class TestAutoplacConfigs(unittest.TestCase):
                 self.assertEqual(cfg.source, "autoplac")
                 for u in urls:
                     self.assertTrue(u.startswith("https://autoplac.pl/oferty/") and u.endswith("p={page}"), u)
+
+    def test_autoplac_covers_the_whole_olx_fleet_under_the_same_model_names(self):
+        # Same make / model / variant, so finds from every market land on the same model
+        import run_autoplac
+        import run_olx
+        key = lambda c: (c.make, c.model, c.variant)  # noqa: E731
+        self.assertEqual({key(c) for c in run_autoplac.ALL_AUTOPLAC_FLEET}, {key(c) for c in run_olx.ALL_OLX_FLEET})
+        self.assertEqual(len(run_autoplac.ALL_AUTOPLAC_FLEET), len({key(c) for c in run_autoplac.ALL_AUTOPLAC_FLEET}))
+
+    def test_make_targets_partition_the_fleet(self):
+        import run_autoplac as R
+        parts = R.BMW_FLEET + R.MERCEDES_FLEET + R.AUDI_FLEET + R.PORSCHE_FLEET + [R.GR_YARIS_AUTOPLAC, R.S2000_AUTOPLAC]
+        self.assertEqual([id(c) for c in parts], [id(c) for c in R.ALL_AUTOPLAC_FLEET])
+        self.assertEqual(len(R.ALL_AUTOPLAC_FLEET), 35)
+
+    def test_overlapping_models_are_told_apart_by_the_url(self):
+        # Models sharing a path must not return the same cars: split by year or engine size
+        import run_autoplac as R
+        for a, b in ((R.R8_V8_AUTOPLAC, R.R8_V10_AUTOPLAC), (R.CAYMAN_981_AUTOPLAC, R.CAYMAN_GT4_AUTOPLAC)):
+            urls_a, urls_b = (set([c.list_url] if isinstance(c.list_url, str) else c.list_url) for c in (a, b))
+            self.assertFalse(urls_a & urls_b, (a.variant, b.variant))
+        self.assertIn("engineCapacityTo=4500", R.R8_V8_AUTOPLAC.list_url)
+        self.assertIn("engineCapacityFrom=4500", R.R8_V10_AUTOPLAC.list_url)
+        # Mercedes sellers use both 'Klasa X' and 'X' for the same car
+        for cfg, slugs in ((R.C63_W204_AUTOPLAC, {"klasa-c", "c"}), (R.S55_W220_AUTOPLAC, {"klasa-s", "s"}),
+                           (R.E55_W211_AUTOPLAC, {"klasa-e", "e"})):
+            self.assertEqual({u.split("?")[0].rsplit("/", 1)[1] for u in cfg.list_url}, slugs, cfg.variant)
+
+    def test_verify_script_knows_every_model(self):
+        # scripts/verify_autoplac.py holds the expected power / engine size per model
+        import run_autoplac as R
+        from scripts.verify_autoplac import EXPECT, MAKE_WMI
+        for cfg in R.ALL_AUTOPLAC_FLEET:
+            with self.subTest(variant=cfg.variant):
+                self.assertIn((cfg.model, cfg.variant), EXPECT)
+                self.assertIn(cfg.make, MAKE_WMI)
 
 
 if __name__ == "__main__":

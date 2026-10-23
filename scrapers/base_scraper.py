@@ -104,6 +104,10 @@ HEADERS      = {
 }
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "otomoto_cookies.json")
 
+# Detail pages fetched by this process, by URL. Scrapers that share a search (the two X3
+# ones) meet the same ads, which would otherwise be fetched once per scraper.
+_DETAIL_CACHE: dict = {}
+
 
 # ── config ────────────────────────────────────────────────────────────────────
 
@@ -630,7 +634,8 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
     location_str = f"{city}, {region}" if city and region else (city or region)
 
     return {
-        "title":                   ad.get("title"),  # read by title-checking validators
+        "title":                   ad.get("title"),      # read by title-checking validators
+        "raw_title":               ad.get("title"),      # ... and the Mercedes A45/GLA45 ones
         "year":                    ad.get("productionYear"),
         "mileage_km":              ad.get("mileage"),
         "power_hp":                power_hp,
@@ -1245,9 +1250,14 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                 vetted = False
                 detail = {}
                 if source_url:
-                    jitter = random.uniform(0.5, 2.5)
-                    time.sleep(cfg.detail_delay + jitter)
-                    detail = fetch_detail(source_url, cookies=cookies)
+                    if source_url in _DETAIL_CACHE:
+                        detail = _DETAIL_CACHE[source_url]   # fetched by an earlier scraper of this process
+                    else:
+                        jitter = random.uniform(0.5, 2.5)
+                        time.sleep(cfg.detail_delay + jitter)
+                        detail = fetch_detail(source_url, cookies=cookies)
+                        if detail:
+                            _DETAIL_CACHE[source_url] = detail
                     vc = detail.get("vin_confidence", "none")
                     if detail.get("vin") and vc == "found_in_description":
                         print(f"    VIN (desc):   {detail['vin']}")

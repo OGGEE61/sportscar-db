@@ -2,12 +2,17 @@
 
 Hits OLX's BMW X3 query for 'm40i' (2017–2024). Filters out diesel M40d,
 smaller 20i/30i models, and full X3 M Competition models.
+
+Shares its searches with the X3 M F97 scraper; the VIN decides which of the two a
+car is (see x3_g01.py), so a mislabeled car is saved under the right model instead
+of being rejected. Cars without a VIN go through validate_x3_m40i below.
 """
 import sys, os
 _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import ScraperConfig, run
+from x3_g01 import reassign_x3_g01
 
 
 def validate_x3_m40i(detail: dict) -> bool:
@@ -52,22 +57,36 @@ def validate_x3_m40i(detail: dict) -> bool:
     return True
 
 
-CONFIG = ScraperConfig(
-    make    = "BMW",
-    model   = "X3",
-    variant = "M40i G01",
-    source  = "olx",
-    list_url = (
+# Shared with the X3 M scraper: its model page plus the M40i text search
+X3_G01_URLS = [
+    (
+        "https://www.olx.pl/motoryzacja/samochody/bmw/x3-m/"
+        "?search[filter_float_year:from]=2017"
+        "&search[filter_float_year:to]=2024"
+        "&search[filter_float_price:from]=100000"
+        "&page={page}"
+    ),
+    (
         "https://www.olx.pl/motoryzacja/samochody/bmw/x3/q-m40i/"
         "?search[filter_float_year:from]=2017"
         "&search[filter_float_year:to]=2024"
         "&search[filter_float_price:from]=100000"
         "&page={page}"
     ),
+]
+
+
+CONFIG = ScraperConfig(
+    make    = "BMW",
+    model   = "X3",
+    variant = "M40i G01",
+    source  = "olx",
+    list_url = X3_G01_URLS,
     min_year = 2017,
     max_year = 2024,
     title_must_not_contain = ["M40d", "M40 d", "diesel"],
     validator = validate_x3_m40i,
+    reassign = reassign_x3_g01("olx"),
     defaults = {
         "power_hp":     360,
         "engine_cc":    2998,

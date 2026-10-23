@@ -18,7 +18,7 @@ The **VIN is the permanent identity key**. All data attaches to a VIN, not an ad
 
 ### How a listing becomes data
 
-1. **Scrape** — a scraper reads an ad from otomoto or OLX.
+1. **Scrape** — a scraper reads an ad from otomoto, OLX or autoplac.
 2. **Extract the VIN** — from the ad's structured data, the otomoto encrypted VIN reveal, or the description text.
 3. **Validate it** — `validation.is_plausible_vin` (one implementation shared by scrapers and the app) rejects masked, fake or foreign-manufacturer VINs.
 4. **Link it** —
@@ -85,6 +85,13 @@ python scrapers/run_all.py single
 # OLX:
 python scrapers/olx/bmw_alpina.py
 python scrapers/run_olx.py all
+
+# autoplac (VIN and plate are public there, no cookies):
+python scrapers/autoplac/bmw_x3_m40i_g01.py
+python scrapers/run_autoplac.py bmw       # also: mercedes, audi, porsche, all
+
+# Check that every autoplac scraper fetches the right model (live, posts nothing):
+python scripts/verify_autoplac.py
 ```
 
 ---
@@ -101,7 +108,7 @@ webapp/
   regions.py           # city → voivodeship lookup tables
   services/            # listing approval & spec inference, photo storage
   blueprints/          # routes: auth, dashboard, vehicles, review, plates, cepik, api
-scrapers/              # otomoto / OLX scrapers (run on GitHub Actions)
+scrapers/              # otomoto / OLX / autoplac scrapers (run on GitHub Actions)
 scripts/               # CV plate detection, CEPiK fetch, maintenance tools
 ```
 
