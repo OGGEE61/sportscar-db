@@ -93,6 +93,9 @@ def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", 
     except Exception as e:
         print(f"[log_run] failed: {e}")
 
+LAST_RUN_STATUS = {}   # source -> status of the most recent run(), read by the runners
+LIST_FETCH_ATTEMPTS = 3   # transient list-page timeouts are common on OLX
+
 BROWSER_UA   = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -966,13 +969,19 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             url = url_tmpl.format(page=page)
             print(f"\n=== {cfg.make} {cfg.model} [{cfg.source}] -- Page {page} ===")
     
-            try:
-                r = requests.get(
-                    url, headers=HEADERS, cookies=cookies,
-                    timeout=15, impersonate="chrome"
-                )
-            except Exception as e:
-                print(f"  [list error] {_safe(str(e))}")
+            r = None
+            for attempt in range(1, LIST_FETCH_ATTEMPTS + 1):
+                try:
+                    r = requests.get(
+                        url, headers=HEADERS, cookies=cookies,
+                        timeout=15, impersonate="chrome"
+                    )
+                    break
+                except Exception as e:
+                    print(f"  [list error] attempt {attempt}/{LIST_FETCH_ATTEMPTS}: {_safe(str(e))}")
+                    if attempt < LIST_FETCH_ATTEMPTS:
+                        time.sleep(random.uniform(3, 8))
+            if r is None:
                 clean_finish = False
                 break
 
@@ -1209,6 +1218,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
             print(f"[sold] mark_removed failed: {_safe(str(e))}")
 
     status = "success" if clean_finish else "partial"
+    LAST_RUN_STATUS[cfg.source] = status
     msg = (f"Processed '{cfg.variant or cfg.model}' {'successfully' if clean_finish else 'PARTIALLY (stopped early, sold-check skipped)'}. "
            f"(New: {new_count}, Dup: {dup_count}, Rej: {rej_count}, Detail skipped: {skipped_count})")
     print(f"\nDone. {total_processed} cards seen, {len(results)} listings fetched "
