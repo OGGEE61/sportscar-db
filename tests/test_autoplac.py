@@ -114,6 +114,7 @@ class FakeResp:
     def __init__(self, text="", status=200, data=None):
         self.status_code = status
         self.text = text
+        self.headers = {}
         self._data = data or {}
 
     def json(self):
@@ -315,6 +316,44 @@ class TestAutoplacConfigs(unittest.TestCase):
             with self.subTest(variant=cfg.variant):
                 self.assertIn((cfg.model, cfg.variant), EXPECT)
                 self.assertIn(cfg.make, MAKE_WMI)
+
+
+class TestPreflight(unittest.TestCase):
+    """A blocked network must stop the fleet with one clear error, not 35 empty runs."""
+
+    def fake_get(self, resp):
+        return mock.patch.object(base_scraper.requests, "get", return_value=resp)
+
+    def test_blocked_with_cloudflare_headers(self):
+        import run_autoplac
+        resp = FakeResp(status=403)
+        resp.headers = {"server": "cloudflare", "cf-ray": "abc-WAW", "cf-mitigated": "challenge"}
+        with self.fake_get(resp):
+            problem = run_autoplac.preflight(run_autoplac.X3_M40I_AUTOPLAC)
+        self.assertIn("HTTP 403", problem)
+        self.assertIn("cf-mitigated=challenge", problem)
+
+    def test_reachable_and_no_data(self):
+        import run_autoplac
+        with self.fake_get(FakeResp(text=search_page([1], 1))):
+            self.assertIsNone(run_autoplac.preflight(run_autoplac.C63_W204_AUTOPLAC))
+        with self.fake_get(FakeResp(text="<html>just a moment</html>")):
+            self.assertIn("no search data", run_autoplac.preflight(run_autoplac.C63_W204_AUTOPLAC))
+
+    def test_runner_exits_1_and_logs_an_error_without_scraping(self):
+        import runpy
+        resp = FakeResp(status=403)
+        resp.headers = {}
+        with self.fake_get(resp), \
+             mock.patch.object(base_scraper, "_log_run") as log, \
+             mock.patch.object(base_scraper, "run") as scrape, \
+             mock.patch.object(sys, "argv", ["run_autoplac.py", "bmw"]), \
+             self.assertRaises(SystemExit) as exit_:
+            runpy.run_path(os.path.join(os.path.dirname(base_scraper.__file__), "run_autoplac.py"), run_name="__main__")
+        self.assertEqual(exit_.exception.code, 1)
+        scrape.assert_not_called()
+        self.assertEqual(log.call_args.args[0], "error")
+        self.assertEqual(log.call_args.kwargs["source"], "autoplac")
 
 
 if __name__ == "__main__":

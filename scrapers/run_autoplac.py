@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run, _log_run
+from base_scraper import run, _log_run, _parse_autoplac_cards, requests, HEADERS
 # Package-qualified: autoplac/ shares module names with olx/ and otomoto/
 from autoplac.bmw_x3_m40i_g01 import CONFIG as X3_M40I_AUTOPLAC
 from autoplac.bmw_x3_m_f97 import CONFIG as X3_M_AUTOPLAC
@@ -168,6 +168,28 @@ SCRAPER_MAP = {
     "all":      ALL_AUTOPLAC_FLEET,
 }
 
+def preflight(cfg):
+    """One cheap request before the fleet. None if autoplac answers with search data,
+    else what went wrong.
+
+    autoplac sits behind Cloudflare, which can refuse a whole network (GitHub-hosted
+    runners come from Azure): every list page then returns 403 and the fleet would
+    "finish" 35 empty scrapers. Better to stop with one clear error.
+    """
+    url = (cfg.list_url if isinstance(cfg.list_url, str) else cfg.list_url[0]).format(page=1)
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=15, impersonate="chrome")
+    except Exception as e:
+        return f"request failed: {e}"
+    if r.status_code != 200:
+        h = r.headers
+        return (f"HTTP {r.status_code} (server={h.get('server')}, cf-mitigated={h.get('cf-mitigated')}, "
+                f"cf-ray={h.get('cf-ray')}) {r.text[:100]!r}")
+    if _parse_autoplac_cards(r.text)[1] is None:
+        return "HTTP 200 but the page has no search data (block page or layout change)"
+    return None
+
+
 if __name__ == "__main__":
     target = os.getenv("SCRAPER_TARGET")
     if not target and len(sys.argv) > 1:
@@ -177,6 +199,13 @@ if __name__ == "__main__":
 
     scrapers_to_run = SCRAPER_MAP.get(target, ALL_AUTOPLAC_FLEET)
     print(f"Running autoplac scraper target: {target} ({len(scrapers_to_run)} scraper(s))")
+
+    problem = preflight(scrapers_to_run[0])
+    if problem:
+        msg = f"autoplac is not reachable from here, nothing scraped: {problem}"
+        print(msg)
+        _log_run("error", msg, source="autoplac")
+        sys.exit(1)
 
     total = 0
     failed_models = []
