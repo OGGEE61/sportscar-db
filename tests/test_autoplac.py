@@ -155,5 +155,25 @@ class TestAutoplacRun(unittest.TestCase):
         self.assertEqual(log.kwargs["json"]["status"], "partial")
 
 
+class TestAutoplacConfigs(unittest.TestCase):
+    def test_url_helper(self):
+        from autoplac._common import autoplac_url
+        self.assertEqual(autoplac_url("bmw", "m-3", year_from=2014, year_to=2020, power_from=420),
+                         "https://autoplac.pl/oferty/samochody-osobowe/bmw/m-3"
+                         "?yearFrom=2014&yearTo=2020&enginePowerFrom=420&p={page}")
+        self.assertEqual(autoplac_url(query="bmw x3 m40"),
+                         "https://autoplac.pl/oferty/samochody-osobowe?fullTextQuery=bmw%20x3%20m40&p={page}")
+
+    def test_every_fleet_config_is_autoplac(self):
+        import run_autoplac
+        self.assertEqual(len({id(c) for c in run_autoplac.ALL_AUTOPLAC_FLEET}), len(run_autoplac.ALL_AUTOPLAC_FLEET))
+        for cfg in run_autoplac.ALL_AUTOPLAC_FLEET:
+            urls = [cfg.list_url] if isinstance(cfg.list_url, str) else cfg.list_url
+            with self.subTest(variant=cfg.variant):
+                self.assertEqual(cfg.source, "autoplac")
+                for u in urls:
+                    self.assertTrue(u.startswith("https://autoplac.pl/oferty/") and u.endswith("p={page}"), u)
+
+
 if __name__ == "__main__":
     unittest.main()

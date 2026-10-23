@@ -230,6 +230,7 @@ def api_known_listings():
     Returns {"known": {"<source>:<id>": {"status": ..., "complete": bool}}}.
     complete = rejected, or VIN + plate + first registration already stored,
     i.e. a detail fetch could not fill anything the duplicate path would use.
+    autoplac never shows a first registration date, so VIN + plate is enough there.
     """
     if err := check_api_token(): return err
 
@@ -251,7 +252,8 @@ def api_known_listings():
             """, [source, *chunk]).fetchall()
             for r in rows:
                 complete = r["status"] == "rejected" or bool(
-                    r["vin"] and r["registration_plate"] and r["first_registration_date"])
+                    r["vin"] and r["registration_plate"]
+                    and (r["first_registration_date"] or source == "autoplac"))
                 known[f"{source}:{r['source_listing_id']}"] = {"status": r["status"], "complete": complete}
     conn.close()
     return jsonify({"known": known})

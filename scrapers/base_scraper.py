@@ -623,6 +623,7 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
     location_str = f"{city}, {region}" if city and region else (city or region)
 
     return {
+        "title":                   ad.get("title"),  # read by title-checking validators
         "year":                    ad.get("productionYear"),
         "mileage_km":              ad.get("mileage"),
         "power_hp":                power_hp,

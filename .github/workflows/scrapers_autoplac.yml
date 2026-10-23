@@ -2,7 +2,8 @@ name: Run Autoplac Scrapers
 
 on:
   schedule:
-    # Twice a day; autoplac has few results per model and needs no cookies
+    # Twice a day; autoplac has few results per model and needs no cookies.
+    # Known complete listings skip the detail page, so later runs are short
     - cron: '15 7,19 * * *'
   workflow_dispatch:
     inputs:
@@ -13,12 +14,26 @@ on:
         type: choice
         options:
           - all
+          - bmw
           - x3_m40i
+          - x3m
+          - m2
+          - m2_f87
+          - m2_g87
+          - m3
+          - m3_f80
+          - m3_e46
+          - m4
+          - 1m
+          - 135i
+          - m5_e39
+          - z3_m
+          - alpina
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
     - name: Checkout repository
