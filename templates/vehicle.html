@@ -371,10 +371,10 @@
 {% if price_timeline != '[]' %}
 <div class="card mb-4 shadow-sm">
   <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-    <span class="fw-semibold small text-uppercase text-secondary">Price History</span>
-    <span class="badge bg-light text-dark border small">{{ ad_groups|length }} source(s)</span>
+    <span class="fw-semibold small text-uppercase text-secondary">Price History by platform</span>
+    <span id="priceChips" class="d-flex flex-wrap justify-content-end gap-1 small"></span>
   </div>
-  <div class="card-body py-2 px-3" style="height: 140px; position: relative;">
+  <div class="card-body py-2 px-3" style="height: 230px; position: relative;">
     <canvas id="chartPrice"></canvas>
   </div>
 </div>
@@ -586,28 +586,76 @@ function renderPriceChart() {
   if (!chartEl) return;
   const pt = {{ price_timeline|safe }};
   if (!pt || !pt.length) return;
+  const DAY = 864e5;
+  const fmtDay = ms => new Date(ms).toISOString().slice(0, 10);
+  const fmtPrice = v => Number(v).toLocaleString('pl-PL');
+  // Same colours as the platform badges; any other source gets grey
+  const PLATFORMS = [
+    {key: 'otomoto',  label: 'Otomoto',  color: '#c2410c'},
+    {key: 'olx',      label: 'OLX',      color: '#0f766e'},
+    {key: 'autoplac', label: 'Autoplac', color: '#1d4ed8'},
+  ];
+  // One point per platform and day (the last observation of that day): the scrapers
+  // observe an ad on every run, so a day can hold many identical points.
+  const byPlatform = {};
+  pt.forEach(d => {
+    const day = (d.observed_at || '').slice(0, 10);
+    if (!day || d.price_pln == null) return;
+    (byPlatform[d.source || 'other'] = byPlatform[d.source || 'other'] || {})[day] = d.price_pln;
+  });
+  const known = PLATFORMS.map(p => p.key);
+  const order = PLATFORMS.filter(p => byPlatform[p.key]).concat(
+    Object.keys(byPlatform).filter(k => !known.includes(k)).sort().map(k => ({key: k, label: k, color: '#475569'})));
+  const datasets = order.map(p => ({
+    label: p.label,
+    data: Object.keys(byPlatform[p.key]).sort().map(day => ({x: Date.parse(day), y: byPlatform[p.key][day]})),
+    borderColor: p.color,
+    backgroundColor: p.color,
+    tension: 0.15,
+    pointRadius: 3,
+    pointHoverRadius: 6,
+    borderWidth: 2,
+  }));
+
+  // Latest price per platform next to the title
+  const chips = document.getElementById('priceChips');
+  if (chips) {
+    chips.innerHTML = '';
+    datasets.forEach(ds => {
+      const last = ds.data[ds.data.length - 1];
+      const chip = document.createElement('span');
+      chip.className = 'badge';
+      chip.style.background = ds.borderColor;
+      chip.textContent = ds.label + ' ' + fmtPrice(last.y) + ' zł';
+      chips.appendChild(chip);
+    });
+  }
+
+  const xs = datasets.flatMap(ds => ds.data.map(p => p.x));
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
   new Chart(chartEl, {
     type: 'line',
-    data: {
-      labels: pt.map(d => (d.observed_at || '').slice(0, 10)),
-      datasets: [{
-        label: 'Price PLN',
-        data: pt.map(d => d.price_pln),
-        borderColor: '#0d6efd',
-        backgroundColor: 'rgba(13,110,253,.08)',
-        fill: true,
-        tension: 0.2,
-        pointRadius: 3,
-        pointHoverRadius: 6,
-        borderWidth: 2,
-      }]
-    },
+    data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
       layout: { padding: { top: 6, bottom: 6, left: 6, right: 6 } },
       scales: {
-        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+        x: {
+          type: 'linear',
+          min: minX - DAY / 2,
+          max: maxX + DAY / 2,
+          grid: { display: false },
+          // whole days only, at most ~6 labels
+          afterBuildTicks: scale => {
+            const step = Math.max(1, Math.ceil((maxX - minX) / DAY / 5));
+            const ticks = [];
+            for (let t = minX; t <= maxX; t += step * DAY) ticks.push({ value: t });
+            scale.ticks = ticks;
+          },
+          ticks: { font: { size: 10 }, callback: v => fmtDay(v) }
+        },
         y: {
           beginAtZero: false,
           grid: { color: 'rgba(0,0,0,0.04)' },
@@ -618,10 +666,11 @@ function renderPriceChart() {
         }
       },
       plugins: {
-        legend: { display: false },
+        legend: { display: true, position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => Number(ctx.parsed.y).toLocaleString() + ' PLN'
+            title: items => fmtDay(items[0].parsed.x),
+            label: ctx => ctx.dataset.label + ': ' + fmtPrice(ctx.parsed.y) + ' PLN'
           }
         }
       }
