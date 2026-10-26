@@ -51,3 +51,14 @@ try:
     os.makedirs(PHOTOS_DIR, exist_ok=True)
 except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
+
+
+def car_visible_sql(alias="v"):
+    """SQL condition: the car has a sighting that is not excluded, or has no sightings at all.
+
+    Dealer-stock M2 sightings (listing_observations.excluded_reason) stay in the database so
+    their VINs remain known, but the dashboard, model analytics and /vehicles skip them. A car
+    whose every sighting is excluded is hidden too.
+    """
+    return (f"NOT (EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NOT NULL) "
+            f"AND NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NULL))")

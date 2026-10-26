@@ -107,7 +107,9 @@ def main():
     done, fails = {}, 0
     print(f"{'scraper':26} {'site':>5} {'walked':>6} {'filtered-search':>15}  verdict")
     for name in mods:
-        cfg = importlib.import_module(f"{args.source}.{name}").CONFIG
+        mod = importlib.import_module(f"{args.source}.{name}")
+        # most files define CONFIG; a few (bmw_m4_f82) use a model-specific name
+        cfg = getattr(mod, "CONFIG", None) or getattr(mod, next(n for n in dir(mod) if n.startswith("CONFIG_")))
         url = cfg.list_url if isinstance(cfg.list_url, str) else cfg.list_url[0]
         base = unfiltered(url)
         if base not in done:

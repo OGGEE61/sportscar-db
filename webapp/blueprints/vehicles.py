@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from flask import Blueprint, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import NOW, safe_float, safe_int, script_json
+from webapp.helpers import NOW, car_visible_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 
 bp = Blueprint("vehicles", __name__)
@@ -41,13 +41,13 @@ def vehicles_list():
                    MAX(observed_at)                  AS last_observed,
                    SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
                    GROUP_CONCAT(DISTINCT source)     AS sources
-            FROM listing_observations GROUP BY vin
+            FROM listing_observations WHERE excluded_reason IS NULL GROUP BY vin
         ) o ON o.vin = v.vin
         LEFT JOIN (
             SELECT vin, GROUP_CONCAT(tag) AS tags FROM tags GROUP BY vin
         ) t ON t.vin = v.vin
     """
-    wheres, params = [], []
+    wheres, params = [car_visible_sql()], []
     if q:
         wheres.append("(v.make LIKE ? OR v.model LIKE ? OR v.vin LIKE ? OR v.variant LIKE ?)")
         params += [f"%{q}%"] * 4
@@ -56,14 +56,15 @@ def vehicles_list():
     if status:
         wheres.append("v.vin_status = ?"); params.append(status)
     if source:
-        wheres.append("v.vin IN (SELECT vin FROM listing_observations WHERE source = ?)"); params.append(source)
+        wheres.append("v.vin IN (SELECT vin FROM listing_observations WHERE excluded_reason IS NULL AND source = ?)"); params.append(source)
     if region:
         cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == region]
-        cond = "lo.location_region = ?"
+        cond = "lo.excluded_reason IS NULL AND (lo.location_region = ?"
         rparams = [region]
         if cities_in_region:
             cond += f" OR lo.location_city IN ({','.join('?' for _ in cities_in_region)})"
             rparams += cities_in_region
+        cond += ")"
         wheres.append(f"v.vin IN (SELECT lo.vin FROM listing_observations lo WHERE {cond})")
         params += rparams
 

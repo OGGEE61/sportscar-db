@@ -747,3 +747,18 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         conn = db.get_db()
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin = ?", ("A" * 17,)).fetchone()[0], 1)
         conn.close()
+
+    def test_vehicles_list_skips_dealer_m2_but_keeps_resold_car(self):
+        conn = db.get_db()
+        self._car(conn, "A" * 17, "M2", 2026)
+        self._obs(conn, "A" * 17, "1", 5, "2026-09-01")           # dealer only: hidden
+        self._car(conn, "B" * 17, "M2", 2025, "2025-06-01")
+        self._obs(conn, "B" * 17, "2", 8000, "2025-09-01")        # dealer ad ...
+        self._obs(conn, "B" * 17, "3", 30000, "2026-10-01")       # ... then resale: car stays
+        conn.commit()
+        conn.close()
+        html = self.client.get("/vehicles").get_data(as_text=True)
+        self.assertNotIn("A" * 17, html)
+        self.assertIn("B" * 17, html)
+        self.assertIn("B" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
+        self.assertNotIn("A" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
