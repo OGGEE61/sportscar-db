@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run
+from base_scraper import run, _log_run, LAST_RUN_STATUS
 # Package-qualified: olx/ and otomoto/ share module names (bmw_m3_f80, ...)
 from olx.bmw_alpina import CONFIG as ALPINA_OLX
 from olx.bmw_x3_m_f97 import CONFIG as X3_M_OLX
@@ -169,14 +169,35 @@ if __name__ == "__main__":
     print(f"Running OLX scraper target: {target} ({len(scrapers_to_run)} scraper(s))")
 
     totals = {"total": 0, "new": 0, "duplicate": 0}
+    failed_models = []
+    partial_models = []
     for i, cfg in enumerate(scrapers_to_run):
+        label = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
         print(f"\n--- [{i+1}/{len(scrapers_to_run)}] {cfg.make} {cfg.model} (OLX) ---")
         try:
             results = run(cfg, post_to_api=True)
             totals["total"] += len(results)
+            if LAST_RUN_STATUS.get(cfg.source) == "partial":
+                partial_models.append(label)
         except Exception as e:
             print(f"Error running {cfg.make} {cfg.model}: {e}")
+            failed_models.append(label)
+            _log_run("error", f"Scraper '{label}' failed: {e}", source="olx")
         if (i + 1) < len(scrapers_to_run):
             time.sleep(random.uniform(2, 5))
 
     print(f"\nALL OLX DONE — {totals['total']} listings processed.")
+
+    # Batch summary, like run_all.py does for Otomoto
+    if len(scrapers_to_run) > 1:
+        n = len(scrapers_to_run)
+        if failed_models:
+            status = "error"
+            msg = f"Scheduled run finished with errors: {len(failed_models)}/{n} failed ({', '.join(failed_models)})."
+        elif partial_models:
+            status = "partial"
+            msg = f"Scheduled run finished with {len(partial_models)}/{n} partial ({', '.join(partial_models)})."
+        else:
+            status = "success"
+            msg = f"Scheduled run completed successfully: all {n} scrapers finished."
+        _log_run(status, f"{msg} Processed {totals['total']} listings.", processed=totals["total"], source="olx")
