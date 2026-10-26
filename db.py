@@ -211,6 +211,20 @@ def get_db():
 # Schema init / migrations
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _dealer_m2_sql(o: str, v: str = "v") -> str:
+    """SQL twin of validation.is_dealer_new_m2 for observation `o` joined to vehicle `v`.
+
+    Keep in step with the Python version; tests/test_validation.py checks they agree.
+    """
+    seen = f"date(COALESCE({o}.first_seen_at, {o}.observed_at))"
+    reg = f"{v}.first_registration_date"
+    return f"""({v}.model = 'M2' AND {o}.mileage_km IS NOT NULL AND {o}.mileage_km < 20000 AND
+      CASE WHEN {reg} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date({reg}) IS NOT NULL
+                AND {reg} >= '1980' AND julianday({seen}) >= julianday({reg})
+           THEN julianday({seen}) - julianday({reg}) < 365
+           ELSE {v}.year >= CAST(strftime('%Y', {seen}) AS INTEGER) END)"""
+
+
 def init_db():
     db = get_db()
 
@@ -538,6 +552,27 @@ def init_db():
     if "session_status" not in have:
         db.execute("ALTER TABLE scraper_logs ADD COLUMN session_status TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(12,'scraper_session_status')")
+
+    # Migration v14: listing_observations.excluded_reason marks dealer-stock M2 sightings
+    # (validation.is_dealer_new_m2). The rows and VINs stay, so the car is still known; the
+    # dashboard and model analytics skip them. A trigger flags new sightings on insert.
+    have = {r[1] for r in db.execute("PRAGMA table_info(listing_observations)").fetchall()}
+    if "excluded_reason" not in have:
+        db.execute("ALTER TABLE listing_observations ADD COLUMN excluded_reason TEXT")
+        db.execute(
+            "UPDATE listing_observations SET excluded_reason = 'dealer_new_m2' WHERE id IN "
+            f"(SELECT o.id FROM listing_observations o JOIN vehicles v ON v.vin = o.vin WHERE {_dealer_m2_sql('o')})")
+    db.execute("DROP TRIGGER IF EXISTS trg_obs_dealer_m2")
+    db.execute(f"""
+    CREATE TRIGGER trg_obs_dealer_m2
+    AFTER INSERT ON listing_observations
+    BEGIN
+        UPDATE listing_observations SET excluded_reason = 'dealer_new_m2'
+        WHERE id = NEW.id AND EXISTS (
+            SELECT 1 FROM vehicles v JOIN listing_observations o ON o.id = NEW.id
+            WHERE v.vin = o.vin AND {_dealer_m2_sql('o')});
+    END""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(14,'obs_excluded_reason')")
 
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
