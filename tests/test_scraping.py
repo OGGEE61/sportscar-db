@@ -359,6 +359,22 @@ class TestModelTableSorting(ScrapingTestCase):
         self.assertIn('data-s-price="120000', html)
 
 
+class TestDashboardStatCards(ScrapingTestCase):
+    """The dashboard summary shows five stat cards; the placeholder-VIN card is gone."""
+
+    def test_summary_has_no_placeholders_card(self):
+        html = self.client.get("/api/dashboard/summary").get_data(as_text=True)
+        self.assertNotIn("Placeholders", html)
+        for label in ("Total VINs", "Observations", "Active Listings", "Unique Ads", "Avg Price"):
+            self.assertIn(label, html)
+        self.assertEqual(html.count('class="card stat-card'), 5)
+
+    def test_loading_skeleton_matches_the_five_cards(self):
+        html = self.client.get("/").get_data(as_text=True)
+        shell = html.split('id="dash-summary"')[1].split("hx-swap")[1]
+        self.assertEqual(shell.split("</div>\n</div>")[0].count('class="card stat-card'), 5)
+
+
 class FakeResp:
     def __init__(self, status=200, data=None):
         self.status_code = status

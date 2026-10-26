@@ -164,7 +164,6 @@ def _load_summary():
     s = conn.execute("""
         SELECT
             (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins,
-            (SELECT COUNT(*) FROM vehicles WHERE vin_status='placeholder')                          AS placeholder_vins,
             (SELECT COUNT(*) FROM listing_observations)                                              AS total_obs,
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
@@ -174,7 +173,6 @@ def _load_summary():
     """).fetchone()
     stats = {
         "total_vins":       s["total_vins"],
-        "placeholder_vins": s["placeholder_vins"],
         "total_obs":        s["total_obs"],
         "active_obs":       s["active_obs"],
         "unique_ads":       s["unique_ads"],
