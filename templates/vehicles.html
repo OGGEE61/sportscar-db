@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pager %}
 {% from "_source.html" import source_badge %}
 {% block title %}Vehicles – SportsCar DB{% endblock %}
 
@@ -156,16 +157,6 @@
   </div>
   {% endfor %}
 </div>
-{% if pages > 1 %}
 {% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort %}
-<nav aria-label="Vehicles pages">
-  <ul class="pagination justify-content-center">
-    <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" id="page-prev" href="/vehicles?{{ qs }}&page={{ page - 1 }}">‹ Prev</a></li>
-    {% for p in range([1, page - 2]|max, ([pages, page + 2]|min) + 1) %}
-    <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="/vehicles?{{ qs }}&page={{ p }}">{{ p }}</a></li>
-    {% endfor %}
-    <li class="page-item {% if page >= pages %}disabled{% endif %}"><a class="page-link" id="page-next" href="/vehicles?{{ qs }}&page={{ page + 1 }}">Next ›</a></li>
-  </ul>
-</nav>
-{% endif %}
+{{ pager(page, pages, '/vehicles?' ~ qs ~ '&page=', 'Vehicles pages', ids=true) }}
 {% endblock %}

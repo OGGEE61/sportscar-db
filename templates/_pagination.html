@@ -1,0 +1,24 @@
+{# Page links: first, last, the current page +-2, and "…" for the gaps.
+   base = the list URL up to and including "page=", e.g. "/logs?source=olx&page=" #}
+{% macro pager(page, pages, base, label, ids=false) -%}
+{% if pages > 1 %}
+{%- set shown = ([1, pages] + range([1, page - 2]|max, ([pages, page + 2]|min) + 1)|list)|unique|sort %}
+<nav aria-label="{{ label }}" class="mt-3">
+  <ul class="pagination flex-wrap justify-content-center">
+    <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" {% if ids %}id="page-prev" {% endif %}href="{{ base }}{{ page - 1 }}">‹ Prev</a></li>
+    {%- set last = namespace(p=0) %}
+    {%- for p in shown %}
+    {%- if p - last.p == 2 %}
+    <li class="page-item"><a class="page-link" href="{{ base }}{{ p - 1 }}">{{ p - 1 }}</a></li>
+    {%- elif p - last.p > 2 %}
+    <li class="page-item disabled"><span class="page-link">…</span></li>
+    {%- endif %}
+    <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="{{ base }}{{ p }}">{{ p }}</a></li>
+    {%- set last.p = p %}
+    {%- endfor %}
+    <li class="page-item {% if page >= pages %}disabled{% endif %}"><a class="page-link" {% if ids %}id="page-next" {% endif %}href="{{ base }}{{ page + 1 }}">Next ›</a></li>
+  </ul>
+  <div class="text-center text-muted small">Page {{ page }} of {{ pages }}</div>
+</nav>
+{% endif %}
+{%- endmacro %}
