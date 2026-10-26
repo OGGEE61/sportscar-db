@@ -14,14 +14,13 @@
 <div class="row g-3 mb-4">
   {% set cards = [
     ("Total VINs",       stats.total_vins,       "#1e40af"),
-    ("Placeholders",     stats.placeholder_vins,  "#3b82f6"),
     ("Observations",     stats.total_obs,         "#2563eb"),
     ("Active Listings",  stats.active_obs,        "#1d4ed8"),
     ("Unique Ads",       stats.unique_ads,        "#60a5fa"),
     ("Avg Price (PLN)",  "{:,}".format(stats.avg_price), "#93c5fd"),
   ] %}
   {% for label, val, color in cards %}
-  <div class="col-6 col-md-4 col-lg-2">
+  <div class="col-6 col-md-4 col-lg">
     <div class="card stat-card h-100" style="border-left: 3px solid {{ color }} !important;">
       <div class="card-body p-3">
         <div class="small text-muted mb-1">{{ label }}</div>

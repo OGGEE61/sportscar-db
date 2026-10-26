@@ -293,6 +293,88 @@ def _card(i):
             "source_url": f"https://www.otomoto.pl/oferta/{i}", "thumbnail": None, "location_city": "Warszawa"}
 
 
+class TestVehiclePriceChart(ScrapingTestCase):
+    """The vehicle page plots one price line per platform the car was seen on."""
+
+    VIN = "WBS8M9C50J5K99001"
+
+    def seed(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year) VALUES (?, 'BMW', 'M3', 'F80', 2018)", (self.VIN,))
+        rows = [("otomoto", "o1", "2026-10-20 08:00:00", 160000), ("otomoto", "o1", "2026-10-20 20:00:00", 158000),
+                ("olx", "x1", "2026-10-21 09:00:00", 155000), ("autoplac", "a1", "2026-10-22 10:00:00", 150000),
+                ("autoplac", "a1", "2026-10-25 10:00:00", 147000)]
+        for source, sid, at, price in rows:
+            conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, price_pln, observed_at, last_seen_at) "
+                         "VALUES (?, ?, ?, ?, ?, ?)", (self.VIN, source, sid, price, at, at))
+        conn.commit()
+        conn.close()
+
+    def test_page_carries_every_platform_and_draws_a_line_each(self):
+        self.seed()
+        res = self.client.get(f"/vehicle/{self.VIN}")
+        self.assertEqual(res.status_code, 200)
+        html = res.get_data(as_text=True)
+        self.assertIn("Price History by platform", html)
+        for source in ("otomoto", "olx", "autoplac"):
+            self.assertRegex(html, rf'"source":\s*"{source}"')
+        # the chart script builds one dataset per platform, coloured like the badges
+        for color in ("#c2410c", "#0f766e", "#1d4ed8"):
+            self.assertIn(color, html)
+
+    def test_no_chart_without_prices(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year) VALUES (?, 'BMW', 'M3', 'F80', 2018)", (self.VIN,))
+        conn.commit()
+        conn.close()
+        self.assertNotIn("chartPrice", self.client.get(f"/vehicle/{self.VIN}").get_data(as_text=True))
+
+class TestModelTableSorting(ScrapingTestCase):
+    """/models lists tracked cars newest observation first, with sortable column headers."""
+
+    def seed(self):
+        conn = db.get_db()
+        cars = [("WBS8M9C50J5K99001", "2026-10-20 10:00:00", 150000), ("WBS8M9C50J5K99002", "2026-10-24 10:00:00", 120000),
+                ("WBS8M9C50J5K99003", "2026-10-22 10:00:00", 135000)]
+        for vin, at, price in cars:
+            conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, model_id) VALUES (?, 'BMW', 'M3', 'F80', 2016, 'm3_f80')", (vin,))
+            conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, price_pln, observed_at) VALUES (?, 'otomoto', ?, ?, ?)",
+                         (vin, vin[-3:], price, at))
+        conn.commit()
+        conn.close()
+
+    def test_default_order_is_newest_observation_first(self):
+        self.seed()
+        html = self.client.get("/models?model=m3_f80").get_data(as_text=True)
+        order = [html.index(f"WBS8M9C50J5K99{n}") for n in ("002", "003", "001")]
+        self.assertEqual(order, sorted(order))
+
+    def test_headers_are_sortable_and_rows_carry_sort_values(self):
+        self.seed()
+        html = self.client.get("/models?model=m3_f80").get_data(as_text=True)
+        for key in ("vehicle", "year", "hp", "mileage", "price", "location", "observed"):
+            self.assertIn(f'data-key="{key}"', html)
+            self.assertIn(f"data-s-{key}=", html)
+        self.assertIn('aria-sort="descending">Observed', html)
+        self.assertIn('data-s-price="120000', html)
+
+
+class TestDashboardStatCards(ScrapingTestCase):
+    """The dashboard summary shows five stat cards; the placeholder-VIN card is gone."""
+
+    def test_summary_has_no_placeholders_card(self):
+        html = self.client.get("/api/dashboard/summary").get_data(as_text=True)
+        self.assertNotIn("Placeholders", html)
+        for label in ("Total VINs", "Observations", "Active Listings", "Unique Ads", "Avg Price"):
+            self.assertIn(label, html)
+        self.assertEqual(html.count('class="card stat-card'), 5)
+
+    def test_loading_skeleton_matches_the_five_cards(self):
+        html = self.client.get("/").get_data(as_text=True)
+        shell = html.split('id="dash-summary"')[1].split("hx-swap")[1]
+        self.assertEqual(shell.split("</div>\n</div>")[0].count('class="card stat-card'), 5)
+
+
 class FakeResp:
     def __init__(self, status=200, data=None):
         self.status_code = status
