@@ -293,6 +293,43 @@ def _card(i):
             "source_url": f"https://www.otomoto.pl/oferta/{i}", "thumbnail": None, "location_city": "Warszawa"}
 
 
+class TestVehiclePriceChart(ScrapingTestCase):
+    """The vehicle page plots one price line per platform the car was seen on."""
+
+    VIN = "WBS8M9C50J5K99001"
+
+    def seed(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year) VALUES (?, 'BMW', 'M3', 'F80', 2018)", (self.VIN,))
+        rows = [("otomoto", "o1", "2026-10-20 08:00:00", 160000), ("otomoto", "o1", "2026-10-20 20:00:00", 158000),
+                ("olx", "x1", "2026-10-21 09:00:00", 155000), ("autoplac", "a1", "2026-10-22 10:00:00", 150000),
+                ("autoplac", "a1", "2026-10-25 10:00:00", 147000)]
+        for source, sid, at, price in rows:
+            conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, price_pln, observed_at, last_seen_at) "
+                         "VALUES (?, ?, ?, ?, ?, ?)", (self.VIN, source, sid, price, at, at))
+        conn.commit()
+        conn.close()
+
+    def test_page_carries_every_platform_and_draws_a_line_each(self):
+        self.seed()
+        res = self.client.get(f"/vehicle/{self.VIN}")
+        self.assertEqual(res.status_code, 200)
+        html = res.get_data(as_text=True)
+        self.assertIn("Price History by platform", html)
+        for source in ("otomoto", "olx", "autoplac"):
+            self.assertRegex(html, rf'"source":\s*"{source}"')
+        # the chart script builds one dataset per platform, coloured like the badges
+        for color in ("#c2410c", "#0f766e", "#1d4ed8"):
+            self.assertIn(color, html)
+
+    def test_no_chart_without_prices(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year) VALUES (?, 'BMW', 'M3', 'F80', 2018)", (self.VIN,))
+        conn.commit()
+        conn.close()
+        self.assertNotIn("chartPrice", self.client.get(f"/vehicle/{self.VIN}").get_data(as_text=True))
+
+
 class FakeResp:
     def __init__(self, status=200, data=None):
         self.status_code = status
