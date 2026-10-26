@@ -322,7 +322,8 @@ def model_analytics():
             (current_model['id'],)).fetchall()
     except Exception:  # model_id column not migrated yet
         rows = conn.execute(base_sql.format(condition=f"({rule})")).fetchall()
-    vehicles = [dict(r) for r in rows]
+    # Newest observation first (the page's default sort; the table headers re-sort in the browser)
+    vehicles = sorted((dict(r) for r in rows), key=lambda v: v.get("observed_at") or "", reverse=True)
 
     # Annotate region codes and names for mapping & filtering
     region_counts = {}

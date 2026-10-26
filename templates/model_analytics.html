@@ -38,6 +38,12 @@
   .kpi-card:hover {
     transform: translateY(-2px);
   }
+  /* Sortable table headers */
+  th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  th.sortable:hover { background-color: #e9ecef; }
+  th.sortable::after { content: " \2195"; opacity: 0.25; }
+  th.sortable[aria-sort="ascending"]::after { content: " \25B2"; opacity: 1; font-size: 0.7em; }
+  th.sortable[aria-sort="descending"]::after { content: " \25BC"; opacity: 1; font-size: 0.7em; }
 </style>
 {% endblock %}
 
@@ -233,19 +239,22 @@
     <table class="table table-hover align-middle mb-0">
       <thead class="table-light">
         <tr>
-          <th>Vehicle</th>
-          <th>Year</th>
-          <th>Specs</th>
-          <th>Mileage</th>
-          <th>Current Price</th>
-          <th>Location</th>
-          <th>Observed</th>
+          <th class="sortable" data-key="vehicle" data-type="text" tabindex="0" aria-sort="none">Vehicle</th>
+          <th class="sortable" data-key="year" data-type="num" tabindex="0" aria-sort="none">Year</th>
+          <th class="sortable" data-key="hp" data-type="num" tabindex="0" aria-sort="none" title="Sorts by power">Specs</th>
+          <th class="sortable" data-key="mileage" data-type="num" tabindex="0" aria-sort="none">Mileage</th>
+          <th class="sortable" data-key="price" data-type="num" tabindex="0" aria-sort="none">Current Price</th>
+          <th class="sortable" data-key="location" data-type="text" tabindex="0" aria-sort="none">Location</th>
+          <th class="sortable" data-key="observed" data-type="text" tabindex="0" aria-sort="descending">Observed</th>
           <th></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="modelRows">
         {% for v in vehicles %}
-        <tr class="model-vehicle-row" data-region="{{ v.region }}" data-year="{{ v.year }}" data-price="{{ v.price_pln }}">
+        <tr class="model-vehicle-row" data-region="{{ v.region }}" data-year="{{ v.year }}" data-price="{{ v.price_pln }}"
+            data-s-vehicle="{{ (v.title or (v.make ~ ' ' ~ v.model))|lower }}" data-s-year="{{ v.year or '' }}"
+            data-s-hp="{{ v.power_hp or '' }}" data-s-mileage="{{ v.mileage_km or '' }}" data-s-price="{{ v.price_pln or '' }}"
+            data-s-location="{{ (v.location_city or '')|lower }}" data-s-observed="{{ v.observed_at[:10] if v.observed_at else '' }}">
           <td>
             <div class="d-flex align-items-center gap-2">
               {% if v.photo %}
@@ -516,6 +525,37 @@ function filterModelTable(type, value) {
     tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
+
+// Table sorting: click a header, click again to reverse. Rows without a value stay last.
+let modelSort = { key: 'observed', dir: 'desc' };   // the order the server sends
+function sortModelTable(key, type) {
+  const tbody = document.getElementById('modelRows');
+  if (!tbody) return;
+  const dir = (modelSort.key === key && modelSort.dir === 'asc') ? 'desc' : 'asc';
+  modelSort = { key, dir };
+  const field = 's' + key.charAt(0).toUpperCase() + key.slice(1);
+  const value = r => {
+    const raw = r.dataset[field];
+    if (raw === undefined || raw === '') return null;
+    return type === 'num' ? parseFloat(raw) : raw;
+  };
+  const sign = dir === 'asc' ? 1 : -1;
+  const rows = Array.from(tbody.querySelectorAll('.model-vehicle-row'));
+  rows.sort((a, b) => {
+    const x = value(a), y = value(b);
+    if (x === null || y === null) return x === y ? 0 : (x === null ? 1 : -1);   // empty last, either way
+    return (type === 'num' ? x - y : x.localeCompare(y, 'pl')) * sign;
+  });
+  const anchor = document.getElementById('modelEmptyFilterRow');
+  rows.forEach(r => tbody.insertBefore(r, anchor));   // hidden (filtered) rows stay hidden
+  document.querySelectorAll('th.sortable').forEach(th => th.setAttribute(
+    'aria-sort', th.dataset.key === key ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'));
+}
+document.querySelectorAll('th.sortable').forEach(th => {
+  const run = () => sortModelTable(th.dataset.key, th.dataset.type);
+  th.addEventListener('click', run);
+  th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); } });
+});
 
 function clearModelFilter() {
   const banner = document.getElementById('activeFilterBanner');

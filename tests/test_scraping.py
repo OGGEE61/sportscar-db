@@ -293,6 +293,36 @@ def _card(i):
             "source_url": f"https://www.otomoto.pl/oferta/{i}", "thumbnail": None, "location_city": "Warszawa"}
 
 
+class TestModelTableSorting(ScrapingTestCase):
+    """/models lists tracked cars newest observation first, with sortable column headers."""
+
+    def seed(self):
+        conn = db.get_db()
+        cars = [("WBS8M9C50J5K99001", "2026-10-20 10:00:00", 150000), ("WBS8M9C50J5K99002", "2026-10-24 10:00:00", 120000),
+                ("WBS8M9C50J5K99003", "2026-10-22 10:00:00", 135000)]
+        for vin, at, price in cars:
+            conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, model_id) VALUES (?, 'BMW', 'M3', 'F80', 2016, 'm3_f80')", (vin,))
+            conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, price_pln, observed_at) VALUES (?, 'otomoto', ?, ?, ?)",
+                         (vin, vin[-3:], price, at))
+        conn.commit()
+        conn.close()
+
+    def test_default_order_is_newest_observation_first(self):
+        self.seed()
+        html = self.client.get("/models?model=m3_f80").get_data(as_text=True)
+        order = [html.index(f"WBS8M9C50J5K99{n}") for n in ("002", "003", "001")]
+        self.assertEqual(order, sorted(order))
+
+    def test_headers_are_sortable_and_rows_carry_sort_values(self):
+        self.seed()
+        html = self.client.get("/models?model=m3_f80").get_data(as_text=True)
+        for key in ("vehicle", "year", "hp", "mileage", "price", "location", "observed"):
+            self.assertIn(f'data-key="{key}"', html)
+            self.assertIn(f"data-s-{key}=", html)
+        self.assertIn('aria-sort="descending">Observed', html)
+        self.assertIn('data-s-price="120000', html)
+
+
 class FakeResp:
     def __init__(self, status=200, data=None):
         self.status_code = status
