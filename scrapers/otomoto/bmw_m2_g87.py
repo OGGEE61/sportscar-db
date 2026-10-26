@@ -7,6 +7,13 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(__file__))
 from base_scraper import ScraperConfig, run
+from validation import is_dealer_new_m2
+
+
+def not_dealer_stock(detail: dict) -> bool:
+    return not is_dealer_new_m2("M2", detail.get("year"), detail.get("mileage_km"),
+                                detail.get("first_registration_date"))
+
 
 CONFIG = ScraperConfig(
     make    = "BMW",
@@ -19,6 +26,7 @@ CONFIG = ScraperConfig(
         "&page={page}"
     ),
     title_must_contain = "M2",
+    validator = not_dealer_stock,
     defaults = {
         "power_hp":     460,
         "engine_cc":    2993,

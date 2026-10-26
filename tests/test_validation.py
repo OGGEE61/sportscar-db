@@ -105,3 +105,29 @@ class TestModelNamesAreNotPlates(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDealerNewM2(unittest.TestCase):
+    TODAY = date(2026, 10, 26)
+
+    def check(self, *a, **kw):
+        from validation import is_dealer_new_m2
+        return is_dealer_new_m2(*a, on=self.TODAY, **kw)
+
+    def test_new_low_km_m2_is_dealer_stock(self):
+        self.assertTrue(self.check("M2", 2026, 5000))
+        self.assertTrue(self.check("M2", 2025, 19999, "2026-03-01"))
+
+    def test_registration_date_beats_model_year(self):
+        self.assertFalse(self.check("M2", 2026, 5000, "2025-10-25"))   # 366 days
+        self.assertTrue(self.check("M2", 2025, 5000, "2025-10-27"))    # 364 days
+
+    def test_year_only_older_than_current_is_kept(self):
+        self.assertFalse(self.check("M2", 2025, 5000))
+
+    def test_high_mileage_or_unknown_is_kept(self):
+        self.assertFalse(self.check("M2", 2026, 20000))
+        self.assertFalse(self.check("M2", 2026, None))
+
+    def test_other_models_are_never_dealer_stock(self):
+        self.assertFalse(self.check("M3", 2026, 100))
