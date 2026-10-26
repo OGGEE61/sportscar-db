@@ -152,6 +152,14 @@ def _recent_filter(args):
     return wheres, params, active_filter
 
 
+# Dealer-stock M2 sightings (listing_observations.excluded_reason) stay in the database so
+# their VINs remain known, but they are left out of the dashboard and model analytics.
+# A car whose every sighting is excluded is hidden too.
+def _car_visible(alias="v"):
+    return (f"NOT (EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NOT NULL) "
+            f"AND NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NULL))")
+
+
 @bp.route("/")
 def dashboard():
     """Page shell only: no database work here. The sections load from /api/dashboard/*."""
@@ -163,13 +171,13 @@ def _load_summary():
     conn = get_db()
     s = conn.execute("""
         SELECT
-            (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins,
-            (SELECT COUNT(*) FROM listing_observations)                                              AS total_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
+            (SELECT COUNT(*) FROM vehicles v WHERE """ + _car_visible() + """)                           AS total_vins,
+            (SELECT COUNT(*) FROM listing_observations WHERE excluded_reason IS NULL)                  AS total_obs,
+            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND excluded_reason IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
-             WHERE source_listing_id IS NOT NULL)                                                    AS unique_ads,
+             WHERE excluded_reason IS NULL AND source_listing_id IS NOT NULL)                         AS unique_ads,
             (SELECT AVG(price_pln) FROM listing_observations
-             WHERE removed_at IS NULL AND price_pln > 0)                                            AS avg_price
+             WHERE removed_at IS NULL AND excluded_reason IS NULL AND price_pln > 0)                    AS avg_price
     """).fetchone()
     stats = {
         "total_vins":       s["total_vins"],
@@ -200,8 +208,8 @@ def dashboard_summary():
 def _load_charts():
     conn = get_db()
     makes_dist = conn.execute("""
-        SELECT make, COUNT(*) AS cnt FROM vehicles
-        WHERE vin_status != 'placeholder'
+        SELECT make, COUNT(*) AS cnt FROM vehicles v
+        WHERE vin_status != 'placeholder' AND """ + _car_visible() + """
         GROUP BY make ORDER BY cnt DESC LIMIT 12
     """).fetchall()
 
@@ -216,7 +224,7 @@ def _load_charts():
                 ELSE '>750k'
             END AS rng, COUNT(DISTINCT vin) AS cnt
         FROM listing_observations
-        WHERE price_pln > 0 AND removed_at IS NULL
+        WHERE price_pln > 0 AND removed_at IS NULL AND excluded_reason IS NULL
         GROUP BY rng ORDER BY MIN(price_pln)
     """).fetchall()
 
@@ -224,11 +232,11 @@ def _load_charts():
     weekly = conn.execute("""
         SELECT strftime('%Y-W%W', observed_at) AS week, COUNT(*) AS cnt
         FROM listing_observations
-        WHERE observed_at >= datetime('now', '-84 days')
+        WHERE excluded_reason IS NULL AND observed_at >= datetime('now', '-84 days')
         GROUP BY week ORDER BY week
     """).fetchall()
 
-    cities = conn.execute("SELECT location_region, location_city, COUNT(DISTINCT vin) as cnt FROM listing_observations GROUP BY location_region, location_city").fetchall()
+    cities = conn.execute("SELECT location_region, location_city, COUNT(DISTINCT vin) as cnt FROM listing_observations WHERE excluded_reason IS NULL GROUP BY location_region, location_city").fetchall()
     conn.close()
     region_counts = {}
     for r in cities:
@@ -261,7 +269,8 @@ def dashboard_recent():
     """
     # Show each VIN once, by its newest observation (display only; history stays in the DB).
     # The filter then applies to that newest observation, so a car that moved isn't listed in its old region.
-    wheres = ["NOT EXISTS (SELECT 1 FROM listing_observations n WHERE n.vin = o.vin "
+    wheres = ["o.excluded_reason IS NULL",
+              "NOT EXISTS (SELECT 1 FROM listing_observations n WHERE n.vin = o.vin AND n.excluded_reason IS NULL "
               "AND (n.observed_at > o.observed_at OR (n.observed_at = o.observed_at AND n.id > o.id)))"] + wheres
     sql += " WHERE " + " AND ".join(wheres)
     limit = 50 if active_filter else 10
@@ -309,9 +318,9 @@ def model_analytics():
             SELECT vin, price_pln, mileage_km, location_city, location_region, observed_at, source_url, title,
                    ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
             FROM listing_observations
-            WHERE price_pln IS NOT NULL AND price_pln > 0
+            WHERE price_pln IS NOT NULL AND price_pln > 0 AND excluded_reason IS NULL
         ) o ON v.vin = o.vin AND o.rn = 1
-        WHERE {condition}
+        WHERE {condition} AND """ + _car_visible() + """
     """
     rule = current_model['where']
     try:

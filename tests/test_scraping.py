@@ -687,3 +687,63 @@ class TestCepikNotFoundRequeue(ScrapingTestCase):
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_sync_log").fetchone()[0], 0)
         conn.close()
         self.assertEqual(self.queue()[1], "CD99999")
+
+
+class DealerM2ExclusionTest(ScrapingTestCase):
+    """Dealer-stock M2 sightings are flagged, kept (VIN stays known) and left out of the dashboard."""
+
+    def _car(self, conn, vin, model, year, first_reg=None):
+        conn.execute("INSERT INTO vehicles(vin,make,model,variant,year,first_registration_date) VALUES(?,?,?,?,?,?)",
+                     (vin, "BMW", model, "G87", year, first_reg))
+
+    def _obs(self, conn, vin, sid, km, seen, price=400000):
+        conn.execute("INSERT INTO listing_observations(vin,source,source_listing_id,mileage_km,price_pln,first_seen_at,observed_at) "
+                     "VALUES(?,?,?,?,?,?,?)", (vin, "otomoto", sid, km, price, seen, seen))
+
+    def _flags(self, conn):
+        return {r["source_listing_id"]: r["excluded_reason"]
+                for r in conn.execute("SELECT source_listing_id, excluded_reason FROM listing_observations")}
+
+    def test_trigger_matches_python_rule(self):
+        from validation import is_dealer_new_m2
+        from datetime import date
+        conn = db.get_db()
+        cases = [  # id, model, year, first_reg, km, seen
+            ("1", "M2", 2026, None,         3000,  "2026-09-01"),
+            ("2", "M2", 2025, None,         3000,  "2026-09-01"),
+            ("3", "M2", 2025, "2025-10-27", 3000,  "2026-10-26"),
+            ("4", "M2", 2025, "2025-10-25", 3000,  "2026-10-26"),
+            ("5", "M2", 2026, None,         20000, "2026-09-01"),
+            ("6", "M2", 2026, None,         None,  "2026-09-01"),
+            ("7", "M3", 2026, None,         100,   "2026-09-01"),
+            ("8", "M2", 2026, "2027-01-01", 100,   "2026-09-01"),   # future date: fall back to year
+        ]
+        for sid, model, year, reg, km, seen in cases:
+            vin = f"VIN{sid}".ljust(17, "X")
+            self._car(conn, vin, model, year, reg)
+            self._obs(conn, vin, sid, km, seen)
+        conn.commit()
+        flags = self._flags(conn)
+        for sid, model, year, reg, km, seen in cases:
+            want = is_dealer_new_m2(model, year, km, reg, on=date.fromisoformat(seen))
+            self.assertEqual(flags[sid] is not None, want, sid)
+        conn.close()
+
+    def test_dashboard_skips_excluded_but_vin_stays_known(self):
+        conn = db.get_db()
+        self._car(conn, "A" * 17, "M2", 2026)
+        self._obs(conn, "A" * 17, "1", 5, "2026-09-01")
+        self._car(conn, "B" * 17, "M2", 2020)
+        self._obs(conn, "B" * 17, "2", 40000, "2026-09-01", price=300000)
+        conn.commit()
+        conn.close()
+        summary = self.client.get("/api/dashboard/summary").get_data(as_text=True)
+        self.assertNotIn("400", summary)  # no crash; stats rendered
+        import webapp.blueprints.dashboard as dash
+        stats, _ = dash._load_summary()
+        self.assertEqual(stats["total_vins"], 1)
+        self.assertEqual(stats["total_obs"], 1)
+        self.assertEqual(stats["avg_price"], 300000)
+        conn = db.get_db()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin = ?", ("A" * 17,)).fetchone()[0], 1)
+        conn.close()
