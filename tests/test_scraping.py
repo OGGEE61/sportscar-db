@@ -1,5 +1,6 @@
 """Regression tests for sold-marking scope, partial scrapes, detail skipping and paging."""
 import os
+import re
 import sys
 import unittest
 from unittest import mock
@@ -373,6 +374,51 @@ class TestDashboardStatCards(ScrapingTestCase):
         html = self.client.get("/").get_data(as_text=True)
         shell = html.split('id="dash-summary"')[1].split("hx-swap")[1]
         self.assertEqual(shell.split("</div>\n</div>")[0].count('class="card stat-card'), 5)
+
+
+class TestPager(ScrapingTestCase):
+    """Pagination shows first / last / current +-2 with gaps marked, not just three pages."""
+
+    def pager(self, page, pages, **kw):
+        tpl = app.jinja_env.get_template("_pagination.html")
+        return str(tpl.module.pager(page, pages, "/x?a=1&page=", "Test pages", **kw))
+
+    def labels(self, html):
+        return re.findall(r'<li class="page-item[^"]*">\s*<(?:a|span) class="page-link"[^>]*>([^<]+)</', html)
+
+    def test_shapes(self):
+        L = self.labels
+        self.assertEqual(L(self.pager(1, 3)), ["‹ Prev", "1", "2", "3", "Next ›"])
+        self.assertEqual(L(self.pager(10, 20)), ["‹ Prev", "1", "…", "8", "9", "10", "11", "12", "…", "20", "Next ›"])
+        self.assertEqual(L(self.pager(1, 20)), ["‹ Prev", "1", "2", "3", "…", "20", "Next ›"])
+        self.assertEqual(L(self.pager(20, 20)), ["‹ Prev", "1", "…", "18", "19", "20", "Next ›"])
+        self.assertEqual(L(self.pager(4, 20)), ["‹ Prev", "1", "2", "3", "4", "5", "6", "…", "20", "Next ›"])
+        # a gap of one page is shown as that page, not as "…"
+        self.assertEqual(L(self.pager(5, 20)), ["‹ Prev", "1", "2", "3", "4", "5", "6", "7", "…", "20", "Next ›"])
+        self.assertEqual(L(self.pager(17, 20)), ["‹ Prev", "1", "…", "15", "16", "17", "18", "19", "20", "Next ›"])
+
+    def test_single_page_has_no_pager(self):
+        self.assertEqual(self.pager(1, 1).strip(), "")
+
+    def test_links_and_state(self):
+        html = self.pager(10, 20, ids=True)
+        self.assertIn('href="/x?a=1&amp;page=9"', html)     # prev
+        self.assertIn('href="/x?a=1&amp;page=11"', html)    # next
+        self.assertIn('href="/x?a=1&amp;page=20"', html)    # last page is reachable
+        self.assertIn('id="page-prev"', html)
+        self.assertIn("Page 10 of 20", html)
+        self.assertRegex(html, r'page-item active">\s*<a class="page-link" href="[^"]*page=10"')
+        first = self.pager(1, 20)
+        self.assertRegex(first, r'page-item disabled"><a class="page-link" href="[^"]*page=0"')   # Prev disabled
+        self.assertNotIn('id="page-prev"', first)
+
+    def test_logs_page_uses_it(self):
+        for i in range(250):
+            self.client.post("/api/log_run", headers=TOKEN, json={"status": "success", "message": f"m{i}", "source": "olx"})
+        html = self.client.get("/logs?page=2").get_data(as_text=True)
+        self.assertIn("Page 2 of 3", html)
+        self.assertIn("page=3", html)
+        self.assertIn("page=1", html)
 
 
 class FakeResp:
