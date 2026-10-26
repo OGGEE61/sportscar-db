@@ -26,3 +26,4 @@ cookies.txt
 false_sold_backup_*.json
 .vercel
 .env.local
+dealer_m2_backup_*.json
