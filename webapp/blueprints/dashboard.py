@@ -4,7 +4,7 @@ import time
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
-from webapp.helpers import script_json
+from webapp.helpers import car_visible_sql, script_json
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -152,14 +152,6 @@ def _recent_filter(args):
     return wheres, params, active_filter
 
 
-# Dealer-stock M2 sightings (listing_observations.excluded_reason) stay in the database so
-# their VINs remain known, but they are left out of the dashboard and model analytics.
-# A car whose every sighting is excluded is hidden too.
-def _car_visible(alias="v"):
-    return (f"NOT (EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NOT NULL) "
-            f"AND NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NULL))")
-
-
 @bp.route("/")
 def dashboard():
     """Page shell only: no database work here. The sections load from /api/dashboard/*."""
@@ -171,7 +163,7 @@ def _load_summary():
     conn = get_db()
     s = conn.execute("""
         SELECT
-            (SELECT COUNT(*) FROM vehicles v WHERE """ + _car_visible() + """)                           AS total_vins,
+            (SELECT COUNT(*) FROM vehicles v WHERE """ + car_visible_sql() + """)                           AS total_vins,
             (SELECT COUNT(*) FROM listing_observations WHERE excluded_reason IS NULL)                  AS total_obs,
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND excluded_reason IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
@@ -209,7 +201,7 @@ def _load_charts():
     conn = get_db()
     makes_dist = conn.execute("""
         SELECT make, COUNT(*) AS cnt FROM vehicles v
-        WHERE vin_status != 'placeholder' AND """ + _car_visible() + """
+        WHERE vin_status != 'placeholder' AND """ + car_visible_sql() + """
         GROUP BY make ORDER BY cnt DESC LIMIT 12
     """).fetchall()
 
@@ -320,7 +312,7 @@ def model_analytics():
             FROM listing_observations
             WHERE price_pln IS NOT NULL AND price_pln > 0 AND excluded_reason IS NULL
         ) o ON v.vin = o.vin AND o.rn = 1
-        WHERE {condition} AND """ + _car_visible() + """
+        WHERE {condition} AND """ + car_visible_sql() + """
     """
     rule = current_model['where']
     try:
