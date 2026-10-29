@@ -51,7 +51,8 @@ def plates_review():
                COALESCE(v.model, p.model) as model,
                COALESCE(v.variant, p.variant) as variant,
                COALESCE(v.year, p.year) as year,
-               p.price_pln, p.location_city, p.raw_title
+               p.price_pln, p.location_city, p.raw_title,
+               v.registration_plate AS car_plate
         FROM plate_review_queue q
         LEFT JOIN vehicles v ON v.vin = q.vin
         LEFT JOIN pending_listings p ON (p.id = q.listing_id OR (q.listing_id IS NULL AND p.vin = q.vin))
