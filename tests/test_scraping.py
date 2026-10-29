@@ -601,7 +601,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestCepikNotFoundRequeue(ScrapingTestCase):
+class CepikCarMixin:
     VIN = "WBS11DM0308D29565"
 
     def setUp(self):
@@ -635,6 +635,9 @@ class TestCepikNotFoundRequeue(ScrapingTestCase):
         out = record_cepik_failure(conn, mock.Mock(last_status=status), self.VIN, "AB12345")
         conn.close()
         return out
+
+
+class TestCepikNotFoundRequeue(CepikCarMixin, ScrapingTestCase):
 
     def test_photo_plate_goes_back_to_pending_and_is_cleared(self):
         self.car()
@@ -687,6 +690,41 @@ class TestCepikNotFoundRequeue(ScrapingTestCase):
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_sync_log").fetchone()[0], 0)
         conn.close()
         self.assertEqual(self.queue()[1], "CD99999")
+
+
+class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
+    """A listing plate re-queued after a CEPiK miss gets a crop and a photo reading from the scanner."""
+
+    def scan(self, shot):
+        import json
+        with mock.patch.dict(sys.modules, {"numpy": mock.MagicMock()}):
+            from scripts import detect_plates
+        conn = db.get_db()
+        conn.execute("UPDATE pending_listings SET photos=? WHERE vin=?", (json.dumps(["https://img/1.jpg"]), self.VIN))
+        conn.commit()
+        with mock.patch.object(detect_plates, "find_best_plate_shot", return_value=shot):
+            out = detect_plates.fill_missing_crops(conn)
+        conn.close()
+        return out
+
+    def test_photo_reading_becomes_the_suggestion_and_listing_plate_stays(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        out = self.scan({"detected_plate": "WI 666NM", "confidence": 0.86,
+                         "crop_path": "data:image/jpeg;base64,xx", "photo_url": "https://img/1.jpg"})
+        self.assertEqual(out["crops_filled"], 1)
+        rows, plate = self.queue()
+        self.assertEqual([(r["detected_plate"], r["crop_path"]) for r in rows], [("WI 666NM", "data:image/jpeg;base64,xx")])
+        self.assertIsNotNone(rows[0]["listing_id"])
+        self.assertEqual(plate, "AB12345")
+
+    def test_nothing_found_is_not_rescanned(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        self.scan(None)
+        rows, _ = self.queue()
+        self.assertEqual([(r["detected_plate"], r["crop_path"]) for r in rows], [("AB12345", "")])
+        self.assertEqual(self.scan(None)["queued_without_crop"], 0)
 
 
 class DealerM2ExclusionTest(ScrapingTestCase):

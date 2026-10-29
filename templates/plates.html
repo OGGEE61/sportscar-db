@@ -305,8 +305,15 @@
           <div class="row g-2 mb-3">
             <!-- Crop tablicy (duży, wyrazisty) -->
             <div class="col-7 d-flex flex-column justify-content-center align-items-center bg-light border rounded-3 p-2 text-center" style="min-height: 120px;">
+              {% if c.crop_path %}
               <div class="text-muted small mb-1" style="font-size: 0.75rem;"><i class="bi bi-crop"></i> Wycinek modelu (Crop)</div>
               <img src="{{ c.crop_path }}" alt="Wycinek tablicy" class="img-fluid rounded border bg-white shadow-sm" style="max-height: 85px; object-fit: contain; cursor: pointer;" onclick="showImageModal(this.src, 'Zbliżenie na tablicę')">
+              {% else %}
+              <div class="text-muted small" style="font-size: 0.8rem;">
+                <i class="bi bi-crop"></i> Brak wycinka<br>
+                <span style="font-size: 0.75rem;">{% if c.crop_path is none %}zdjęcia jeszcze nie przeskanowane{% else %}na zdjęciach nie znaleziono tablicy{% endif %}</span>
+              </div>
+              {% endif %}
             </div>
             <!-- Całe zdjęcie auta -->
             <div class="col-5 d-flex flex-column justify-content-center align-items-center bg-light border rounded-3 p-2 text-center" style="min-height: 120px;">
@@ -356,6 +363,11 @@
             </div>
             <div class="d-flex justify-content-between align-items-center mt-1">
               <span class="text-muted small" style="font-size: 0.75rem;">Standard PL: 4–8 znaków (bez spacji)</span>
+              {% if c.car_plate and (c.car_plate | upper | replace(' ', '') | replace('-', '')) != ((c.detected_plate or '') | upper | replace(' ', '') | replace('-', '')) %}
+              <span class="small text-danger" style="font-size: 0.75rem;" title="Tablica z ogłoszenia, której CEPiK nie znalazł">
+                Z ogłoszenia: <span class="font-monospace fw-semibold">{{ c.car_plate }}</span> (brak w CEPiK)
+              </span>
+              {% endif %}
               {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}
               <span class="badge bg-warning text-dark border small" style="font-size: 0.7rem;">
                 <i class="bi bi-exclamation-triangle"></i> Wymaga skorygowania

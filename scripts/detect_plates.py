@@ -16,9 +16,6 @@ from typing import List, Dict, Optional
 from PIL import Image, ImageEnhance
 import numpy as np
 
-# Silniki CV & OCR
-from ultralytics import YOLO
-import easyocr
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import sys
@@ -48,6 +45,9 @@ _easyocr_reader = None
 def get_models():
     """Lazy loader dla modeli, aby nie obciążać pamięci przy samym imporcie."""
     global _yolo_model, _easyocr_reader
+    # Silniki CV & OCR (PyTorch): import dopiero tutaj, żeby moduł ładował się bez nich
+    from ultralytics import YOLO
+    import easyocr
     if _yolo_model is None:
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Brak pliku wag modelu: {MODEL_PATH}")
@@ -349,16 +349,11 @@ def fetch_listing_gallery_photos(source_url: str) -> List[str]:
     return []
 
 
-def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
-    """Skanuje zdjęcia ogłoszenia, znajduje najlepsze ujęcie przód/tył i zapisuje optymalnego kandydata."""
+def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional[Dict]:
+    """Skanuje zdjęcia ogłoszenia i zwraca najlepsze ujęcie tablicy (przód/tył) albo None."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
     vin = (listing.get("vin") or "").strip().upper()
-    status = (listing.get("status") or "").strip().lower()
     source_url = listing.get("source_url") or ""
-
-    # Ignoruj ogłoszenia odrzucone lub bez prawidłowego VIN
-    if status == "rejected" or not vin or vin.startswith("PLH"):
-        return []
 
     photos_raw = listing.get("photos")
     photo_urls = []
@@ -386,7 +381,7 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
                 pass
 
     if not photo_urls:
-        return []
+        return None
 
     # Sprawdź do 12 zdjęć w poszukiwaniu najlepszego ujęcia (przód / tył)
     photo_urls = photo_urls[:12]
@@ -404,7 +399,7 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
             all_candidates.append(c)
 
     if not all_candidates:
-        return []
+        return None
 
     # Inteligentny wybór najlepszego zdjęcia (Best Shot Selection):
     # Dopuszczamy TYLKO kandydatów o prawidłowym formacie tablicy (ściśle 4 do 8 znaków)
@@ -414,7 +409,7 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     ]
 
     if not valid_candidates:
-        return []
+        return None
 
     valid_candidates.sort(
         key=lambda c: (c["shot_quality_score"], c["confidence"]),
@@ -426,6 +421,24 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
     if best_candidate["shot_quality_score"] < 0.28:
         print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {best_candidate['shot_quality_score']})")
+        return None
+
+    return best_candidate
+
+
+def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
+    """Skanuje zdjęcia ogłoszenia, znajduje najlepsze ujęcie przód/tył i zapisuje optymalnego kandydata."""
+    lid = str(listing.get("id") or listing.get("source_listing_id") or "")
+    vin = (listing.get("vin") or "").strip().upper()
+    status = (listing.get("status") or "").strip().lower()
+    source_url = listing.get("source_url") or ""
+
+    # Ignoruj ogłoszenia odrzucone lub bez prawidłowego VIN
+    if status == "rejected" or not vin or vin.startswith("PLH"):
+        return []
+
+    best_candidate = find_best_plate_shot(listing, db_conn)
+    if not best_candidate:
         return []
 
     plate_text = best_candidate["detected_plate"]
@@ -452,6 +465,55 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
         print(f"    [BEST SHOT SELECTED] {plate_text} (shot score: {best_candidate['shot_quality_score']}, conf: {conf:.2f}, AR: {best_candidate['aspect_ratio']})")
 
     return found_candidates
+
+
+def fill_missing_crops(conn) -> Dict:
+    """Skanuje zdjęcia dla pozycji kolejki bez wycinka.
+
+    Tablica z treści ogłoszenia, której CEPiK nie znalazł, trafia do kolejki bez wycinka
+    (requeue_for_plate_check), bo skan zdjęć obejmuje tylko ogłoszenia bez tablicy. Tu
+    dostaje wycinek ze zdjęć, a odczyt ze zdjęcia staje się propozycją; tablica z
+    ogłoszenia zostaje na aucie, więc widać ją na karcie. Pusty crop_path oznacza, że
+    na zdjęciach nic nie znaleziono (nie skanujemy ponownie).
+    """
+    from webapp.services.plates import normalize_plate
+
+    rows = conn.execute("""
+        SELECT id, vin, detected_plate FROM plate_review_queue
+        WHERE status = 'pending' AND crop_path IS NULL
+          AND vin IS NOT NULL AND vin != '' AND vin NOT LIKE 'PLH%'
+        ORDER BY id
+    """).fetchall()
+    print(f"\n[plate_scanner] {len(rows)} pozycji w kolejce bez wycinka...")
+
+    filled = 0
+    for q in rows:
+        listing = conn.execute("""
+            SELECT id, source_listing_id, vin, photos, source_url FROM pending_listings
+            WHERE vin = ? AND photos IS NOT NULL AND photos NOT IN ('', '[]')
+            ORDER BY id DESC LIMIT 1
+        """, (q["vin"],)).fetchone()
+        best = find_best_plate_shot(dict(listing), conn) if listing else None
+        if not best:
+            conn.execute("UPDATE plate_review_queue SET crop_path = '' WHERE id = ?", (q["id"],))
+            conn.commit()
+            print(f"  {q['vin']}: brak tablicy na zdjęciach")
+            continue
+
+        same = normalize_plate(best["detected_plate"]) == normalize_plate(q["detected_plate"])
+        conn.execute("""
+            UPDATE plate_review_queue
+            SET crop_path = ?, photo_url = ?, listing_id = COALESCE(listing_id, ?),
+                detected_plate = ?, confidence = ?
+            WHERE id = ?
+        """, (best["crop_path"], best["photo_url"], str(listing["id"]),
+              best["detected_plate"], best["confidence"], q["id"]))
+        conn.commit()
+        filled += 1
+        note = "zgodna z ogłoszeniem" if same else f"ogłoszenie: {q['detected_plate']}"
+        print(f"  {q['vin']}: {best['detected_plate']} ({note})")
+
+    return {"queued_without_crop": len(rows), "crops_filled": filled}
 
 
 def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Dict:
@@ -517,6 +579,8 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
         {limit_clause}
     """, params).fetchall()
 
+    crops = fill_missing_crops(conn)
+
     print(f"\n[plate_scanner] Znaleziono {len(rows)} ogłoszeń do przeskanowania (rescan_empty={rescan_empty})...")
 
     total_scanned = 0
@@ -538,7 +602,8 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
     conn.close()
     return {
         "scanned_count": total_scanned,
-        "found_plates": total_found
+        "found_plates": total_found,
+        **crops,
     }
 
 
@@ -552,3 +617,4 @@ if __name__ == "__main__":
     print(f"Uruchamiam detekcję tablic rejestracyjnych (limit: {args.limit}, rescan_empty: {args.rescan_empty})...")
     res = run_plate_detection_batch(limit=args.limit, rescan_empty=args.rescan_empty)
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")
+    print(f"Wycinki dla kolejki: {res['crops_filled']}/{res['queued_without_crop']}.")
