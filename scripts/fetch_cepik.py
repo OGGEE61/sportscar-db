@@ -293,11 +293,15 @@ def record_cepik_failure(conn, client, vin: str, plate: str) -> str:
     return "error"
 
 
-def save_cepik_report(report: Dict[str, Any], conn) -> bool:
-    """Zapisuje raport CEPiK do bazy oraz sprawdza ewentualny rollback licznika."""
-    vin = report["vin"]
+# Minimalna różnica (SKP vs ogłoszenie), od której uznajemy licznik za cofnięty
+ROLLBACK_MIN_DIFF_KM = 40000
 
-    # Porównaj z przebiegiem z ogłoszeń w bazie (wykrywanie kręconego licznika)
+
+def detect_rollback(conn, vin: str, last_cepik_km: Optional[int]):
+    """Porównuje ostatni odczyt SKP z przebiegiem z ogłoszeń.
+
+    Zwraca (odometer_rollback, rollback_diff_km, listing_mileage).
+    """
     listing_obs = conn.execute("""
         SELECT MIN(mileage_km) as min_mileage, MAX(mileage_km) as max_mileage
         FROM listing_observations
@@ -319,26 +323,32 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
             except (TypeError, IndexError):
                 listing_mileage = pending_obs[0] if len(pending_obs) > 0 else None
 
-    odometer_rollback = 0
-    rollback_diff_km = 0
+    if last_cepik_km and listing_mileage:
+        # Jeśli na przeglądzie SKP było WIĘCEJ niż sprzedawca podaje w ogłoszeniu (o co najmniej ROLLBACK_MIN_DIFF_KM)
+        diff = last_cepik_km - listing_mileage
+        if diff >= ROLLBACK_MIN_DIFF_KM:
+            return 1, diff, listing_mileage
+    return 0, 0, listing_mileage
+
+
+def save_cepik_report(report: Dict[str, Any], conn) -> bool:
+    """Zapisuje raport CEPiK do bazy oraz sprawdza ewentualny rollback licznika."""
+    vin = report["vin"]
     last_cepik_km = report.get("last_odometer_km")
 
-    if last_cepik_km and listing_mileage:
-        # Jeśli na przeglądzie SKP było WIĘCEJ niż sprzedawca podaje w ogłoszeniu (z tolerancją 1500 km)
-        if last_cepik_km - listing_mileage > 1500:
-            odometer_rollback = 1
-            rollback_diff_km = last_cepik_km - listing_mileage
-            print(f"  🚨 WYKRYTO COFNIĘTY LICZNIK dla {vin}!")
-            print(f"     Ostatni odczyt SKP: {last_cepik_km:,} km vs Ogłoszenie: {listing_mileage:,} km (różnica: -{rollback_diff_km:,} km)")
+    odometer_rollback, rollback_diff_km, listing_mileage = detect_rollback(conn, vin, last_cepik_km)
+    if odometer_rollback:
+        print(f"  🚨 WYKRYTO COFNIĘTY LICZNIK dla {vin}!")
+        print(f"     Ostatni odczyt SKP: {last_cepik_km:,} km vs Ogłoszenie: {listing_mileage:,} km (różnica: -{rollback_diff_km:,} km)")
 
-            # Wstaw tag ostrzegawczy do tabeli tags
-            try:
-                conn.execute("""
-                    INSERT OR REPLACE INTO tags (vin, tag, source_method)
-                    VALUES (?, ?, 'cepik')
-                """, (vin, f"Cofnięty licznik (SKP: {last_cepik_km} km / Ad: {listing_mileage} km)"))
-            except Exception:
-                pass
+        # Wstaw tag ostrzegawczy do tabeli tags
+        try:
+            conn.execute("""
+                INSERT OR REPLACE INTO tags (vin, tag, source_method)
+                VALUES (?, ?, 'cepik')
+            """, (vin, f"Cofnięty licznik (SKP: {last_cepik_km} km / Ad: {listing_mileage} km)"))
+        except Exception:
+            pass
 
     conn.execute("""
         INSERT OR REPLACE INTO cepik_reports (
