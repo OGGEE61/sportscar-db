@@ -1,9 +1,11 @@
-# Manual only (Actions -> Run Autoplac Scrapers -> Run workflow); add a `schedule:` cron
-# under `on:` to run it automatically. The first run opens every detail page (~35 models);
-# known listings with VIN + plate skip it afterwards, so later runs are short.
+# Every 3 days, or manually (Actions -> Run Autoplac Scrapers -> Run workflow). The first run
+# opens every detail page (~35 models); known listings with VIN + plate skip it afterwards,
+# so later runs are short.
 name: Run Autoplac Scrapers
 
 on:
+  schedule:
+    - cron: '30 5 */3 * *'
   workflow_dispatch:
     inputs:
       target:
