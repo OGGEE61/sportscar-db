@@ -22,37 +22,100 @@ def clean_html(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
-def analyze_with_bielik(title: str, description: str, make: str, model: str, city: str = "") -> dict:
+MARKETS = ["Polska", "Europa", "USA", "Kanada", "Japonia", "Szwajcaria", "Zatoka Perska"]
+ACCIDENT_STATUSES = ["bezwypadkowy", "uszkodzony", "po kolizji"]
+REGIONS = ["dolnośląskie", "kujawsko-pomorskie", "lubelskie", "lubuskie", "łódzkie", "małopolskie", "mazowieckie",
+           "opolskie", "podkarpackie", "podlaskie", "pomorskie", "śląskie", "świętokrzyskie",
+           "warmińsko-mazurskie", "wielkopolskie", "zachodniopomorskie"]
+EMPTY_VALUES = {"", "null", "none", "brak", "brak danych", "brak informacji", "nie podano", "nieznany", "nieznane", "n/a"}
+
+_NULLABLE_TEXT = {"type": ["string", "null"]}
+# Sent to Ollama as `format`. Reasoning comes before the market so the model states its evidence first.
+ANALYSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "origin_reasoning": {"type": "string"},
+        "origin_market": {"type": ["string", "null"], "enum": MARKETS + [None]},
+        "has_panoramic_roof": {"type": "boolean"},
+        "interior_color": _NULLABLE_TEXT,
+        "interior_material": _NULLABLE_TEXT,
+        "key_equipment": {"type": "array", "items": {"type": "string"}},
+        "accident_status": {"type": ["string", "null"], "enum": ACCIDENT_STATUSES + [None]},
+        "location_region": {"type": ["string", "null"], "enum": REGIONS + [None]},
+        "summary": {"type": "string"},
+    },
+    "required": ["origin_reasoning", "origin_market", "has_panoramic_roof", "interior_color", "interior_material",
+                 "key_equipment", "accident_status", "location_region", "summary"],
+}
+
+
+def build_prompt(title: str, description: str, make: str, model: str, city: str = "") -> str:
     clean_desc = clean_html(description)
     # Truncate if extremely long to keep prompt efficient
     if len(clean_desc) > 3500:
         clean_desc = clean_desc[:3500] + "..."
 
-    prompt = f"""Jesteś rzeczoznawcą i ekspertem motoryzacyjnym. Przeanalizuj poniższe ogłoszenie samochodu {make} {model} i zwróć TYLKO czysty obiekt JSON (bez znaczników markdown, bez zbędnego tekstu):
+    return f"""Jesteś rzeczoznawcą i ekspertem motoryzacyjnym. Przeanalizuj poniższe ogłoszenie samochodu {make} {model} i zwróć TYLKO czysty obiekt JSON (bez znaczników markdown, bez zbędnego tekstu):
 {{
-  "origin_market": "Europa" | "Polska" | "USA" | "Kanada" | "Japonia" | "Szwajcaria" | null,
-  "origin_reasoning": "krótkie uzasadnienie pochodzenia (zwróć szczególną uwagę na zaprzeczenia np. 'NIE z USA')",
+  "origin_reasoning": "krótki cytat lub fakt z ogłoszenia wskazujący rynek pochodzenia; 'brak informacji', gdy ogłoszenie o tym nie mówi",
+  "origin_market": "Polska" | "Europa" | "USA" | "Kanada" | "Japonia" | "Szwajcaria" | "Zatoka Perska" | null,
   "has_panoramic_roof": true | false,
   "interior_color": "np. czarny, brązowy, czerwony, beżowy lub null",
   "interior_material": "np. skóra, alcantara, materiał lub null",
   "key_equipment": ["3-5 najważniejszych cech wyposażenia"],
   "accident_status": "bezwypadkowy" | "uszkodzony" | "po kolizji" | null,
-  "location_region": "jedno z 16 polskich województw: dolnośląskie | kujawsko-pomorskie | lubelskie | lubuskie | łódzkie | małopolskie | mazowieckie | opolskie | podkarpackie | podlaskie | pomorskie | śląskie | świętokrzyskie | warmińsko-mazurskie | wielkopolskie | zachodniopomorskie | null",
+  "location_region": "jedno z 16 polskich województw: {' | '.join(REGIONS)} | null",
   "summary": "zwięzłe podsumowanie stanu, historii i wyposażenia w 2 zdaniach"
 }}
+
+Zasady:
+- Opieraj się wyłącznie na treści ogłoszenia, niczego nie zgaduj.
+- origin_market: wskaż rynek tylko, gdy ogłoszenie wprost mówi o pochodzeniu auta (np. "polski salon", "sprowadzony z USA"). Brak informacji to null, a nie "Europa". Siedziba dealera, serwis w Polsce ani polska instrukcja nie wskazują rynku. Zaprzeczenie "nie z USA" nie oznacza Polski.
+- Pochodzenie z konkretnego kraju europejskiego (np. Niemcy, Francja) to "Europa". Polski salon to "Polska". Kraje Zatoki Perskiej (np. ZEA) to "Zatoka Perska". Rynek spoza listy to null.
+- accident_status: "bezwypadkowy" tylko, gdy ogłoszenie wprost tak mówi; samo to, że auto jest nowe, zadbane lub od dealera, to null. Szkoda nienaprawiona (np. auto z aukcji ubezpieczeniowej z opisem uszkodzenia) to "uszkodzony", szkoda już naprawiona to "po kolizji". Same ślady użytkowania to nie szkoda.
+- Pola, o których ogłoszenie nie mówi, ustaw na null, a nie "nie podano" ani "brak".
 
 Tytuł: {title}
 Miasto/Lokalizacja: {city or 'Brak'}
 Opis:
 {clean_desc}"""
 
+
+def clean_analysis(data: dict) -> dict:
+    """Keep only values we accept, whatever the model returned; anything else becomes None."""
+    def text(value):
+        if not isinstance(value, str) or value.strip().lower() in EMPTY_VALUES:
+            return None
+        return value.strip()
+
+    def choice(value, allowed):
+        value = text(value)
+        return next((a for a in allowed if value and a.lower() == value.lower()), None)
+
+    equipment = data.get("key_equipment")
+    return {
+        **data,
+        "origin_reasoning": text(data.get("origin_reasoning")),
+        "origin_market": choice(data.get("origin_market"), MARKETS),
+        "has_panoramic_roof": data.get("has_panoramic_roof") is True,
+        "interior_color": text(data.get("interior_color")),
+        "interior_material": text(data.get("interior_material")),
+        "key_equipment": [e.strip() for e in equipment if text(e)] if isinstance(equipment, list) else [],
+        "accident_status": choice(data.get("accident_status"), ACCIDENT_STATUSES),
+        "location_region": choice(data.get("location_region"), REGIONS),
+        "summary": text(data.get("summary")),
+    }
+
+
+def analyze_with_bielik(title: str, description: str, make: str, model: str, city: str = "",
+                        model_name: str = None) -> dict:
     resp = requests.post(
         OLLAMA_URL,
         json={
-            "model": MODEL_NAME,
-            "prompt": prompt,
+            "model": model_name or MODEL_NAME,
+            "prompt": build_prompt(title, description, make, model, city),
             "stream": False,
-            "format": "json",
+            "format": ANALYSIS_SCHEMA,
             "options": {
                 "temperature": 0.1,
                 "num_predict": 1000
@@ -62,7 +125,7 @@ Opis:
     )
     resp.raise_for_status()
     raw_response = resp.json().get("response", "{}")
-    return json.loads(raw_response)
+    return clean_analysis(json.loads(raw_response))
 
 def normalize_market(m: str) -> str:
     if not m:
@@ -81,6 +144,19 @@ def normalize_market(m: str) -> str:
     if "europ" in m or "niemc" in m:
         return "europa"
     return m
+
+def markets_conflict(db_market: str, ai_market: str) -> bool:
+    """True when the stored and suggested markets really disagree (either side empty is no conflict)."""
+    norm_db = normalize_market(db_market)
+    norm_ai = normalize_market(ai_market)
+    if not norm_db or not norm_ai or norm_db == norm_ai:
+        return False
+    # Poland is in Europe, and the resolver's USA/Kanada covers both
+    if {norm_db, norm_ai} == {"polska", "europa"}:
+        return False
+    if (db_market or "").strip().lower() == "usa/kanada" and norm_ai in ("usa", "kanada"):
+        return False
+    return True
 
 def main():
     print(f"=== Rozpoczynam enricher Bielik AI ({MODEL_NAME}) ===")
@@ -148,15 +224,11 @@ def main():
                 print(f"  ✓ Region: {ai_region}")
 
             # Detect conflict
-            norm_db = normalize_market(db_market)
-            norm_ai = normalize_market(ai_market)
             has_conflict = 0
-            if norm_db and norm_ai and norm_db != norm_ai:
-                # If DB is Polska and AI is Europa, not really a conflict
-                if not (norm_db == "polska" and norm_ai == "europa"):
-                    has_conflict = 1
-                    conflicts += 1
-                    print(f"  ⚠️ KONFLIKT RYNKU: Baza='{db_market}' vs Bielik='{ai_market}' (Powód: {ai_reasoning})")
+            if markets_conflict(db_market, ai_market):
+                has_conflict = 1
+                conflicts += 1
+                print(f"  ⚠️ KONFLIKT RYNKU: Baza='{db_market}' vs Bielik='{ai_market}' (Powód: {ai_reasoning})")
 
             # Update pending_listings
             db.execute("""
