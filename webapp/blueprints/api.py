@@ -11,6 +11,7 @@ from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_regist
 from webapp.helpers import is_valid_first_registration_date
 from webapp.regions import CITY_TO_REGION
 from webapp.services.photos import save_photo
+from webapp.services.plates import normalize_plate
 
 bp = Blueprint("api", __name__)
 
@@ -275,6 +276,7 @@ def api_ingest_pending():
     reg_plate = p.get("registration_plate")
     if reg_plate and not is_valid_registration_plate(reg_plate):
         reg_plate = None
+    p["registration_plate"] = reg_plate = normalize_plate(reg_plate) or None
 
     conn = get_db()
     try:

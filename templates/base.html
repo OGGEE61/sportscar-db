@@ -73,6 +73,22 @@
 function escHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
+// Plate fields: Polish plates are only A-Z and 0-9, so everything else is dropped while typing or pasting
+function cleanPlate(s) {
+  return String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function applyPlateFilter(el) {
+  const caret = cleanPlate(el.value.slice(0, el.selectionStart ?? el.value.length)).length;
+  const cleaned = cleanPlate(el.value);
+  if (cleaned !== el.value) {
+    el.value = cleaned;
+    if (document.activeElement === el) el.setSelectionRange(caret, caret);
+  }
+}
+document.addEventListener("input", e => {
+  if (e.target.classList?.contains("plate-field")) applyPlateFilter(e.target);
+});
+document.addEventListener("DOMContentLoaded", () => document.querySelectorAll(".plate-field").forEach(applyPlateFilter));
 // Navbar counters load after paint so no page waits on the database for them
 fetch('/api/badges').then(r => r.ok ? r.json() : null).then(d => {
   if (!d) return;

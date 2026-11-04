@@ -74,24 +74,6 @@ def clean_plate_text(raw_text: str) -> str:
     return cleaned
 
 
-def format_polish_plate(raw_text: str) -> str:
-    """Formatuje standardową lub indywidualną polską tablicę: rozdziela wyróżnik spacją (np. OKR 9MM6, KR 7VG22, P8 RS3)."""
-    cleaned = clean_plate_text(raw_text)
-    if not cleaned:
-        return ""
-    if 4 <= len(cleaned) <= 8:
-        # Standardowa 2-literowa (np. KR 7VG22, WA 6950E, LU 274TJ)
-        if len(cleaned) >= 5 and cleaned[:2].isalpha() and not cleaned[2].isalpha():
-            return f"{cleaned[:2]} {cleaned[2:]}"
-        # Standardowa 3-literowa (np. OKR 9MM6, DWR 6978V, POS 78616)
-        elif len(cleaned) >= 6 and cleaned[:3].isalpha() and not cleaned[3].isalpha():
-            return f"{cleaned[:3]} {cleaned[3:]}"
-        # Indywidualna: 1 litera + 1 cyfra + wyróżnik (np. P8 RS3, W0 BOSS)
-        elif len(cleaned) >= 4 and cleaned[0].isalpha() and cleaned[1].isdigit():
-            return f"{cleaned[:2]} {cleaned[2:]}"
-    return cleaned
-
-
 def is_likely_dealer_badge(norm_text: str) -> bool:
     """Sprawdza, czy odczytany tekst to napis reklamowy typu OTOMOTO / KOMIS."""
     cleaned = re.sub(r"[^A-Z0-9]", "", (norm_text or "").upper())
@@ -217,8 +199,6 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         if not norm_text or len(norm_text) < 4 or len(norm_text) > 8 or not is_valid_plate_format(norm_text):
             continue
 
-        formatted_plate = format_polish_plate(norm_text)
-
         # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
         crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
         crop_save_path = os.path.join(CROPS_DIR, crop_filename)
@@ -229,7 +209,7 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         crop_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
         candidates.append({
-            "detected_plate": formatted_plate,
+            "detected_plate": norm_text,
             "raw_text": joined,
             "confidence": round(conf, 3),
             "crop_path": crop_b64,
@@ -449,7 +429,7 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     # Sprawdź, czy ta tablica już istnieje w kolejce dla tego pojazdu
     exists = db_conn.execute("""
         SELECT id FROM plate_review_queue 
-        WHERE (vin = ? OR listing_id = ?) AND (detected_plate = ? OR status = 'approved')
+        WHERE (vin = ? OR listing_id = ?) AND (REPLACE(detected_plate, ' ', '') = ? OR status = 'approved')
     """, (vin or "NONE", lid, plate_text)).fetchone()
 
     found_candidates = []

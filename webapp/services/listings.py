@@ -2,6 +2,7 @@ from db import make_placeholder_vin
 from webapp.helpers import is_valid_registration_plate, safe_float, safe_int
 from webapp.regions import CITY_TO_REGION
 from webapp.model_catalog import assign_model_id
+from webapp.services.plates import normalize_plate
 def infer_vehicle_specs(make, model, variant="", raw_title=""):
     """Infer known model specs for performance cars if fields are empty."""
     text = f"{make or ''} {model or ''} {variant or ''} {raw_title or ''}".lower()
@@ -100,7 +101,7 @@ def _enrich_otomoto_ad(url):
                 if nxt:
                     candidate = nxt.get_text(strip=True)
                     if is_valid_registration_plate(candidate):
-                        reg_plate = candidate.upper()
+                        reg_plate = normalize_plate(candidate)
             elif txt == "Pierwsza rejestracja":
                 nxt = el.find_next_sibling()
                 if nxt: reg_date = nxt.get_text(strip=True)
@@ -156,6 +157,7 @@ def _approve_listing(conn, listing, overrides=None):
     final_reg_plate = _get("registration_plate")
     if final_reg_plate and not is_valid_registration_plate(final_reg_plate):
         final_reg_plate = None
+    final_reg_plate = normalize_plate(final_reg_plate) or None
     final_first_reg = _get("first_registration_date")
 
     # Enrich location with CITY_TO_REGION or Nominatim

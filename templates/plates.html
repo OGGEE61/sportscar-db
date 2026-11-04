@@ -355,8 +355,8 @@
               <input type="text" 
                      id="input-{{ c.id }}" 
                      value="{{ c.detected_plate }}" 
-                     class="form-control form-control-lg fw-bold font-monospace text-uppercase plate-input bg-white {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}border-warning{% endif %}"
-                     placeholder="np. KR 7VG22"
+                     class="form-control form-control-lg fw-bold font-monospace text-uppercase plate-input plate-field bg-white {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}border-warning{% endif %}"
+                     placeholder="np. KR7VG22"
                      maxlength="20"
                      data-id="{{ c.id }}"
                      autocomplete="off">
@@ -429,8 +429,8 @@
             <span class="input-group-text bg-white text-dark fw-bold border-end-0 px-3 font-monospace" style="font-size: 0.9rem;">PL</span>
             <input type="text" 
                    id="editModalPlateInput" 
-                   class="form-control fw-bold font-monospace text-uppercase bg-white" 
-                   placeholder="np. OKR 9MM6"
+                   class="form-control fw-bold font-monospace text-uppercase plate-field bg-white" 
+                   placeholder="np. OKR9MM6"
                    maxlength="10"
                    autocomplete="off">
           </div>
@@ -503,7 +503,7 @@ function openEditPlateModal(id, currentPlate, vehicleName, vin, cropPath) {
   document.getElementById('editModalVehicleName').innerText = vehicleName || 'Pojazd';
   document.getElementById('editModalVin').innerText = vin || '—';
   const input = document.getElementById('editModalPlateInput');
-  input.value = currentPlate || '';
+  input.value = cleanPlate(currentPlate);
   
   const cropEl = document.getElementById('editModalCrop');
   if (cropPath) {
