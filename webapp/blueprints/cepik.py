@@ -4,6 +4,7 @@ import re
 from flask import Blueprint, jsonify, redirect, render_template, request
 from db import get_db
 from validation import is_valid_first_registration_date, is_valid_registration_plate
+from webapp.services.plates import normalize_plate
 
 bp = Blueprint("cepik", __name__)
 
@@ -236,7 +237,7 @@ def api_cepik_fetch_vin(vin):
         ORDER BY p.id DESC LIMIT 1
     """, (vin,)).fetchone()
 
-    plate = (payload.get("plate") or "").strip() or (row["plate"] if row else None)
+    plate = normalize_plate(payload.get("plate")) or (row["plate"] if row else None)
     first_reg = (payload.get("first_registration_date") or "").strip() or (row["first_registration_date"] if row else None)
 
     if not plate or not first_reg:

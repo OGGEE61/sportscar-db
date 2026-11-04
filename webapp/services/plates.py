@@ -63,7 +63,7 @@ def requeue_for_plate_check(conn, vin, plate):
     obs = conn.execute("SELECT source_url FROM listing_observations WHERE vin=? ORDER BY observed_at DESC, id DESC LIMIT 1",
                        (vin,)).fetchone()
     conn.execute("""INSERT INTO plate_review_queue (vin, source_url, photo_url, detected_plate, confidence, status)
-                    VALUES (?, ?, ?, ?, 0, 'pending')""", (vin, obs["source_url"] if obs else None, photo_url, plate))
+                    VALUES (?, ?, ?, ?, 0, 'pending')""", (vin, obs["source_url"] if obs else None, photo_url, normalize_plate(plate)))
     conn.commit()
     return "queued"
 

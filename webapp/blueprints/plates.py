@@ -3,7 +3,7 @@ import re
 from flask import Blueprint, jsonify, render_template, request
 from db import get_db
 from webapp import invalidate_notifications
-from webapp.services.plates import allow_cepik_retry, clear_plate
+from webapp.services.plates import allow_cepik_retry, clear_plate, normalize_plate
 
 bp = Blueprint("plates", __name__)
 
@@ -121,8 +121,16 @@ def api_plates_review():
     old_plate = cand["reviewed_plate"] or cand["detected_plate"]
 
     if action == "approve":
-        final_plate = plate or cand["detected_plate"]
-        clean_plate = re.sub(r"[^A-Z0-9]", "", (final_plate or "").upper())
+        raw_plate = (plate or cand["detected_plate"] or "").upper()
+        # Separators are dropped; any other symbol (e.g. a Polish letter) would silently change the plate
+        if re.search(r"[^A-Z0-9\s\-.]", raw_plate):
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "Tablica może zawierać tylko litery A-Z i cyfry."
+            }), 400
+        final_plate = normalize_plate(raw_plate)
+        clean_plate = final_plate
         if len(clean_plate) < 3:
             conn.close()
             return jsonify({

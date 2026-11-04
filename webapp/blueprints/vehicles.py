@@ -4,6 +4,7 @@ from flask import Blueprint, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
 from webapp.helpers import NOW, car_visible_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
+from webapp.services.plates import normalize_plate
 
 bp = Blueprint("vehicles", __name__)
 
@@ -393,7 +394,7 @@ def update_vehicle_details(vin):
     conn = get_db()
     try:
         reg_plate = request.form.get("registration_plate")
-        reg_plate = reg_plate.strip().upper() if reg_plate else None
+        reg_plate = normalize_plate(reg_plate) or None
         conn.execute('''
             UPDATE vehicles
             SET year = ?, body_type = ?, engine_cc = ?, engine_cyl = ?,

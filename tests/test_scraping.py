@@ -692,6 +692,79 @@ class TestCepikNotFoundRequeue(CepikCarMixin, ScrapingTestCase):
         self.assertEqual(self.queue()[1], "CD99999")
 
 
+class TestPlateInput(CepikCarMixin, ScrapingTestCase):
+    """Polish plates are only A-Z and 0-9, wherever they get saved."""
+
+    def stored(self, table="vehicles", where="vin=?", params=None):
+        conn = db.get_db()
+        row = conn.execute(f"SELECT registration_plate FROM {table} WHERE {where}", params or (self.VIN,)).fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def review(self, plate, **extra):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        qid = self.queue()[0][0]["id"]
+        return self.client.post("/api/plates/review", json={"id": qid, "action": "approve", "plate": plate, **extra})
+
+    def test_review_strips_spaces_and_separators_everywhere(self):
+        resp = self.review(" kr 7vg-2.2 ")
+        self.assertEqual(resp.get_json()["plate"], "KR7VG22")
+        self.assertEqual(self.queue()[0][0]["reviewed_plate"], "KR7VG22")
+        self.assertEqual(self.stored(), "KR7VG22")
+        self.assertEqual(self.stored("pending_listings"), "KR7VG22")
+        self.assertEqual(self.stored("listing_observations"), "KR7VG22")
+
+    def test_review_rejects_symbols_instead_of_changing_the_plate(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        qid = self.queue()[0][0]["id"]
+        for bad in ("KR7VG2Ż", "KR7VG2!", "KR/7VG22"):
+            resp = self.client.post("/api/plates/review", json={"id": qid, "action": "approve", "plate": bad})
+            self.assertEqual(resp.status_code, 400, bad)
+            self.assertEqual(self.stored(), "AB12345")
+
+    def test_review_cleans_a_stored_proposal_when_no_plate_is_typed(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        conn = db.get_db()
+        conn.execute("UPDATE plate_review_queue SET detected_plate='KN 4300F'")
+        conn.commit()
+        conn.close()
+        qid = self.queue()[0][0]["id"]
+        self.client.post("/api/plates/review", json={"id": qid, "action": "approve"})
+        self.assertEqual(self.stored(), "KN4300F")
+
+    def test_requeued_listing_plate_is_proposed_clean(self):
+        self.car(plate="AB 12345", approved_from_photo=False)
+        from scripts.fetch_cepik import record_cepik_failure
+        conn = db.get_db()
+        record_cepik_failure(conn, mock.Mock(last_status=404), self.VIN, "AB 12345")
+        conn.close()
+        self.assertEqual(self.queue()[0][0]["detected_plate"], "AB12345")
+
+    def test_vehicle_edit_form_stores_a_clean_plate(self):
+        self.car()
+        self.client.post(f"/vehicle/{self.VIN}/update_details", data={"registration_plate": "ab 123-45"})
+        self.assertEqual(self.stored(), "AB12345")
+
+    def test_scraped_plate_is_stored_clean(self):
+        res = self.client.post("/api/ingest_pending", headers=TOKEN, json={
+            "source": "autoplac", "source_listing_id": "spaced", "source_url": "https://x/spaced",
+            "raw_title": "BMW M2", "make": "BMW", "model": "M2", "price_pln": 100000,
+            "registration_plate": "wx 12345", "photos": [],
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(self.stored("pending_listings", "source_listing_id=?", ("spaced",)), "WX12345")
+
+    def test_plate_fields_are_filtered_in_the_browser(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        page = self.client.get("/plates").get_data(as_text=True)
+        self.assertIn("plate-field", page)
+        self.assertIn("function cleanPlate", page)
+
+
 class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
     """A listing plate re-queued after a CEPiK miss gets a crop and a photo reading from the scanner."""
 

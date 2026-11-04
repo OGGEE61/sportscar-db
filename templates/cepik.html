@@ -378,7 +378,7 @@
           <td>
             {% for pr in f.problems %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle d-block mb-1">{{ pr }}</span>{% endfor %}
           </td>
-          <td><input type="text" class="form-control form-control-sm font-monospace fix-plate" value="{{ f.registration_plate or '' }}" maxlength="10" style="text-transform: uppercase; width: 8rem;"></td>
+          <td><input type="text" class="form-control form-control-sm font-monospace fix-plate plate-field" value="{{ f.registration_plate or '' }}" maxlength="10" style="text-transform: uppercase; width: 8rem;"></td>
           <td><input type="date" class="form-control form-control-sm fix-date" value="{{ f.first_registration_date or '' }}" style="width: 10rem;"></td>
           <td class="text-end">
             <button type="button" class="btn btn-primary btn-sm" onclick="saveAndRecheck('{{ f.vin }}', this)">Zapisz i sprawdź</button>
@@ -539,7 +539,7 @@
           </div>
           <div class="mb-3">
             <label class="form-label small fw-bold text-dark">Numer Rejestracyjny</label>
-            <input type="text" class="form-control font-monospace" id="manualPlate" required placeholder="np. WW488GV" maxlength="10" style="text-transform: uppercase;">
+            <input type="text" class="form-control font-monospace plate-field" id="manualPlate" required placeholder="np. WW488GV" maxlength="10" style="text-transform: uppercase;">
           </div>
           <div class="mb-3">
             <label class="form-label small fw-bold text-dark">Data Pierwszej Rejestracji (YYYY-MM-DD)</label>
