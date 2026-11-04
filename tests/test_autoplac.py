@@ -92,6 +92,13 @@ class TestAutoplacDetail(unittest.TestCase):
         self.assertIsNone(base_scraper._fetch_autoplac_detail(
             detail_page(licensePlateNumber="BMWm40i"), URL)["registration_plate"])
 
+    def test_first_registration_date_is_the_polish_calendar_day(self):
+        for ms, expected in ((1710284400000, "2024-03-13"),   # winter, 23:00 UTC the day before
+                             (1560981600000, "2019-06-20"),   # summer, 22:00 UTC the day before
+                             (None, None), ("2024-03-13", None)):
+            d = base_scraper._fetch_autoplac_detail(detail_page(firstRegistrationDate=ms), URL)
+            self.assertEqual(d["first_registration_date"], expected)
+
     def test_page_of_another_offer_gives_nothing(self):
         self.assertEqual(base_scraper._fetch_autoplac_detail(detail_page(), URL + "-other"), {})
         self.assertEqual(base_scraper._fetch_autoplac_detail("<html></html>", URL), {})

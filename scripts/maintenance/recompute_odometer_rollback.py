@@ -21,7 +21,7 @@ ROLLBACK_TAG = "Cofnięty licznik%"
 
 
 def main(apply: bool) -> None:
-    conn = db.get_conn()
+    conn = db.get_db()  # D1 gdy DB_BACKEND=d1 (get_conn() to zawsze lokalny SQLite)
     rows = conn.execute(
         "SELECT vin, last_odometer_km, odometer_rollback, rollback_diff_km FROM cepik_reports"
     ).fetchall()

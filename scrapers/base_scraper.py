@@ -27,7 +27,9 @@ import random
 import hashlib
 import base64
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional, Callable
+from zoneinfo import ZoneInfo
 
 # Shared VIN/plate validation lives at the repo root (validation.py)
 import sys
@@ -563,6 +565,16 @@ def _autoplac_state(html: str) -> dict:
         return {}
 
 
+def _autoplac_first_registration(ms) -> Optional[str]:
+    """autoplac sends the date as epoch ms at midnight Polish time; UTC would give the day before."""
+    if not isinstance(ms, (int, float)) or isinstance(ms, bool):
+        return None
+    try:
+        return datetime.fromtimestamp(ms / 1000, ZoneInfo("Europe/Warsaw")).date().isoformat()
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 def _fetch_autoplac_detail(html: str, url: str) -> dict:
     """Extract structured vehicle data from an autoplac.pl offer page.
 
@@ -655,7 +667,7 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
         "vin_confidence":          vin_confidence,
         "invalid_vin":             invalid_vin,
         "registration_plate":      registration_plate,
-        "first_registration_date": None,
+        "first_registration_date": _autoplac_first_registration(ad.get("firstRegistrationDate")),
         "photo_url":               photo_urls[0] if photo_urls else None,
         "photo_urls":              photo_urls,
         "raw_description":         desc_clean,

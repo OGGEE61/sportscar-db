@@ -93,6 +93,7 @@ def main():
         WHERE (ai_processed_at IS NULL OR ai_summary IS NULL)
           AND raw_description IS NOT NULL
           AND length(raw_description) > 30
+          AND status != 'rejected'
         ORDER BY id ASC
     """).fetchall()
 
