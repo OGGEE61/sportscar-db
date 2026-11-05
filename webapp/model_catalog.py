@@ -419,20 +419,20 @@ STANDARD_MODELS = [
         "name": "Audi RS Q3 (8U)",
         "make": "Audi",
         "model": "RS Q3",
-        "variant": "8U",
+        "variant": "RS Q3 8U",
         "years": "2013–2018",
         "engine": "2.5L TFSI R5 · 310-367 HP · quattro",
-        "where": "v.make = 'Audi' AND v.model = 'RS Q3' AND v.variant = '8U'"
+        "where": "v.make = 'Audi' AND v.model = 'RS Q3' AND v.variant = 'RS Q3 8U'"
     },
     {
         "id": "rsq3_f3",
         "name": "Audi RS Q3 (F3)",
         "make": "Audi",
         "model": "RS Q3",
-        "variant": "F3",
+        "variant": "RS Q3 F3",
         "years": "2019–",
         "engine": "2.5L TFSI R5 · 400 HP · quattro",
-        "where": "v.make = 'Audi' AND v.model = 'RS Q3' AND v.variant = 'F3'"
+        "where": "v.make = 'Audi' AND v.model = 'RS Q3' AND v.variant = 'RS Q3 F3'"
     },
 ]
 

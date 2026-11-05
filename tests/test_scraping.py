@@ -1259,8 +1259,8 @@ class TestNewModelRules(unittest.TestCase):
                 ("D", "Mercedes-Benz", "Klasa G", "W460 / W461 / W463", 544, 5461, "g_w463"),
                 ("E", "Mercedes-Benz", "Klasa G", "G55 AMG W463", 507, 5439, "g55_w463"),
                 ("F", "Mercedes-Benz", "Klasa S", "W140", 394, 5987, "s_w140"),
-                ("G", "Audi", "RS Q3", "8U", 340, 2480, "rsq3_8u"),
-                ("H", "Audi", "RS Q3", "F3", 400, 2480, "rsq3_f3")]
+                ("G", "Audi", "RS Q3", "RS Q3 8U", 340, 2480, "rsq3_8u"),
+                ("H", "Audi", "RS Q3", "RS Q3 F3", 400, 2480, "rsq3_f3")]
         conn.executemany("INSERT INTO vehicles VALUES (?,?,?,?,?,?,NULL,NULL,NULL)", [c[:6] for c in cars])
         out = resolve_model_ids(conn)
         for car in cars:

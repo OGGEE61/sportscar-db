@@ -15,7 +15,7 @@ def is_8u(detail: dict) -> bool:
 CONFIG = ScraperConfig(
     make    = "Audi",
     model   = "RS Q3",
-    variant = "8U",
+    variant = "RS Q3 8U",
     source  = "otomoto",
     model_id = "rsq3_8u",
     list_url = (

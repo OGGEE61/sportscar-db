@@ -20,7 +20,7 @@ def used_f3(detail: dict) -> bool:
 CONFIG = ScraperConfig(
     make    = "Audi",
     model   = "RS Q3",
-    variant = "F3",
+    variant = "RS Q3 F3",
     source  = "otomoto",
     model_id = "rsq3_f3",
     list_url = (
