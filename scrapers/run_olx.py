@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run, _log_run, LAST_RUN_STATUS
+from base_scraper import run, _log_run, LAST_RUN_STATUS, pick_longest_waiting
 # Package-qualified: olx/ and otomoto/ share module names (bmw_m3_f80, ...)
 from olx.bmw_alpina import CONFIG as ALPINA_OLX
 from olx.bmw_x3_m_f97 import CONFIG as X3_M_OLX
@@ -157,13 +157,13 @@ if __name__ == "__main__":
         target = "all"
 
     if target.startswith("next_") and target[5:].isdigit():
-        # Rotating window: `count` consecutive scrapers, shifted by one every
-        # `interval_hours`. Windows overlap on purpose, so a skipped or delayed
-        # GitHub schedule run (they are best-effort) does not leave any scraper
-        # out of the rotation.
+        # The scrapers that have waited longest, so a skipped or delayed GitHub schedule
+        # run (they are best-effort) does not leave any out. If the API can't answer,
+        # fall back to `count` consecutive scrapers by time slot.
         count = int(target[5:])
         slot = int(time.time() // (4 * 3600))
-        scrapers_to_run = [ALL_OLX_FLEET[(slot + i) % len(ALL_OLX_FLEET)] for i in range(count)]
+        scrapers_to_run = (pick_longest_waiting("olx", ALL_OLX_FLEET, count)
+                           or [ALL_OLX_FLEET[(slot + i) % len(ALL_OLX_FLEET)] for i in range(count)])
     else:
         scrapers_to_run = SCRAPER_MAP.get(target, ALL_OLX_FLEET)
     print(f"Running OLX scraper target: {target} ({len(scrapers_to_run)} scraper(s))")
