@@ -101,25 +101,48 @@ def is_valid_first_registration_date(value, today=None) -> bool:
     return d.year >= MIN_FIRST_REGISTRATION_YEAR and d <= (today or date.today())
 
 
-# BMW M2 listings that are nearly new with a delivery mileage are dealer stock, not the
+# Listings that are nearly new with a delivery mileage are dealer stock, not the
 # used-car market this project tracks
 DEALER_M2_MAX_AGE_DAYS = 365
 DEALER_M2_MAX_KM = 20_000
 
 
 def is_dealer_new_m2(model, year, mileage_km, first_registration_date=None, on=None) -> bool:
-    """True for an M2 less than a year old with under 20 000 km (dealer stock).
+    """is_dealer_new for an M2; any other model is never dealer stock here."""
+    if (model or "").strip().upper() != "M2":
+        return False
+    return is_dealer_new(year, mileage_km, first_registration_date, on)
+
+
+def is_dealer_new(year, mileage_km, first_registration_date=None, on=None) -> bool:
+    """True for a car less than a year old with under 20 000 km (dealer stock).
 
     Age comes from the first registration date when it is a valid date, else from the
     model year (same calendar year as `on` counts as under a year; older never does).
     Unknown mileage or age is never treated as dealer stock. `on` is the date the ad
     was seen (default today).
     """
-    if (model or "").strip().upper() != "M2":
-        return False
     if mileage_km is None or mileage_km >= DEALER_M2_MAX_KM:
         return False
     on = on or date.today()
     if is_valid_first_registration_date(first_registration_date, today=on):
         return (on - date.fromisoformat(first_registration_date.strip())).days < DEALER_M2_MAX_AGE_DAYS
     return bool(year) and year >= on.year
+
+
+# VAG: G-Class built by Steyr-Daimler-Puch
+MERCEDES_WMI = ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S", "VAG")
+
+
+def is_other_mercedes_chassis(vin, chassis) -> bool:
+    """True when a European Mercedes VIN (WDB2110771...) names a chassis other than `chassis`.
+
+    A VIN of another make (a typo or a wrong number in the ad) is also ruled out. Otherwise only
+    positions 4-6 in digits count: US-spec VINs (WDDHF...) code the model in letters, so they
+    and a missing VIN are never ruled out.
+    """
+    vin = (vin or "").strip().upper()
+    if len(vin) == 17 and not vin.startswith(MERCEDES_WMI):
+        return True
+    code = vin[3:6]
+    return len(code) == 3 and code.isdigit() and code != chassis

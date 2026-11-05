@@ -300,7 +300,7 @@ class TestAutoplacConfigs(unittest.TestCase):
         import run_autoplac as R
         parts = R.BMW_FLEET + R.MERCEDES_FLEET + R.AUDI_FLEET + R.PORSCHE_FLEET + [R.GR_YARIS_AUTOPLAC, R.S2000_AUTOPLAC]
         self.assertEqual([id(c) for c in parts], [id(c) for c in R.ALL_AUTOPLAC_FLEET])
-        self.assertEqual(len(R.ALL_AUTOPLAC_FLEET), 35)
+        self.assertEqual(len(R.ALL_AUTOPLAC_FLEET), 44)
 
     def test_overlapping_models_are_told_apart_by_the_url(self):
         # Models sharing a path must not return the same cars: split by year or engine size

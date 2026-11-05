@@ -107,6 +107,36 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TestDealerNew(unittest.TestCase):
+    TODAY = date(2026, 10, 26)
+
+    def test_applies_to_any_model(self):
+        from validation import is_dealer_new
+        self.assertTrue(is_dealer_new(2026, 5000, on=self.TODAY))
+        self.assertFalse(is_dealer_new(2025, 5000, on=self.TODAY))
+        self.assertFalse(is_dealer_new(2026, 20000, on=self.TODAY))
+
+
+class TestOtherMercedesChassis(unittest.TestCase):
+    def check(self, vin, chassis):
+        from validation import is_other_mercedes_chassis
+        return is_other_mercedes_chassis(vin, chassis)
+
+    def test_european_vin_names_the_chassis(self):
+        self.assertFalse(self.check("WDD2120771A123456", "212"))
+        self.assertTrue(self.check("WDD2120771A123456", "211"))
+        self.assertTrue(self.check("WDB2200751A123456", "140"))
+
+    def test_vin_of_another_make_is_ruled_out(self):
+        self.assertTrue(self.check("WBY1Z21000V123456", "460"))
+        self.assertFalse(self.check("VAG46023117104748", "460"))
+
+    def test_unknown_chassis_is_never_ruled_out(self):
+        self.assertFalse(self.check("WDDHF7HB0AA123456", "212"))   # US-spec, letters
+        self.assertFalse(self.check(None, "212"))
+        self.assertFalse(self.check("", "212"))
+
+
 class TestDealerNewM2(unittest.TestCase):
     TODAY = date(2026, 10, 26)
 
