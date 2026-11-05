@@ -1308,3 +1308,26 @@ class TestNewModelRules(unittest.TestCase):
         self.assertFalse(skip("Mercedes-Benz Klasa G AMG 63"))
         self.assertTrue(CONFIG.validator({"vin": "WDB4632481X123456"}))
         self.assertFalse(CONFIG.validator({"vin": "WDB2200751A123456"}))
+
+
+class TestUrlYearRange(unittest.TestCase):
+    def test_reads_the_years_of_every_market(self):
+        from base_scraper import _url_year_range as years
+        self.assertEqual(years("https://www.otomoto.pl/osobowe/bmw/m5?search%5Bfilter_float_year%3Afrom%5D=1998"
+                               "&search%5Bfilter_float_year%3Ato%5D=2003&page={page}"), (1998, 2003))
+        self.assertEqual(years("https://www.olx.pl/x/?search[filter_float_year:from]=2011"
+                               "&search[filter_float_year:to]=2017&page={page}"), (2011, 2017))
+        self.assertEqual(years("https://autoplac.pl/oferty/bmw/m-5?yearFrom=2017&yearTo=2024&p={page}"), (2017, 2024))
+        self.assertEqual(years("https://www.otomoto.pl/osobowe/mercedes-benz/c-klasa/od-2008?page={page}"), (2008, None))
+
+    def test_no_year_filter_means_no_limit(self):
+        from base_scraper import _url_year_range as years
+        self.assertEqual(years("https://www.otomoto.pl/osobowe/bmw/alpina?page={page}"), (None, None))
+
+    def test_fleet_stays_in_the_years_it_searches_for(self):
+        from base_scraper import _url_year_range as years
+        import run_all
+        lo, hi = years(run_all.M5_E39.list_url)
+        self.assertEqual((lo, hi), (1998, 2003))
+        self.assertEqual(years(run_all.M5_F90.list_url)[1], 2024)
+
