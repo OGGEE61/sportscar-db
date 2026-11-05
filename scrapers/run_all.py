@@ -32,7 +32,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run, _log_run
+from base_scraper import run, _log_run, pick_longest_waiting
 
 from audi_rs3_8v          import CONFIG    as RS3
 from audi_rs4_b85         import CONFIG    as RS4_B85
@@ -145,9 +145,15 @@ def get_today_rotation():
     return day_name, WEEKDAY_SCHEDULE.get(weekday, ALL_FLEET)
 
 def get_scheduled_models(count: int = 1, interval_hours: int = 2):
-    """Deterministically pick `count` consecutive models based on current time slot.
-    Rotates continuously across ALL_FLEET (35 models every ~70 hours).
+    """Pick the `count` models that have waited longest for a run.
+
+    GitHub runs the schedule only a few times a day, so a pick based on the clock alone can skip
+    a model for days. If the API can't answer, fall back to consecutive models by time slot.
     """
+    picked = pick_longest_waiting("otomoto", ALL_FLEET, count)
+    if picked:
+        return [(cfg, ALL_FLEET.index(cfg), f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()) for cfg in picked]
+
     slot = int(time.time() // (interval_hours * 3600))
     selected = []
     for offset in range(count):

@@ -84,6 +84,25 @@ def _fetch_known(items: list) -> dict:
         return {}
 
 
+def pick_longest_waiting(source: str, configs: list, count: int) -> list:
+    """Ask the API which of `configs` have waited longest for a run.
+
+    Returns [] on any failure (e.g. the API is not deployed yet), so the caller
+    falls back to its clock-based rotation.
+    """
+    by_key = {f"{c.make} {c.model} {c.variant or ''}".strip(): c for c in configs}
+    scrapers = [{"key": key, "list_url": str(c.list_url)} for key, c in by_key.items()]
+    try:
+        r = _API_SESSION.post(f"{API_BASE}/api/next_scrapers", json={"source": source, "count": count, "scrapers": scrapers},
+                              headers=API_HEADERS, timeout=30)
+        if r.status_code != 200:
+            return []
+        return [by_key[k] for k in r.json().get("keys", []) if k in by_key]
+    except Exception as e:
+        print(f"  [rotation] pick failed: {_safe(str(e))}")
+        return []
+
+
 def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0, source: str = "", session_status: str = ""):
     try:
         _API_SESSION.post(

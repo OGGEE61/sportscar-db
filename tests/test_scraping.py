@@ -765,6 +765,109 @@ class TestPlateInput(CepikCarMixin, ScrapingTestCase):
         self.assertIn("function cleanPlate", page)
 
 
+class TestNextScrapers(ScrapingTestCase):
+    SCRAPERS = [{"key": k, "list_url": f"https://x/{k}"} for k in ("a", "b", "c", "d")]
+
+    def pick(self, count=2, source="otomoto"):
+        res = self.client.post("/api/next_scrapers", headers=TOKEN, json={"source": source, "count": count, "scrapers": self.SCRAPERS})
+        self.assertEqual(res.status_code, 200)
+        return res.get_json()["keys"]
+
+    def log(self, key, date, source="otomoto"):
+        conn = db.get_db()
+        conn.execute("INSERT INTO scraper_logs (run_date, status, message, list_url, source) VALUES (?, 'success', '', ?, ?)",
+                     (date, f"https://x/{key}", source))
+        conn.commit()
+        conn.close()
+
+    def test_needs_the_api_token(self):
+        res = self.client.post("/api/next_scrapers", json={"source": "otomoto", "scrapers": self.SCRAPERS})
+        self.assertEqual(res.status_code, 401)
+
+    def test_longest_waiting_go_first(self):
+        self.log("a", "2026-11-05 10:00:00")
+        self.log("b", "2026-10-29 10:00:00")
+        self.log("c", "2026-11-01 10:00:00")
+        self.log("d", "2026-11-03 10:00:00")
+        self.assertEqual(self.pick(), ["b", "c"])
+
+    def test_every_scraper_gets_a_turn_before_any_repeats(self):
+        got = self.pick() + self.pick()
+        self.assertEqual(sorted(got), ["a", "b", "c", "d"])
+
+    def test_a_run_that_dies_before_logging_does_not_block_the_others(self):
+        first = self.pick(count=1)  # no log written
+        self.assertNotEqual(self.pick(count=1), first)
+
+    def test_a_manual_run_counts_as_a_turn(self):
+        for key, date in (("a", "2026-11-05 10:00:00"), ("b", "2026-11-05 10:00:00"), ("c", "2026-11-05 10:00:00")):
+            self.log(key, date)
+        self.assertEqual(self.pick(count=1), ["d"])
+
+    def test_sources_are_separate(self):
+        self.log("a", "2026-11-05 10:00:00", source="olx")
+        self.assertEqual(self.pick(count=1, source="otomoto"), ["a"])
+
+    def test_bad_request(self):
+        res = self.client.post("/api/next_scrapers", headers=TOKEN, json={"source": "otomoto"})
+        self.assertEqual(res.status_code, 400)
+
+
+class TestRotationPick(unittest.TestCase):
+    def test_fleets_have_unique_keys(self):
+        import run_all
+        import run_olx
+        for fleet in (run_all.ALL_FLEET, run_olx.ALL_OLX_FLEET):
+            keys = [f"{c.make} {c.model} {c.variant or ''}".strip() for c in fleet]
+            self.assertEqual(len(keys), len(set(keys)))
+
+    def test_api_failure_falls_back_to_the_clock(self):
+        import run_all
+        with mock.patch.object(base_scraper._API_SESSION, "post", side_effect=RuntimeError("down")):
+            self.assertEqual(base_scraper.pick_longest_waiting("otomoto", run_all.ALL_FLEET, 3), [])
+            self.assertEqual(len(run_all.get_scheduled_models(count=3)), 3)
+
+    def test_api_answer_is_used(self):
+        import run_all
+        cfg = run_all.ALL_FLEET[7]
+        key = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
+        answer = mock.Mock(status_code=200, json=lambda: {"keys": [key]})
+        with mock.patch.object(base_scraper._API_SESSION, "post", return_value=answer):
+            self.assertEqual([c for c, _, _ in run_all.get_scheduled_models(count=1)], [cfg])
+
+
+class TestAlpinaValidator(unittest.TestCase):
+    def validators(self):
+        from otomoto.bmw_alpina import validate_genuine_alpina as otomoto
+        from olx.bmw_alpina import validate_genuine_alpina as olx
+        return otomoto, olx
+
+    def check(self, expected, **detail):
+        for validate in self.validators():
+            self.assertEqual(validate(detail), expected, detail)
+
+    def test_wap_vin_is_kept(self):
+        self.check(True, vin="WAPB350009HE12345", title="BMW-ALPINA B5", power_hp=500)
+
+    def test_powerful_bmw_vin_goes_to_review(self):
+        self.check(True, vin="WBA6D6C58JG745657", title="BMW-ALPINA B6", power_hp=600)
+        self.check(True, vin="WBAGX0C17PCK98406", title="Alpina B8", power_hp=621)
+
+    def test_ordinary_bmw_vin_is_rejected(self):
+        self.check(False, vin="WBA6B4C57FD986132", title="BMW Alpina 650i", power_hp=445)
+        self.check(False, vin="WBA3K91090F913330", title="BMW Seria 3 Alpina", power_hp=190)
+        self.check(False, vin="WBA6D6C58JG745657", title="BMW-ALPINA B6")
+
+    def test_other_makers_at_any_power_are_rejected(self):
+        self.check(False, vin="5UX43EM06S9W63847", title="Alpina XB", power_hp=631)
+
+    def test_no_vin_is_still_rejected(self):
+        self.check(False, vin=None, title="BMW-ALPINA B5", power_hp=500)
+
+    def test_large_models_are_still_rejected(self):
+        self.check(False, vin="WBA7F2C5XJG856240", title="BMW Seria 7 Alpina", power_hp=600)
+
+
 class TestPlateReject(CepikCarMixin, ScrapingTestCase):
     """Rejecting a plate (missing or wrong) removes it from the car, with undo."""
 
