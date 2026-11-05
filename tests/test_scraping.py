@@ -167,6 +167,17 @@ class TestModelId(ScrapingTestCase):
         conn.close()
         self.assertEqual(got, "x3_m_f97")
 
+    def test_models_page_draws_a_trend_line(self):
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m40i_g01")
+        conn = db.get_db()
+        conn.execute("""INSERT INTO listing_observations (vin, source, source_listing_id, price_pln, mileage_km)
+                        VALUES ('WBS8M9C50J5K99001', 'otomoto', '1', 200000, 50000)""")
+        conn.commit()
+        conn.close()
+        page = self.client.get("/models?model=x3_m40i_g01")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"label: 'Trend'", page.data)
+
     def test_models_page_uses_stored_model_id(self):
         self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m_f97")
         page = self.client.get("/models?model=x3_m40i_g01")
@@ -1074,3 +1085,19 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         self.assertIn("B" * 17, html)
         self.assertIn("B" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
         self.assertNotIn("A" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
+
+
+class TestTrendLine(unittest.TestCase):
+    def line(self, points):
+        from webapp.helpers import trend_line
+        return trend_line(points)
+
+    def test_falling_prices_give_a_falling_line(self):
+        self.assertEqual(self.line([(0, 300), (100, 200), (200, 100)]), [{"x": 0, "y": 300}, {"x": 200, "y": 100}])
+
+    def test_too_few_points_or_one_mileage_draw_nothing(self):
+        self.assertEqual(self.line([(0, 300), (100, 200)]), [])
+        self.assertEqual(self.line([(100, 300), (100, 200), (100, 100)]), [])
+
+    def test_line_never_goes_below_zero(self):
+        self.assertEqual(self.line([(0, 200), (100, 100), (400, 0)])[1]["y"], 0)

@@ -348,6 +348,14 @@ if (scatterData.length && document.getElementById('chartScatter')) {
         borderColor: '#0d6efd',
         pointRadius: 6,
         pointHoverRadius: 9,
+      }, {
+        label: 'Trend',
+        data: {{ scatter_trend|safe }},
+        showLine: true,
+        borderColor: '#fd7e14',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHitRadius: 0,
       }]
     },
     options: {
@@ -368,6 +376,7 @@ if (scatterData.length && document.getElementById('chartScatter')) {
       plugins: {
         legend: { display: false },
         tooltip: {
+          filter: (item) => item.datasetIndex === 0,
           callbacks: {
             label: (ctx) => {
               const m = ctx.raw.meta;
@@ -381,9 +390,9 @@ if (scatterData.length && document.getElementById('chartScatter')) {
         }
       },
       onClick: (e, items) => {
-        if (items.length) {
-          const idx = items[0].index;
-          const url = scatterData[idx].url;
+        const point = items.find(i => i.datasetIndex === 0);
+        if (point) {
+          const url = scatterData[point.index].url;
           if (url) window.location.href = url;
         }
       }

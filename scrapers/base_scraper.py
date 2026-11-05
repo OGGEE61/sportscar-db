@@ -531,6 +531,7 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
         "fuel_type":               fuel_type,
         "transmission":            transmission,
         "color_ext":               params.get("color"),
+        "damaged":                 str(params.get("condition") or "").strip().lower() in ("uszkodzony", "damaged"),
         "color_int":               None,
         "equipment":               None,
         "vin":                     vin_found,
@@ -661,6 +662,7 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
         "fuel_type":               fuel_type,
         "transmission":            transmission,
         "color_ext":               ad.get("colorText"),
+        "damaged":                 ad.get("damaged") is True,
         "color_int":               None,
         "equipment":               json.dumps(equipment, ensure_ascii=False) if equipment else None,
         "vin":                     vin_found,
@@ -898,6 +900,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "fuel_type":               fuel_type,
             "transmission":            transmission,
             "color_ext":               color_ext,
+            "damaged":                 str(_pd_val("damaged") or "") == "1",
             "color_int":               None,
             "equipment":               equipment_json,
             "vin":                     vin_found,
@@ -1314,6 +1317,11 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         if car.max_year and detail['year'] > car.max_year:
                             print(f"  [skip] Year {detail['year']} > max {car.max_year}")
                             continue
+
+                    # Damaged cars are not the market this project tracks
+                    if detail.get("damaged"):
+                        print("  [skip] Marked as damaged on the site")
+                        continue
 
                     if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
