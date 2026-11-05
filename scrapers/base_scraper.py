@@ -1128,6 +1128,19 @@ def _parse_autoplac_cards(html: str):
 
 # ── main runner ───────────────────────────────────────────────────────────────
 
+def _url_year_range(url: str) -> tuple:
+    """(from, to) years a list URL searches for, None where it sets no limit.
+
+    Otomoto mixes promoted ads of any year into filtered results, so the years the search asked
+    for are checked again on each listing.
+    """
+    def year(pattern):
+        m = re.search(pattern, url)
+        return int(m.group(1)) if m else None
+    return (year(r"(?:filter_float_year(?:%3A|:)from(?:%5D|\])=|[?&]yearFrom=|/od-)(\d{4})"),
+            year(r"(?:filter_float_year(?:%3A|:)to(?:%5D|\])=|[?&]yearTo=)(\d{4})"))
+
+
 def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     # autoplac serves VINs in plain text; never send it the otomoto session
     cookies     = load_cookies() if cfg.source != "autoplac" else {}
@@ -1332,11 +1345,14 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
                               f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
 
-                        if car.min_year and detail['year'] < car.min_year:
-                            print(f"  [skip] Year {detail['year']} < min {car.min_year}")
+                        url_min_year, url_max_year = _url_year_range(url_tmpl)
+                        min_year = car.min_year or url_min_year
+                        max_year = car.max_year or url_max_year
+                        if min_year and detail['year'] < min_year:
+                            print(f"  [skip] Year {detail['year']} < min {min_year}")
                             continue
-                        if car.max_year and detail['year'] > car.max_year:
-                            print(f"  [skip] Year {detail['year']} > max {car.max_year}")
+                        if max_year and detail['year'] > max_year:
+                            print(f"  [skip] Year {detail['year']} > max {max_year}")
                             continue
 
                     if not vetted and cfg.validator and not cfg.validator(detail):
