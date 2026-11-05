@@ -555,6 +555,9 @@ def is_same_car(report: Dict[str, Any], vin: str, make: Optional[str], year: Opt
         return False
     norm = lambda s: re.sub(r"[^a-z0-9]", "", (s or "").lower())
     theirs, ours = norm(report.get("make")), norm(make)
+    # Alpina cars can be registered as BMW
+    if {theirs, ours} == {"bmw", "alpina"}:
+        theirs = ours
     if theirs and ours and theirs not in ours and ours not in theirs:
         return False
     their_year = report.get("year_of_manufacture")

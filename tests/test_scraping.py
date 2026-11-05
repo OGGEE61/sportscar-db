@@ -918,6 +918,8 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         self.assertFalse(is_same_car({"make": "BMW"}, self.VIN, "BMW", 2023))
         self.assertTrue(is_same_car(self.report(make="MERCEDES-BENZ"), self.VIN, "Mercedes-Benz", 2023))
         self.assertTrue(is_same_car(self.report(year=2022), self.VIN, "BMW", 2023))
+        self.assertTrue(is_same_car(self.report(make="BMW"), self.VIN, "Alpina", 2023))
+        self.assertFalse(is_same_car(self.report(make="AUDI"), self.VIN, "Alpina", 2023))
 
     def test_transient_error_is_asked_again(self):
         self.card()
