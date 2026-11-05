@@ -1,9 +1,10 @@
+import json
 import re
 
 from flask import Blueprint, jsonify, render_template, request
 from db import get_db
 from webapp import invalidate_notifications
-from webapp.services.plates import allow_cepik_retry, clear_plate, normalize_plate
+from webapp.services.plates import allow_cepik_retry, clear_plate, normalize_plate, restore_plate
 
 bp = Blueprint("plates", __name__)
 
@@ -14,6 +15,14 @@ def _refresh_badge(resp):
     if request.method == "POST":
         invalidate_notifications()
     return resp
+
+
+def _photo_list(photos_json):
+    try:
+        photos = json.loads(photos_json or "[]")
+    except (ValueError, TypeError):
+        return []
+    return photos if isinstance(photos, list) else []
 
 
 # ── Plates Review (Human-in-the-Loop for CV License Plate Recognition) ───────
@@ -52,7 +61,9 @@ def plates_review():
                COALESCE(v.variant, p.variant) as variant,
                COALESCE(v.year, p.year) as year,
                p.price_pln, p.location_city, p.raw_title,
-               v.registration_plate AS car_plate
+               v.registration_plate AS car_plate,
+               COALESCE(NULLIF(v.first_registration_date, ''), p.first_registration_date) AS first_reg,
+               p.photos AS photos_json
         FROM plate_review_queue q
         LEFT JOIN vehicles v ON v.vin = q.vin
         LEFT JOIN pending_listings p ON (p.id = q.listing_id OR (q.listing_id IS NULL AND p.vin = q.vin))
@@ -64,6 +75,7 @@ def plates_review():
         GROUP BY q.id
         ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
     """, (status_filter,)).fetchall()
+    candidates = [{**dict(c), "photos": _photo_list(c["photos_json"])} for c in candidates]
 
     stats = {
         "pending": conn.execute("""
@@ -103,10 +115,10 @@ def plates_review():
 def api_plates_review():
     data = request.get_json(silent=True) or request.form
     cid = data.get("id")
-    action = data.get("action")  # 'approve', 'reject', or 'revert'
+    action = data.get("action")  # 'approve', 'reject', 'no_plate', 'wrong_plate' or 'revert'
     plate = (data.get("plate") or "").strip().upper()
 
-    if not cid or action not in ("approve", "reject", "revert"):
+    if not cid or action not in ("approve", "reject", "no_plate", "wrong_plate", "revert"):
         return jsonify({"status": "error", "message": "Niepoprawne parametry"}), 400
 
     conn = get_db()
@@ -172,7 +184,22 @@ def api_plates_review():
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action, "plate": final_plate})
 
-    elif action == "reject":
+    elif action == "wrong_plate":
+        # The plate on the car is wrong. Remembering it in reviewed_plate allows undo and
+        # stops the next scrape of the listing from putting it back (see /api/ingest_pending).
+        row = conn.execute("SELECT registration_plate FROM vehicles WHERE vin=?", (vin,)).fetchone()
+        removed = normalize_plate(row["registration_plate"] if row else None) or None
+        conn.execute("""
+            UPDATE plate_review_queue
+            SET status='rejected', reviewed_plate=?, reviewed_at=datetime('now')
+            WHERE id=?
+        """, (removed, cid))
+        clear_plate(conn, vin, lid, removed)
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "id": cid, "action": action, "removed": removed})
+
+    elif action in ("reject", "no_plate"):
         conn.execute("""
             UPDATE plate_review_queue
             SET status='rejected', reviewed_at=datetime('now')
@@ -194,6 +221,8 @@ def api_plates_review():
 
         if prev_status == "approved":
             clear_plate(conn, vin, lid, old_plate)
+        elif prev_status == "rejected" and cand["reviewed_plate"]:
+            restore_plate(conn, vin, cand["reviewed_plate"])
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action})

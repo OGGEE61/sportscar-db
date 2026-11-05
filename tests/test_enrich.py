@@ -27,6 +27,9 @@ class TestCleanAnalysis(unittest.TestCase):
         self.assertEqual(d["accident_status"], "bezwypadkowy")
         self.assertIsNone(d["location_region"])
 
+    def test_equipment_is_capped(self):
+        self.assertEqual(len(enrich.clean_analysis({"key_equipment": list("ABCDEFGH")})["key_equipment"]), 5)
+
     def test_malformed_fields_do_not_raise(self):
         d = enrich.clean_analysis({"key_equipment": "BOSE", "has_panoramic_roof": "true", "summary": 7})
         self.assertEqual(d["key_equipment"], [])

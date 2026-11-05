@@ -140,6 +140,22 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
 
         full_crop = img_pil.crop((x1, y1, x2, y2))
 
+        def candidate(plate_text: str) -> Dict:
+            # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
+            crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
+            full_crop.save(os.path.join(CROPS_DIR, crop_filename), "JPEG", quality=85)
+            buf = io.BytesIO()
+            full_crop.save(buf, format="JPEG", quality=85)
+            return {
+                "detected_plate": plate_text,
+                "confidence": round(conf, 3),
+                "crop_path": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii"),
+                "bbox": [x1, y1, x2, y2],
+                "aspect_ratio": round(aspect_ratio, 2),
+                "shot_quality_score": round(shot_quality_score, 3),
+                "is_standard_format": is_valid_plate_format(plate_text),
+            }
+
         # Weryfikacja tła: polska tablica musi mieć jasne (białe) tło.
         crop_arr = np.array(full_crop)
         ch, cw = crop_arr.shape[:2]
@@ -175,7 +191,9 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
             gray_enhanced = ImageEnhance.Contrast(gray_crop).enhance(1.8)
             ocr_results = reader.readtext(np.array(gray_enhanced), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
+        # Nieczytelny dla OCR wycinek zostaje bez tekstu: człowiek często go odczyta
         if not ocr_results:
+            candidates.append(candidate(""))
             continue
 
         ocr_texts = []
@@ -197,27 +215,12 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
             norm_text = best_part
 
         if not norm_text or len(norm_text) < 4 or len(norm_text) > 8 or not is_valid_plate_format(norm_text):
+            # Napis reklamowy na ramce to nie tablica; reszta trafia do człowieka bez tekstu
+            if not is_likely_dealer_badge(clean_plate_text(joined)):
+                candidates.append(candidate(""))
             continue
 
-        # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
-        crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
-        crop_save_path = os.path.join(CROPS_DIR, crop_filename)
-        full_crop.save(crop_save_path, "JPEG", quality=85)
-
-        buf = io.BytesIO()
-        full_crop.save(buf, format="JPEG", quality=85)
-        crop_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-
-        candidates.append({
-            "detected_plate": norm_text,
-            "raw_text": joined,
-            "confidence": round(conf, 3),
-            "crop_path": crop_b64,
-            "bbox": [x1, y1, x2, y2],
-            "aspect_ratio": round(aspect_ratio, 2),
-            "shot_quality_score": round(shot_quality_score, 3),
-            "is_standard_format": is_valid_plate_format(norm_text),
-        })
+        candidates.append(candidate(norm_text))
 
     return candidates
 
@@ -388,22 +391,19 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
         if c.get("is_standard_format") and 4 <= len(re.sub(r"[^A-Z0-9]", "", c.get("detected_plate") or "")) <= 8
     ]
 
-    if not valid_candidates:
-        return None
+    if valid_candidates:
+        valid_candidates.sort(
+            key=lambda c: (c["shot_quality_score"], c["confidence"]),
+            reverse=True
+        )
+        # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
+        if valid_candidates[0]["shot_quality_score"] >= 0.28:
+            return valid_candidates[0]
+        print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {valid_candidates[0]['shot_quality_score']})")
 
-    valid_candidates.sort(
-        key=lambda c: (c["shot_quality_score"], c["confidence"]),
-        reverse=True
-    )
-
-    best_candidate = valid_candidates[0]
-
-    # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
-    if best_candidate["shot_quality_score"] < 0.28:
-        print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {best_candidate['shot_quality_score']})")
-        return None
-
-    return best_candidate
+    # Nic pewnego do odczytania: zwróć najlepszy wycinek bez tekstu, żeby ocenił go człowiek
+    best_box = max(all_candidates, key=lambda c: (c["shot_quality_score"], c["confidence"]))
+    return {**best_box, "detected_plate": ""}
 
 
 def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
@@ -453,8 +453,9 @@ def fill_missing_crops(conn) -> Dict:
     Tablica z treści ogłoszenia, której CEPiK nie znalazł, trafia do kolejki bez wycinka
     (requeue_for_plate_check), bo skan zdjęć obejmuje tylko ogłoszenia bez tablicy. Tu
     dostaje wycinek ze zdjęć, a odczyt ze zdjęcia staje się propozycją; tablica z
-    ogłoszenia zostaje na aucie, więc widać ją na karcie. Pusty crop_path oznacza, że
-    na zdjęciach nic nie znaleziono (nie skanujemy ponownie).
+    ogłoszenia zostaje na aucie, więc widać ją na karcie. Wycinek bez odczytu nie zmienia
+    propozycji. Pusty crop_path oznacza, że na zdjęciach nic nie znaleziono (nie skanujemy
+    ponownie).
     """
     from webapp.services.plates import normalize_plate
 
@@ -478,6 +479,14 @@ def fill_missing_crops(conn) -> Dict:
             conn.execute("UPDATE plate_review_queue SET crop_path = '' WHERE id = ?", (q["id"],))
             conn.commit()
             print(f"  {q['vin']}: brak tablicy na zdjęciach")
+            continue
+
+        if not best["detected_plate"]:
+            conn.execute("UPDATE plate_review_queue SET crop_path = ?, photo_url = ?, listing_id = COALESCE(listing_id, ?) WHERE id = ?",
+                         (best["crop_path"], best["photo_url"], str(listing["id"]), q["id"]))
+            conn.commit()
+            filled += 1
+            print(f"  {q['vin']}: wycinek bez odczytu")
             continue
 
         same = normalize_plate(best["detected_plate"]) == normalize_plate(q["detected_plate"])

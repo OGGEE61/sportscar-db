@@ -279,6 +279,11 @@ def api_ingest_pending():
     p["registration_plate"] = reg_plate = normalize_plate(reg_plate) or None
 
     conn = get_db()
+    # A plate the reviewer marked as wrong must not come back from the listing text
+    if reg_plate and vin and conn.execute(
+            "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
+            (vin, reg_plate)).fetchone():
+        p["registration_plate"] = reg_plate = None
     try:
         cur = conn.execute("""
             INSERT OR IGNORE INTO pending_listings
