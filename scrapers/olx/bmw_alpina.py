@@ -18,6 +18,7 @@ def validate_genuine_alpina(detail: dict) -> bool:
        and have manufacturer WMI 'WAP' (Alpina Burkard Bovensiepen).
        A car with 'WBA' is a standard BMW (e.g. with Alpina wheels or body kit).
     3. Pre-1983 models had BMW chassis VINs with an authentic Alpina build plaque.
+       A 'WBA' VIN at 500+ HP could be a US-market B6 / B8, so it goes to the review queue.
     4. Exclude 2.0 diesel models (early 4-cyl D3 2.0d / 200-214 HP).
     5. Exclude luxury barges: Series 7, X7 (B7, XB7, XD7).
     """
@@ -53,6 +54,11 @@ def validate_genuine_alpina(detail: dict) -> bool:
     if year < 1983 and vin.startswith("WBA"):
         if "alpina" in desc and any(k in desc for k in ["tabliczk", "certyfikat", "numer alpina", "plaque"]):
             return True
+
+    # US-market B6 / B8 carry a BMW VIN and so do tuned BMWs: a person decides at /review
+    if vin.startswith("WBA") and power_hp >= 500:
+        print(f"  [review-alpina] VIN {vin}, {power_hp} KM: bez WAP, do przeglądu.")
+        return True
 
     print(f"  [reject-alpina] VIN {vin} nie zaczyna się od WAP (Alpina) — odrzucono standardowe BMW / akcesoria.")
     return False

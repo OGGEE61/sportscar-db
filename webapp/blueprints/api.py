@@ -260,6 +260,52 @@ def api_known_listings():
     return jsonify({"known": known})
 
 
+@bp.route("/api/next_scrapers", methods=["POST"])
+def api_next_scrapers():
+    """Pick the scrapers that have waited longest, so a skipped schedule run can't leave one out.
+
+    Body: {"source": "otomoto", "count": 3, "scrapers": [{"key": ..., "list_url": ...}, ...]}
+    Returns {"keys": [...]}. A pick is recorded straight away, so a run that dies before it
+    logs anything moves on to other scrapers next time instead of retrying the same ones.
+    """
+    if err := check_api_token(): return err
+
+    p = request.get_json(force=True) or {}
+    source, scrapers = p.get("source"), p.get("scrapers") or []
+    count = max(1, int(p.get("count", 1)))
+    if not source or not scrapers:
+        return jsonify({"error": "source and scrapers are required"}), 400
+
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS scraper_picks (
+            source    TEXT NOT NULL,
+            key       TEXT NOT NULL,
+            picked_at TEXT NOT NULL,
+            PRIMARY KEY (source, key)
+        )
+    """)
+    logged = {r["list_url"]: r["last_run"] for r in conn.execute(
+        "SELECT list_url, MAX(run_date) AS last_run FROM scraper_logs WHERE source=? AND list_url != '' GROUP BY list_url",
+        (source,)).fetchall()}
+    picked = {r["key"]: r["picked_at"] for r in conn.execute(
+        "SELECT key, picked_at FROM scraper_picks WHERE source=?", (source,)).fetchall()}
+
+    def last_activity(s):
+        return max(picked.get(s["key"]) or "", logged.get(s.get("list_url")) or "")
+
+    # Stable sort: scrapers that have never run keep the order they were sent in
+    keys = [s["key"] for s in sorted(scrapers, key=last_activity)[:count]]
+    for key in keys:
+        conn.execute("""
+            INSERT INTO scraper_picks (source, key, picked_at) VALUES (?, ?, datetime('now'))
+            ON CONFLICT (source, key) DO UPDATE SET picked_at = excluded.picked_at
+        """, (source, key))
+    conn.commit()
+    conn.close()
+    return jsonify({"keys": keys})
+
+
 @bp.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
     if err := check_api_token(): return err

@@ -816,6 +816,109 @@ class TestPlateInput(CepikCarMixin, ScrapingTestCase):
         self.assertIn("function cleanPlate", page)
 
 
+class TestNextScrapers(ScrapingTestCase):
+    SCRAPERS = [{"key": k, "list_url": f"https://x/{k}"} for k in ("a", "b", "c", "d")]
+
+    def pick(self, count=2, source="otomoto"):
+        res = self.client.post("/api/next_scrapers", headers=TOKEN, json={"source": source, "count": count, "scrapers": self.SCRAPERS})
+        self.assertEqual(res.status_code, 200)
+        return res.get_json()["keys"]
+
+    def log(self, key, date, source="otomoto"):
+        conn = db.get_db()
+        conn.execute("INSERT INTO scraper_logs (run_date, status, message, list_url, source) VALUES (?, 'success', '', ?, ?)",
+                     (date, f"https://x/{key}", source))
+        conn.commit()
+        conn.close()
+
+    def test_needs_the_api_token(self):
+        res = self.client.post("/api/next_scrapers", json={"source": "otomoto", "scrapers": self.SCRAPERS})
+        self.assertEqual(res.status_code, 401)
+
+    def test_longest_waiting_go_first(self):
+        self.log("a", "2026-11-05 10:00:00")
+        self.log("b", "2026-10-29 10:00:00")
+        self.log("c", "2026-11-01 10:00:00")
+        self.log("d", "2026-11-03 10:00:00")
+        self.assertEqual(self.pick(), ["b", "c"])
+
+    def test_every_scraper_gets_a_turn_before_any_repeats(self):
+        got = self.pick() + self.pick()
+        self.assertEqual(sorted(got), ["a", "b", "c", "d"])
+
+    def test_a_run_that_dies_before_logging_does_not_block_the_others(self):
+        first = self.pick(count=1)  # no log written
+        self.assertNotEqual(self.pick(count=1), first)
+
+    def test_a_manual_run_counts_as_a_turn(self):
+        for key, date in (("a", "2026-11-05 10:00:00"), ("b", "2026-11-05 10:00:00"), ("c", "2026-11-05 10:00:00")):
+            self.log(key, date)
+        self.assertEqual(self.pick(count=1), ["d"])
+
+    def test_sources_are_separate(self):
+        self.log("a", "2026-11-05 10:00:00", source="olx")
+        self.assertEqual(self.pick(count=1, source="otomoto"), ["a"])
+
+    def test_bad_request(self):
+        res = self.client.post("/api/next_scrapers", headers=TOKEN, json={"source": "otomoto"})
+        self.assertEqual(res.status_code, 400)
+
+
+class TestRotationPick(unittest.TestCase):
+    def test_fleets_have_unique_keys(self):
+        import run_all
+        import run_olx
+        for fleet in (run_all.ALL_FLEET, run_olx.ALL_OLX_FLEET):
+            keys = [f"{c.make} {c.model} {c.variant or ''}".strip() for c in fleet]
+            self.assertEqual(len(keys), len(set(keys)))
+
+    def test_api_failure_falls_back_to_the_clock(self):
+        import run_all
+        with mock.patch.object(base_scraper._API_SESSION, "post", side_effect=RuntimeError("down")):
+            self.assertEqual(base_scraper.pick_longest_waiting("otomoto", run_all.ALL_FLEET, 3), [])
+            self.assertEqual(len(run_all.get_scheduled_models(count=3)), 3)
+
+    def test_api_answer_is_used(self):
+        import run_all
+        cfg = run_all.ALL_FLEET[7]
+        key = f"{cfg.make} {cfg.model} {cfg.variant or ''}".strip()
+        answer = mock.Mock(status_code=200, json=lambda: {"keys": [key]})
+        with mock.patch.object(base_scraper._API_SESSION, "post", return_value=answer):
+            self.assertEqual([c for c, _, _ in run_all.get_scheduled_models(count=1)], [cfg])
+
+
+class TestAlpinaValidator(unittest.TestCase):
+    def validators(self):
+        from otomoto.bmw_alpina import validate_genuine_alpina as otomoto
+        from olx.bmw_alpina import validate_genuine_alpina as olx
+        return otomoto, olx
+
+    def check(self, expected, **detail):
+        for validate in self.validators():
+            self.assertEqual(validate(detail), expected, detail)
+
+    def test_wap_vin_is_kept(self):
+        self.check(True, vin="WAPB350009HE12345", title="BMW-ALPINA B5", power_hp=500)
+
+    def test_powerful_bmw_vin_goes_to_review(self):
+        self.check(True, vin="WBA6D6C58JG745657", title="BMW-ALPINA B6", power_hp=600)
+        self.check(True, vin="WBAGX0C17PCK98406", title="Alpina B8", power_hp=621)
+
+    def test_ordinary_bmw_vin_is_rejected(self):
+        self.check(False, vin="WBA6B4C57FD986132", title="BMW Alpina 650i", power_hp=445)
+        self.check(False, vin="WBA3K91090F913330", title="BMW Seria 3 Alpina", power_hp=190)
+        self.check(False, vin="WBA6D6C58JG745657", title="BMW-ALPINA B6")
+
+    def test_other_makers_at_any_power_are_rejected(self):
+        self.check(False, vin="5UX43EM06S9W63847", title="Alpina XB", power_hp=631)
+
+    def test_no_vin_is_still_rejected(self):
+        self.check(False, vin=None, title="BMW-ALPINA B5", power_hp=500)
+
+    def test_large_models_are_still_rejected(self):
+        self.check(False, vin="WBA7F2C5XJG856240", title="BMW Seria 7 Alpina", power_hp=600)
+
+
 class TestPlateReject(CepikCarMixin, ScrapingTestCase):
     """Rejecting a plate (missing or wrong) removes it from the car, with undo."""
 
@@ -1141,3 +1244,67 @@ class TestTrendLine(unittest.TestCase):
 
     def test_line_never_goes_below_zero(self):
         self.assertEqual(self.line([(0, 200), (100, 100), (400, 0)])[1]["y"], 0)
+
+
+class TestNewModelRules(unittest.TestCase):
+    def test_catalog_keeps_new_generations_apart_from_old_rules(self):
+        import sqlite3
+        from webapp.model_catalog import STANDARD_MODELS, resolve_model_ids
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE vehicles (vin TEXT, make TEXT, model TEXT, variant TEXT, power_hp INT, engine_cc INT, year INT, body_type TEXT, notes TEXT)")
+        cars = [("A", "Mercedes-Benz", "Klasa E", "W211 E63 AMG", 514, 6208, "e63_w211"),
+                ("B", "Mercedes-Benz", "Klasa E", "W212 E63 AMG", 557, 5461, "e63_w212"),
+                ("C", "Mercedes-Benz", "Klasa E", "W211 E55 AMG", 476, 5439, "e55_w211"),
+                ("D", "Mercedes-Benz", "Klasa G", "W460 / W461 / W463", 544, 5461, "g_w463"),
+                ("E", "Mercedes-Benz", "Klasa G", "G55 AMG W463", 507, 5439, "g55_w463"),
+                ("F", "Mercedes-Benz", "Klasa S", "W140", 394, 5987, "s_w140"),
+                ("G", "Audi", "RS Q3", "8U", 340, 2480, "rsq3_8u"),
+                ("H", "Audi", "RS Q3", "F3", 400, 2480, "rsq3_f3")]
+        conn.executemany("INSERT INTO vehicles VALUES (?,?,?,?,?,?,NULL,NULL,NULL)", [c[:6] for c in cars])
+        out = resolve_model_ids(conn)
+        for car in cars:
+            self.assertEqual(out[car[0]], car[6], car[3])
+        # Only the single rule matches: /models and CEPiK use the rule directly
+        for car in cars:
+            hits = [m["id"] for m in STANDARD_MODELS
+                    if conn.execute(f"SELECT 1 FROM vehicles v WHERE v.vin = ? AND ({m['where']})", (car[0],)).fetchone()]
+            self.assertEqual(hits, [car[6]], car[3])
+        conn.close()
+
+    def test_m5_generations_are_told_apart(self):
+        from otomoto.bmw_m5_f10 import CONFIG as F10
+        from otomoto.bmw_m5_f90 import CONFIG as F90
+        self.assertFalse(F10.validator({"vin": "WBSJF0106HB000001"}))
+        self.assertFalse(F10.validator({"vin": "WBSGV0C08LB000001"}))
+        self.assertTrue(F10.validator({"vin": "WBSFV9C56ED000001"}))
+        self.assertTrue(F90.validator({"year": 2021}))
+        self.assertTrue(F90.validator({"year": 2017, "vin": "WBSJF0106HB000001"}))
+        self.assertFalse(F90.validator({"year": 2017}))
+        self.assertFalse(F90.validator({"year": 2018, "vin": "WBSFV9C56ED000001"}))
+
+    def test_m340i_skips_diesel_and_dealer_stock(self):
+        from datetime import date
+        from otomoto.bmw_m340i_g20 import CONFIG
+        self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "petrol"}))
+        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "diesel"}))
+        self.assertFalse(CONFIG.validator({"year": date.today().year, "mileage_km": 50, "fuel_type": "petrol"}))
+
+    def test_rsq3_f3_skips_dealer_stock(self):
+        from datetime import date
+        from otomoto.audi_rsq3_f3 import CONFIG
+        year = date.today().year
+        self.assertFalse(CONFIG.validator({"year": year, "mileage_km": 50}))
+        self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
+        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
+
+    def test_g_class_title_filter_skips_g55_but_not_g550(self):
+        from otomoto.mercedes_g_w463 import CONFIG
+        skip = lambda title: any(w in title.lower() for w in CONFIG.title_must_not_contain)
+        self.assertTrue(skip("Mercedes W463 G55 AMG Brabus"))
+        self.assertTrue(skip("Mercedes G-klasa 55amg"))
+        self.assertTrue(skip("Mercedes-Benz Klasa G 55 AMG"))
+        self.assertFalse(skip("Mercedes-Benz Klasa G 550"))
+        self.assertFalse(skip("Mercedes-Benz Klasa G AMG 63"))
+        self.assertTrue(CONFIG.validator({"vin": "WDB4632481X123456"}))
+        self.assertFalse(CONFIG.validator({"vin": "WDB2200751A123456"}))

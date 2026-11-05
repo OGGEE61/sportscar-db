@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from base_scraper import run, _log_run, LAST_RUN_STATUS
+from base_scraper import run, _log_run, LAST_RUN_STATUS, pick_longest_waiting
 # Package-qualified: olx/ and otomoto/ share module names (bmw_m3_f80, ...)
 from olx.bmw_alpina import CONFIG as ALPINA_OLX
 from olx.bmw_x3_m_f97 import CONFIG as X3_M_OLX
@@ -58,6 +58,15 @@ from olx.bmw_135i_e82 import CONFIG as I135_E82_OLX
 from olx.bmw_m5_e39 import CONFIG as M5_E39_OLX
 from olx.bmw_z3_m_coupe import CONFIG as Z3_M_OLX
 from olx.porsche_macan_gen1 import CONFIG as MACAN_OLX
+from olx.bmw_m5_f10 import CONFIG as M5_F10_OLX
+from olx.bmw_m5_f90 import CONFIG as M5_F90_OLX
+from olx.bmw_m340i_g20 import CONFIG as M340I_OLX
+from olx.mercedes_e63_w211 import CONFIG as E63_W211_OLX
+from olx.mercedes_e63_w212 import CONFIG as E63_W212_OLX
+from olx.mercedes_s_w140 import CONFIG as S_W140_OLX
+from olx.mercedes_g_w463 import CONFIG as G_W463_OLX
+from olx.audi_rsq3_8u import CONFIG as RSQ3_8U_OLX
+from olx.audi_rsq3_f3 import CONFIG as RSQ3_F3_OLX
 
 ALL_OLX_FLEET = [
     ALPINA_OLX,
@@ -95,6 +104,15 @@ ALL_OLX_FLEET = [
     M5_E39_OLX,
     Z3_M_OLX,
     MACAN_OLX,
+    M5_F10_OLX,
+    M5_F90_OLX,
+    M340I_OLX,
+    E63_W211_OLX,
+    E63_W212_OLX,
+    S_W140_OLX,
+    G_W463_OLX,
+    RSQ3_8U_OLX,
+    RSQ3_F3_OLX,
 ]
 
 SCRAPER_MAP = {
@@ -142,10 +160,21 @@ SCRAPER_MAP = {
     "1m": [ONE_M_E82_OLX],
     "135i": [I135_E82_OLX],
     "m5_e39": [M5_E39_OLX],
-    "m5": [M5_E39_OLX],
+    "m5": [M5_E39_OLX, M5_F10_OLX, M5_F90_OLX],
+    "m5_f90": [M5_F90_OLX],
+    "m340i": [M340I_OLX],
+    "m5_f10": [M5_F10_OLX],
     "z3_m": [Z3_M_OLX],
     "r8": [R8_V8_OLX, R8_V10_OLX],
     "macan": [MACAN_OLX],
+    "e63": [E63_W211_OLX, E63_W212_OLX],
+    "e63_w211": [E63_W211_OLX],
+    "e63_w212": [E63_W212_OLX],
+    "w140": [S_W140_OLX],
+    "g_w463": [G_W463_OLX],
+    "rsq3": [RSQ3_8U_OLX, RSQ3_F3_OLX],
+    "rsq3_8u": [RSQ3_8U_OLX],
+    "rsq3_f3": [RSQ3_F3_OLX],
     "all":      ALL_OLX_FLEET,
 }
 
@@ -157,13 +186,13 @@ if __name__ == "__main__":
         target = "all"
 
     if target.startswith("next_") and target[5:].isdigit():
-        # Rotating window: `count` consecutive scrapers, shifted by one every
-        # `interval_hours`. Windows overlap on purpose, so a skipped or delayed
-        # GitHub schedule run (they are best-effort) does not leave any scraper
-        # out of the rotation.
+        # The scrapers that have waited longest, so a skipped or delayed GitHub schedule
+        # run (they are best-effort) does not leave any out. If the API can't answer,
+        # fall back to `count` consecutive scrapers by time slot.
         count = int(target[5:])
         slot = int(time.time() // (4 * 3600))
-        scrapers_to_run = [ALL_OLX_FLEET[(slot + i) % len(ALL_OLX_FLEET)] for i in range(count)]
+        scrapers_to_run = (pick_longest_waiting("olx", ALL_OLX_FLEET, count)
+                           or [ALL_OLX_FLEET[(slot + i) % len(ALL_OLX_FLEET)] for i in range(count)])
     else:
         scrapers_to_run = SCRAPER_MAP.get(target, ALL_OLX_FLEET)
     print(f"Running OLX scraper target: {target} ({len(scrapers_to_run)} scraper(s))")
