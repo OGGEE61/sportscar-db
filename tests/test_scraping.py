@@ -765,8 +765,8 @@ class TestPlateInput(CepikCarMixin, ScrapingTestCase):
         self.assertIn("function cleanPlate", page)
 
 
-class TestPlateRejectButtons(CepikCarMixin, ScrapingTestCase):
-    """"Tablica błędna" removes the plate from the car; "Nie widać tablicy" leaves the car alone."""
+class TestPlateReject(CepikCarMixin, ScrapingTestCase):
+    """Rejecting a plate (missing or wrong) removes it from the car, with undo."""
 
     def card(self):
         self.car(approved_from_photo=False)
@@ -782,17 +782,9 @@ class TestPlateRejectButtons(CepikCarMixin, ScrapingTestCase):
         conn.close()
         return plate
 
-    def test_no_plate_leaves_the_car_unchanged(self):
+    def test_reject_removes_it_from_car_and_listing(self):
         qid = self.card()
-        self.assertEqual(self.post(qid, "no_plate").status_code, 200)
-        rows, plate = self.queue()
-        self.assertEqual(rows[0]["status"], "rejected")
-        self.assertIsNone(rows[0]["reviewed_plate"])
-        self.assertEqual(plate, "AB12345")
-
-    def test_wrong_plate_removes_it_from_car_and_listing(self):
-        qid = self.card()
-        self.assertEqual(self.post(qid, "wrong_plate").get_json()["removed"], "AB12345")
+        self.assertEqual(self.post(qid, "reject").get_json()["removed"], "AB12345")
         rows, plate = self.queue()
         self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("rejected", "AB12345"))
         self.assertIsNone(plate)
@@ -801,33 +793,27 @@ class TestPlateRejectButtons(CepikCarMixin, ScrapingTestCase):
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM tags WHERE vin=? AND tag='missing plates'", (self.VIN,)).fetchone()[0], 1)
         conn.close()
 
-    def test_wrong_plate_matches_however_the_plate_was_stored(self):
+    def test_reject_matches_however_the_plate_was_stored(self):
         self.car(plate="ab 123-45", approved_from_photo=False)
         from scripts.fetch_cepik import record_cepik_failure
         conn = db.get_db()
         record_cepik_failure(conn, mock.Mock(last_status=404), self.VIN, "ab 123-45")
         conn.close()
-        self.post(self.queue()[0][0]["id"], "wrong_plate")
+        self.post(self.queue()[0][0]["id"], "reject")
         self.assertIsNone(self.queue()[1])
 
     def test_undo_puts_the_plate_back(self):
         qid = self.card()
-        self.post(qid, "wrong_plate")
+        self.post(qid, "reject")
         self.assertEqual(self.post(qid, "revert").status_code, 200)
         rows, plate = self.queue()
         self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("pending", None))
         self.assertEqual(plate, "AB12345")
         self.assertEqual(self.listing_plate(), "AB12345")
 
-    def test_undo_of_no_plate_changes_nothing_on_the_car(self):
+    def test_next_scrape_does_not_bring_a_rejected_plate_back(self):
         qid = self.card()
-        self.post(qid, "no_plate")
-        self.post(qid, "revert")
-        self.assertEqual(self.queue()[1], "AB12345")
-
-    def test_next_scrape_does_not_bring_a_wrong_plate_back(self):
-        qid = self.card()
-        self.post(qid, "wrong_plate")
+        self.post(qid, "reject")
         res = self.client.post("/api/ingest_pending", headers=TOKEN, json={
             "source": "otomoto", "source_listing_id": "L1", "raw_title": "BMW M2", "make": "BMW", "model": "M2",
             "price_pln": 100000, "vin": self.VIN, "registration_plate": "AB 12345", "photos": [],
@@ -836,7 +822,7 @@ class TestPlateRejectButtons(CepikCarMixin, ScrapingTestCase):
         self.assertIsNone(self.queue()[1])
         self.assertIsNone(self.listing_plate())
 
-    def test_card_shows_date_photos_and_both_buttons(self):
+    def test_card_shows_date_photos_and_one_reject_button(self):
         import json
         qid = self.card()
         conn = db.get_db()
@@ -847,18 +833,26 @@ class TestPlateRejectButtons(CepikCarMixin, ScrapingTestCase):
         self.assertIn(f'id="date-{qid}"', page)
         self.assertIn('value="2023-07-06"', page)
         self.assertIn("https://img/2.jpg", page)
-        self.assertIn("Tablica błędna", page)
-        self.assertIn("Nie widać tablicy", page)
+        self.assertIn(f"reviewPlate({qid}, 'reject')", page)
+        self.assertNotIn("Nie widać tablicy", page)
 
-    def test_car_without_a_plate_gets_no_wrong_plate_button(self):
+    def test_rejecting_when_the_car_has_no_plate_just_closes_the_card(self):
         qid = self.card()
         conn = db.get_db()
         conn.execute("UPDATE vehicles SET registration_plate=NULL WHERE vin=?", (self.VIN,))
         conn.commit()
         conn.close()
-        page = self.client.get("/plates").get_data(as_text=True)
-        self.assertNotIn(f"reviewPlate({qid}, 'wrong_plate')", page)
-        self.assertIn(f"reviewPlate({qid}, 'no_plate')", page)
+        self.assertIsNone(self.post(qid, "reject").get_json()["removed"])
+        rows, plate = self.queue()
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("rejected", None))
+        self.assertIsNone(plate)
+
+    def test_rejecting_an_approved_plate_still_removes_it(self):
+        self.car()
+        qid = self.queue()[0][0]["id"]
+        self.post(qid, "reject")
+        self.assertEqual(self.queue()[0][0]["status"], "rejected")
+        self.assertIsNone(self.queue()[1])
 
 
 class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):

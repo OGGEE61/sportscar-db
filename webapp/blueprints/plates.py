@@ -115,10 +115,10 @@ def plates_review():
 def api_plates_review():
     data = request.get_json(silent=True) or request.form
     cid = data.get("id")
-    action = data.get("action")  # 'approve', 'reject', 'no_plate', 'wrong_plate' or 'revert'
+    action = data.get("action")  # 'approve', 'reject', or 'revert'
     plate = (data.get("plate") or "").strip().upper()
 
-    if not cid or action not in ("approve", "reject", "no_plate", "wrong_plate", "revert"):
+    if not cid or action not in ("approve", "reject", "revert"):
         return jsonify({"status": "error", "message": "Niepoprawne parametry"}), 400
 
     conn = get_db()
@@ -184,9 +184,10 @@ def api_plates_review():
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action, "plate": final_plate})
 
-    elif action == "wrong_plate":
-        # The plate on the car is wrong. Remembering it in reviewed_plate allows undo and
-        # stops the next scrape of the listing from putting it back (see /api/ingest_pending).
+    elif action == "reject":
+        # The number is missing or wrong, so the car must not keep it. Remembering it in
+        # reviewed_plate allows undo and stops the next scrape of the listing from putting
+        # it back (see /api/ingest_pending).
         row = conn.execute("SELECT registration_plate FROM vehicles WHERE vin=?", (vin,)).fetchone()
         removed = normalize_plate(row["registration_plate"] if row else None) or None
         conn.execute("""
@@ -198,19 +199,6 @@ def api_plates_review():
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action, "removed": removed})
-
-    elif action in ("reject", "no_plate"):
-        conn.execute("""
-            UPDATE plate_review_queue
-            SET status='rejected', reviewed_at=datetime('now')
-            WHERE id=?
-        """, (cid,))
-
-        if prev_status == "approved":
-            clear_plate(conn, vin, lid, old_plate)
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "ok", "id": cid, "action": action})
 
     elif action == "revert":
         conn.execute("""

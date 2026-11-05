@@ -405,19 +405,11 @@
                     onclick="reviewPlate({{ c.id }}, 'approve')">
               <i class="bi bi-check-lg fs-5"></i> Zatwierdź numer
             </button>
-            {% if c.car_plate %}
-            <button type="button"
-                    class="btn btn-outline-danger px-3 d-flex align-items-center justify-content-center gap-1"
-                    onclick="reviewPlate({{ c.id }}, 'wrong_plate')"
-                    title="Tablica {{ c.car_plate }} jest błędna: usuń ją z auta">
-              <i class="bi bi-x-lg"></i> Tablica błędna
-            </button>
-            {% endif %}
             <button type="button"
                     class="btn btn-outline-secondary px-3 d-flex align-items-center justify-content-center gap-1"
-                    onclick="reviewPlate({{ c.id }}, 'no_plate')"
-                    title="Nie da się ocenić: zamknij kartę, auto bez zmian">
-              <i class="bi bi-eye-slash"></i> Nie widać tablicy
+                    onclick="reviewPlate({{ c.id }}, 'reject')"
+                    title="Brak lub błędna tablica{% if c.car_plate %}: usuwa {{ c.car_plate }} z auta{% endif %}">
+              <i class="bi bi-x-lg"></i> Odrzuć tablicę
             </button>
           </div>
         </div>
