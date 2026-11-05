@@ -33,6 +33,8 @@ from autoplac.bmw_1m_e82 import CONFIG as ONE_M_E82_AUTOPLAC
 from autoplac.bmw_135i_e82 import CONFIG as I135_E82_AUTOPLAC
 from autoplac.bmw_m5_e39 import CONFIG as M5_E39_AUTOPLAC
 from autoplac.bmw_m5_f10 import CONFIG as M5_F10_AUTOPLAC
+from autoplac.bmw_m5_f90 import CONFIG as M5_F90_AUTOPLAC
+from autoplac.bmw_m340i_g20 import CONFIG as M340I_AUTOPLAC
 from autoplac.bmw_z3_m_coupe import CONFIG as Z3_M_AUTOPLAC
 from autoplac.bmw_alpina import CONFIG as ALPINA_AUTOPLAC
 
@@ -81,6 +83,8 @@ BMW_FLEET = [
     I135_E82_AUTOPLAC,
     M5_E39_AUTOPLAC,
     M5_F10_AUTOPLAC,
+    M5_F90_AUTOPLAC,
+    M340I_AUTOPLAC,
     Z3_M_AUTOPLAC,
     ALPINA_AUTOPLAC,
 ]
@@ -140,7 +144,9 @@ SCRAPER_MAP = {
     "m4":       [M4_F82_AUTOPLAC],
     "1m":       [ONE_M_E82_AUTOPLAC],
     "135i":     [I135_E82_AUTOPLAC],
-    "m5":       [M5_E39_AUTOPLAC, M5_F10_AUTOPLAC],
+    "m5":       [M5_E39_AUTOPLAC, M5_F10_AUTOPLAC, M5_F90_AUTOPLAC],
+    "m5_f90":   [M5_F90_AUTOPLAC],
+    "m340i":    [M340I_AUTOPLAC],
     "m5_f10":   [M5_F10_AUTOPLAC],
     "m5_e39":   [M5_E39_AUTOPLAC],
     "z3_m":     [Z3_M_AUTOPLAC],

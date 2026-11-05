@@ -1102,6 +1102,24 @@ class TestNewModelRules(unittest.TestCase):
             self.assertEqual(hits, [car[6]], car[3])
         conn.close()
 
+    def test_m5_generations_are_told_apart(self):
+        from otomoto.bmw_m5_f10 import CONFIG as F10
+        from otomoto.bmw_m5_f90 import CONFIG as F90
+        self.assertFalse(F10.validator({"vin": "WBSJF0106HB000001"}))
+        self.assertFalse(F10.validator({"vin": "WBSGV0C08LB000001"}))
+        self.assertTrue(F10.validator({"vin": "WBSFV9C56ED000001"}))
+        self.assertTrue(F90.validator({"year": 2021}))
+        self.assertTrue(F90.validator({"year": 2017, "vin": "WBSJF0106HB000001"}))
+        self.assertFalse(F90.validator({"year": 2017}))
+        self.assertFalse(F90.validator({"year": 2018, "vin": "WBSFV9C56ED000001"}))
+
+    def test_m340i_skips_diesel_and_dealer_stock(self):
+        from datetime import date
+        from otomoto.bmw_m340i_g20 import CONFIG
+        self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "petrol"}))
+        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "diesel"}))
+        self.assertFalse(CONFIG.validator({"year": date.today().year, "mileage_km": 50, "fuel_type": "petrol"}))
+
     def test_rsq3_f3_skips_dealer_stock(self):
         from datetime import date
         from otomoto.audi_rsq3_f3 import CONFIG

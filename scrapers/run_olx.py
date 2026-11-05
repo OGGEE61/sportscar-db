@@ -59,6 +59,8 @@ from olx.bmw_m5_e39 import CONFIG as M5_E39_OLX
 from olx.bmw_z3_m_coupe import CONFIG as Z3_M_OLX
 from olx.porsche_macan_gen1 import CONFIG as MACAN_OLX
 from olx.bmw_m5_f10 import CONFIG as M5_F10_OLX
+from olx.bmw_m5_f90 import CONFIG as M5_F90_OLX
+from olx.bmw_m340i_g20 import CONFIG as M340I_OLX
 from olx.mercedes_e63_w211 import CONFIG as E63_W211_OLX
 from olx.mercedes_e63_w212 import CONFIG as E63_W212_OLX
 from olx.mercedes_s_w140 import CONFIG as S_W140_OLX
@@ -103,6 +105,8 @@ ALL_OLX_FLEET = [
     Z3_M_OLX,
     MACAN_OLX,
     M5_F10_OLX,
+    M5_F90_OLX,
+    M340I_OLX,
     E63_W211_OLX,
     E63_W212_OLX,
     S_W140_OLX,
@@ -156,7 +160,9 @@ SCRAPER_MAP = {
     "1m": [ONE_M_E82_OLX],
     "135i": [I135_E82_OLX],
     "m5_e39": [M5_E39_OLX],
-    "m5": [M5_E39_OLX, M5_F10_OLX],
+    "m5": [M5_E39_OLX, M5_F10_OLX, M5_F90_OLX],
+    "m5_f90": [M5_F90_OLX],
+    "m340i": [M340I_OLX],
     "m5_f10": [M5_F10_OLX],
     "z3_m": [Z3_M_OLX],
     "r8": [R8_V8_OLX, R8_V10_OLX],

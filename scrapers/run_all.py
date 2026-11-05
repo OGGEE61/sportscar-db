@@ -58,6 +58,8 @@ from bmw_135i_e82         import CONFIG    as BMW_135I
 from bmw_z3_m_coupe       import CONFIG    as Z3_M
 from bmw_m5_e39           import CONFIG    as M5_E39
 from bmw_m5_f10           import CONFIG    as M5_F10
+from bmw_m5_f90           import CONFIG    as M5_F90
+from bmw_m340i_g20        import CONFIG    as M340I
 
 from audi_r8_v8           import CONFIG    as R8_V8
 from audi_r8_v10          import CONFIG    as R8_V10
@@ -94,7 +96,7 @@ ALL_FLEET = [
     A45, GLA45, G55, S55, SL55, CL55,
     CAYMAN_987, CAYMAN_981, CAYMAN_718, MACAN_G1,
     S2000,
-    M5_F10, E63_W211, E63_W212, S_W140, G_W463, RSQ3_8U, RSQ3_F3,
+    M5_F10, M5_F90, M340I, E63_W211, E63_W212, S_W140, G_W463, RSQ3_8U, RSQ3_F3,
 ]
 
 # Dynamically distribute 3 runs per week for every scraper across the 7 days
@@ -120,7 +122,9 @@ SCRAPER_MAP = {
     "m3": [M3, M3_E46],
     "m3_e46": [M3_E46],
     "m4": [M4],
-    "m5": [M5_E39, M5_F10],
+    "m5": [M5_E39, M5_F10, M5_F90],
+    "m5_f90": [M5_F90],
+    "m340i": [M340I],
     "m5_f10": [M5_F10],
     "m5_e39": [M5_E39],
     "1m": [M1_E82],

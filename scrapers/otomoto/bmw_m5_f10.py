@@ -10,7 +10,7 @@ from base_scraper import ScraperConfig, run
 
 
 def not_f90(detail: dict) -> bool:
-    return not (detail.get("vin") or "").upper().startswith(("WBSJF", "WBS83"))
+    return not (detail.get("vin") or "").upper().startswith(("WBSJF", "WBS83", "WBS81", "WBSGV"))
 
 
 CONFIG = ScraperConfig(

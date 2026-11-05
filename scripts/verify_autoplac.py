@@ -8,7 +8,7 @@ against expectations written here, independent of the scrapers' own validators:
   WARN  power or engine size outside what the model can have (tuned cars, typos)
 
 Usage:
-    python scripts/verify_autoplac.py                 # all 42 scrapers
+    python scripts/verify_autoplac.py                 # all 44 scrapers
     python scripts/verify_autoplac.py bmw mercedes    # run_autoplac.py targets
     python scripts/verify_autoplac.py --cache c.json  # reuse detail pages from earlier runs
 """
@@ -52,6 +52,8 @@ EXPECT = {
     ("Seria 1", "135i E82/E88"):       (300, 335, 2900, 3100),
     ("M5", "E39 M5"):                  (390, 410, 4900, 5000),
     ("M5", "F10 M5"):                  (540, 620, 4300, 4500),
+    ("M5", "F90 M5"):                  (590, 700, 4300, 4500),
+    ("Seria 3", "M340i G20"):          (350, 420, 2900, 3100),
     ("Z3", "Z3 M"):                    (240, 330, 3100, 3300),
     ("BMW", "Alpina"):                 (None, None, None, None),
     ("Klasa C", "W204 C63 AMG"):       (440, 540, 6000, 6300),

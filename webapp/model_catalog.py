@@ -355,6 +355,26 @@ STANDARD_MODELS = [
         "where": "v.make = 'BMW' AND v.variant = 'F10 M5'"
     },
     {
+        "id": "m5_f90",
+        "name": "BMW M5 (F90)",
+        "make": "BMW",
+        "model": "M5",
+        "variant": "F90 M5",
+        "years": "2018–2024",
+        "engine": "4.4L V8 Biturbo S63 · 600-635 HP · M xDrive",
+        "where": "v.make = 'BMW' AND v.variant = 'F90 M5'"
+    },
+    {
+        "id": "m340i_g20",
+        "name": "BMW M340i (G20 / G21)",
+        "make": "BMW",
+        "model": "Seria 3",
+        "variant": "M340i G20",
+        "years": "2019–",
+        "engine": "3.0L R6 Turbo B58 · 374-387 HP · xDrive",
+        "where": "v.make = 'BMW' AND v.variant = 'M340i G20'"
+    },
+    {
         "id": "e63_w211",
         "name": "Mercedes E63 AMG (W211)",
         "make": "Mercedes-Benz",
