@@ -159,7 +159,7 @@
       <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
         <div>
           <span class="fw-bold text-dark">Price vs. Mileage Curve</span>
-          <span class="text-muted small ms-2 d-none d-sm-inline">Click any point to view vehicle</span>
+          <span class="text-muted small ms-2 d-none d-sm-inline">Click any point to view vehicle. Damaged cars left out</span>
         </div>
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Depreciation Trend</span>
       </div>
@@ -269,6 +269,9 @@
                   {{ v.title or (v.make ~ ' ' ~ v.model) }}
                 </a>
                 <code class="small text-muted">{{ v.vin }}</code>
+                {% if v.sold_damaged %}
+                <span class="badge bg-danger ms-1" style="font-size: 0.65rem;" title="Ogłoszenie oznaczone na portalu jako uszkodzone: cena nie liczy się do wykresów i średnich">Uszkodzony</span>
+                {% endif %}
                 {% if not v.registration_plate %}
                 <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;" title="Registration plate is missing">Missing plates</span>
                 {% elif v.has_ai_plate %}
@@ -348,6 +351,14 @@ if (scatterData.length && document.getElementById('chartScatter')) {
         borderColor: '#0d6efd',
         pointRadius: 6,
         pointHoverRadius: 9,
+      }, {
+        label: 'Trend',
+        data: {{ scatter_trend|safe }},
+        showLine: true,
+        borderColor: '#fd7e14',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHitRadius: 0,
       }]
     },
     options: {
@@ -368,6 +379,7 @@ if (scatterData.length && document.getElementById('chartScatter')) {
       plugins: {
         legend: { display: false },
         tooltip: {
+          filter: (item) => item.datasetIndex === 0,
           callbacks: {
             label: (ctx) => {
               const m = ctx.raw.meta;
@@ -381,9 +393,9 @@ if (scatterData.length && document.getElementById('chartScatter')) {
         }
       },
       onClick: (e, items) => {
-        if (items.length) {
-          const idx = items[0].index;
-          const url = scatterData[idx].url;
+        const point = items.find(i => i.datasetIndex === 0);
+        if (point) {
+          const url = scatterData[point.index].url;
           if (url) window.location.href = url;
         }
       }

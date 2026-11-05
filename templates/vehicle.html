@@ -27,6 +27,9 @@
         {% if vehicle.variant %}<small class="text-muted fs-5">{{ vehicle.variant }}</small>{% endif %}
       </h2>
       <code class="fs-6">{{ vehicle.vin }}</code>
+      {% if sold_damaged %}
+      <span class="badge bg-danger ms-1" title="Co najmniej jedno ogłoszenie tego auta jest oznaczone na portalu jako uszkodzone">Sprzedawany jako uszkodzony</span>
+      {% endif %}
       <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status" class="d-inline-block ms-2">
         <select name="vin_status" class="form-select form-select-sm d-inline-block w-auto fw-bold
             {% if vehicle.vin_status == 'verified' %}bg-success text-white

@@ -574,6 +574,18 @@ def init_db():
     END""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(14,'obs_excluded_reason')")
 
+    # Migration v15: ads their site marks as damaged. The car stays visible; its VIN is known to
+    # have been sold as damaged (through the ad's observations) and the price is left out of the
+    # price charts and averages.
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS damaged_listings (
+        source            TEXT NOT NULL,
+        source_listing_id TEXT NOT NULL,
+        first_seen_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (source, source_listing_id)
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(15,'damaged_listings')")
+
     # ── Trigger: auto-update vehicles.updated_at ──────────────────────────────
     db.execute("DROP TRIGGER IF EXISTS trg_vehicles_updated")
     db.execute("""

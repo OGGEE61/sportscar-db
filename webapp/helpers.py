@@ -53,6 +53,12 @@ except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
 
 
+def damaged_ad_sql(alias):
+    """SQL condition: this observation's ad is marked as damaged on its site."""
+    return (f"EXISTS (SELECT 1 FROM damaged_listings d WHERE d.source = {alias}.source "
+            f"AND d.source_listing_id = {alias}.source_listing_id)")
+
+
 def car_visible_sql(alias="v"):
     """SQL condition: the car has a sighting that is not excluded, or has no sightings at all.
 
@@ -62,3 +68,22 @@ def car_visible_sql(alias="v"):
     """
     return (f"NOT (EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NOT NULL) "
             f"AND NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NULL))")
+
+
+def trend_line(points):
+    """Least-squares line through (x, y) points, as its two end points, for a chart.
+
+    Empty when under 3 points or all at one x: no meaningful line. y never goes below 0.
+    """
+    if len(points) < 3:
+        return []
+    n = len(points)
+    mean_x = sum(x for x, _ in points) / n
+    mean_y = sum(y for _, y in points) / n
+    spread = sum((x - mean_x) ** 2 for x, _ in points)
+    if not spread:
+        return []
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in points) / spread
+    at = lambda x: max(0, round(mean_y + slope * (x - mean_x)))
+    lo, hi = min(x for x, _ in points), max(x for x, _ in points)
+    return [{"x": lo, "y": at(lo)}, {"x": hi, "y": at(hi)}]
