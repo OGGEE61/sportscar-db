@@ -1,4 +1,4 @@
-"""Lokalny moduł detekcji tablic rejestracyjnych (YOLOv8 + EasyOCR).
+"""Lokalny moduł detekcji tablic rejestracyjnych (YOLOv8 + fast-plate-ocr).
 
 Wyszukuje tablice rejestracyjne na zdjęciach samochodów, wycina zbliżenie
 i odczytuje numer, a następnie zapisuje propozycje do kolejki weryfikacji
@@ -13,7 +13,7 @@ import base64
 import sqlite3
 import urllib.request
 from typing import List, Dict, Optional
-from PIL import Image, ImageEnhance
+from PIL import Image
 import numpy as np
 
 
@@ -38,24 +38,39 @@ DEALER_WORDS = {
     "POZNAN", "WARSZAWA", "KRAKOW", "WROCLAW", "GDANSK", "POLSKA", "PL"
 }
 
+# Model do tablic: na 97 tablicach poprawionych przez człowieka 89 odczytów bezbłędnych (EasyOCR: 9)
+OCR_MODEL = "cct-s-v2-global-model"
+# Najniższa pewność znaku, od której odczyt staje się propozycją; zachowuje wszystkie poprawne
+# odczyty z tego testu, a odrzuca niemal połowę ramek i napisów
+OCR_MIN_CONFIDENCE = 0.7
+
 _yolo_model = None
-_easyocr_reader = None
+_plate_reader = None
 
 
 def get_models():
     """Lazy loader dla modeli, aby nie obciążać pamięci przy samym imporcie."""
-    global _yolo_model, _easyocr_reader
-    # Silniki CV & OCR (PyTorch): import dopiero tutaj, żeby moduł ładował się bez nich
+    global _yolo_model, _plate_reader
+    # Silniki CV & OCR: import dopiero tutaj, żeby moduł ładował się bez nich
     from ultralytics import YOLO
-    import easyocr
+    from fast_plate_ocr import LicensePlateRecognizer
     if _yolo_model is None:
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Brak pliku wag modelu: {MODEL_PATH}")
         _yolo_model = YOLO(MODEL_PATH)
-    if _easyocr_reader is None:
-        # Alfabet łaciński / cyfry
-        _easyocr_reader = easyocr.Reader(["en"], gpu=False)
-    return _yolo_model, _easyocr_reader
+    if _plate_reader is None:
+        _plate_reader = LicensePlateRecognizer(OCR_MODEL, device="cpu")
+    return _yolo_model, _plate_reader
+
+
+def read_plate(reader, crop: Image.Image) -> str:
+    """Odczytuje tablicę z wycinka; zwraca tekst albo "", gdy odczyt jest niepewny lub nie wygląda na tablicę."""
+    prediction = reader.run(np.array(crop.convert("RGB")), return_confidence=True)[0]
+    text = re.sub(r"[^A-Z0-9]", "", (prediction.plate or "").upper())
+    probs = prediction.char_probs
+    if probs is None or len(probs) == 0 or float(np.min(probs)) < OCR_MIN_CONFIDENCE:
+        return ""
+    return text if is_valid_plate_format(text) else ""
 
 
 def clean_plate_text(raw_text: str) -> str:
@@ -98,7 +113,7 @@ def is_valid_plate_format(norm_text: str) -> bool:
 
 
 def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
-    """Wykrywa tablice na obrazie PIL, ocenia jakość ujęcia (prostoliniowość przód/tył) i uruchamia zaawansowany OCR."""
+    """Wykrywa tablice na obrazie PIL, ocenia jakość ujęcia (prostoliniowość przód/tył) i odczytuje numer."""
     model, reader = get_models()
 
     results = model(img_pil, conf=0.30, verbose=False)
@@ -165,62 +180,11 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
             if mean_brightness < 60:
                 continue
 
-        # Przygotowanie wycinka pod OCR:
-        # 1. Odetnij dolne 15% ramki reklamowej
-        ocr_bh = max(10, int(bh * 0.85))
-        
-        # 2. Dla poziomych tablic unijnych (AR >= 3.2) odetnij lewy niebieski pasek (Euroband ~8% szerokości)
-        ocr_x1 = xyxy[0]
-        if aspect_ratio >= 3.2:
-            ocr_x1 = xyxy[0] + max(3, int(bw * 0.08))
-
-        ocr_crop = img_pil.crop((ocr_x1, xyxy[1], xyxy[2], xyxy[1] + ocr_bh))
-
-        # Skaluj do znormalizowanej wysokości 80px
-        scale = 80.0 / float(max(1, ocr_crop.size[1]))
-        ocr_scaled = ocr_crop.resize((int(ocr_crop.size[0] * scale), 80), Image.Resampling.LANCZOS)
-
-        # Wariant 1: RGB + podbity kontrast
-        enhancer = ImageEnhance.Contrast(ocr_scaled)
-        enhanced_crop = enhancer.enhance(1.4)
-        ocr_results = reader.readtext(np.array(enhanced_crop), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-        # Wariant 2 (fallback): jeśli nic nie odczytano, spróbuj skali szarości z wyższym kontrastem
-        if not ocr_results:
-            gray_crop = ocr_scaled.convert("L")
-            gray_enhanced = ImageEnhance.Contrast(gray_crop).enhance(1.8)
-            ocr_results = reader.readtext(np.array(gray_enhanced), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-        # Nieczytelny dla OCR wycinek zostaje bez tekstu: człowiek często go odczyta
-        if not ocr_results:
-            candidates.append(candidate(""))
+        # Nieczytelny wycinek zostaje bez tekstu: człowiek często go odczyta
+        plate_text = read_plate(reader, full_crop)
+        if plate_text and is_likely_dealer_badge(plate_text):
             continue
-
-        ocr_texts = []
-        for r in ocr_results:
-            t = r[1]
-            c = r[2] if len(r) > 2 else 0.5
-            ocr_texts.append((t, c))
-
-        joined = " ".join([t[0] for t in ocr_texts])
-        norm_text = clean_plate_text(joined)
-
-        if len(norm_text) > 8 or is_likely_dealer_badge(norm_text) or not is_valid_plate_format(norm_text):
-            best_part = ""
-            for t, _ in ocr_texts:
-                cleaned_part = clean_plate_text(t)
-                if is_valid_plate_format(cleaned_part) and not is_likely_dealer_badge(cleaned_part):
-                    best_part = cleaned_part
-                    break
-            norm_text = best_part
-
-        if not norm_text or len(norm_text) < 4 or len(norm_text) > 8 or not is_valid_plate_format(norm_text):
-            # Napis reklamowy na ramce to nie tablica; reszta trafia do człowieka bez tekstu
-            if not is_likely_dealer_badge(clean_plate_text(joined)):
-                candidates.append(candidate(""))
-            continue
-
-        candidates.append(candidate(norm_text))
+        candidates.append(candidate(plate_text))
 
     return candidates
 
@@ -598,7 +562,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Lokalna detekcja tablic rejestracyjnych (YOLOv8 + EasyOCR)")
+    parser = argparse.ArgumentParser(description="Lokalna detekcja tablic rejestracyjnych (YOLOv8 + fast-plate-ocr)")
     parser.add_argument("--limit", type=int, default=15, help="Limit ogłoszeń")
     parser.add_argument("--rescan-empty", action="store_true", help="Ponów próbę dla ogłoszeń bez tablicy (gdzie poprzednio było 0)")
     args = parser.parse_args()
@@ -607,3 +571,7 @@ if __name__ == "__main__":
     res = run_plate_detection_batch(limit=args.limit, rescan_empty=args.rescan_empty)
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")
     print(f"Wycinki dla kolejki: {res['crops_filled']}/{res['queued_without_crop']}.")
+
+    # Tablica potwierdzona przez CEPiK nie wymaga przeglądu
+    from scripts.fetch_cepik import confirm_queue_with_cepik
+    confirm_queue_with_cepik()

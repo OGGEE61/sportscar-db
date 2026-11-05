@@ -359,7 +359,15 @@
             </div>
             {% endif %}
             <label class="form-label small fw-semibold text-uppercase text-muted mb-1 d-flex justify-content-between">
-              <span>Rozpoznana tablica:</span>
+              <span>Rozpoznana tablica:
+                {% if not c.detected_plate %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis border fw-normal text-none" style="text-transform: none;">Nieczytelna: wpisz z wycinka</span>
+                {% elif (c.confidence or 0) > 0 %}
+                <span class="badge bg-info-subtle text-info-emphasis border fw-normal" style="text-transform: none;"><i class="bi bi-camera"></i> Odczyt ze zdjęcia</span>
+                {% else %}
+                <span class="badge bg-success-subtle text-success-emphasis border fw-normal" style="text-transform: none;"><i class="bi bi-card-text"></i> Z ogłoszenia{% if c.listing_source %} ({{ c.listing_source }}){% endif %}</span>
+                {% endif %}
+              </span>
               <span class="text-muted fw-normal" style="font-size: 0.75rem;">Klawisz [Enter] zatwierdza</span>
             </label>
             <div class="input-group">

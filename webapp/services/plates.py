@@ -35,6 +35,32 @@ def clear_plate(conn, vin, listing_id, plate):
         pass
 
 
+def approve_plate(conn, card_id, vin, listing_id, plate, tag="photo extracted"):
+    """Mark a queue card approved and put its plate on the listing, vehicle and observations."""
+    conn.execute("""
+        UPDATE plate_review_queue
+        SET status='approved', reviewed_plate=?, reviewed_at=datetime('now')
+        WHERE id=?
+    """, (plate, card_id))
+    if listing_id:
+        conn.execute("UPDATE pending_listings SET registration_plate=? WHERE id=?", (plate, listing_id))
+    if vin:
+        conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=?", (plate, vin))
+        conn.execute("""
+            UPDATE vehicles
+            SET registration_plate=?,
+                vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'verified' END
+            WHERE vin=?
+        """, (plate, vin))
+        conn.execute("UPDATE listing_observations SET registration_plate=? WHERE vin=?", (plate, vin))
+        try:
+            conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
+            conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, ?, ?)", (vin, tag, tag.replace(" ", "-")))
+        except Exception:
+            pass
+        allow_cepik_retry(conn, vin, plate)
+
+
 def restore_plate(conn, vin, plate):
     """Undo a "wrong plate" review: put the plate back wherever the car has none."""
     conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=? AND (registration_plate IS NULL OR registration_plate='')", (plate, vin))
