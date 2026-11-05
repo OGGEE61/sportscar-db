@@ -7,26 +7,72 @@ def normalize_plate(plate):
     return re.sub(r"[^A-Z0-9]", "", (plate or "").upper())
 
 
+_STORED_PLATE = "UPPER(REPLACE(REPLACE(registration_plate, ' ', ''), '-', ''))"
+
+
 def clear_plate(conn, vin, listing_id, plate):
-    """Remove `plate` from the listing, vehicle and observations (only where it matches)
-    and mark the car as missing a plate."""
+    """Remove `plate` from the listing, vehicle and observations (only where it matches,
+    however it was formatted when stored) and mark the car as missing a plate."""
+    plate = normalize_plate(plate)
     if not plate:
         return
     if listing_id:
-        conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND registration_plate=?", (listing_id, plate))
+        conn.execute(f"UPDATE pending_listings SET registration_plate=NULL WHERE id=? AND {_STORED_PLATE}=?", (listing_id, plate))
     if not vin:
         return
-    conn.execute("UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, plate))
-    conn.execute("""
+    conn.execute(f"UPDATE pending_listings SET registration_plate=NULL WHERE vin=? AND {_STORED_PLATE}=?", (vin, plate))
+    conn.execute(f"""
         UPDATE vehicles
         SET registration_plate=NULL,
             vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'unverified' END
-        WHERE vin=? AND registration_plate=?
+        WHERE vin=? AND {_STORED_PLATE}=?
     """, (vin, plate))
-    conn.execute("UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND registration_plate=?", (vin, plate))
+    conn.execute(f"UPDATE listing_observations SET registration_plate=NULL WHERE vin=? AND {_STORED_PLATE}=?", (vin, plate))
     try:
         conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('photo extracted', 'AI extracted plate')", (vin,))
         conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'missing plates', 'system')", (vin,))
+    except Exception:
+        pass
+
+
+def approve_plate(conn, card_id, vin, listing_id, plate, tag="photo extracted"):
+    """Mark a queue card approved and put its plate on the listing, vehicle and observations."""
+    conn.execute("""
+        UPDATE plate_review_queue
+        SET status='approved', reviewed_plate=?, reviewed_at=datetime('now')
+        WHERE id=?
+    """, (plate, card_id))
+    if listing_id:
+        conn.execute("UPDATE pending_listings SET registration_plate=? WHERE id=?", (plate, listing_id))
+    if vin:
+        conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=?", (plate, vin))
+        conn.execute("""
+            UPDATE vehicles
+            SET registration_plate=?,
+                vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'verified' END
+            WHERE vin=?
+        """, (plate, vin))
+        conn.execute("UPDATE listing_observations SET registration_plate=? WHERE vin=?", (plate, vin))
+        try:
+            conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
+            conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, ?, ?)", (vin, tag, tag.replace(" ", "-")))
+        except Exception:
+            pass
+        allow_cepik_retry(conn, vin, plate)
+
+
+def restore_plate(conn, vin, plate):
+    """Undo a "wrong plate" review: put the plate back wherever the car has none."""
+    conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=? AND (registration_plate IS NULL OR registration_plate='')", (plate, vin))
+    conn.execute("""
+        UPDATE vehicles
+        SET registration_plate=?,
+            vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'verified' END
+        WHERE vin=? AND (registration_plate IS NULL OR registration_plate='')
+    """, (plate, vin))
+    conn.execute("UPDATE listing_observations SET registration_plate=? WHERE vin=? AND (registration_plate IS NULL OR registration_plate='')", (plate, vin))
+    try:
+        conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
     except Exception:
         pass
 

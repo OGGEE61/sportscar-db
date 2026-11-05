@@ -258,6 +258,8 @@ class CepikClient:
             "vin": vin,
             "registration_plate": plate,
             "first_registration_date": first_reg_date,
+            "identifying_feature": basic.get("identifyingFeature"),
+            "year_of_manufacture": basic.get("yearOfManufacture"),
             "make": basic.get("make"),
             "model": basic.get("model"),
             "type": basic.get("type"),
@@ -547,6 +549,96 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
     conn.close()
 
 
+def is_same_car(report: Dict[str, Any], vin: str, make: Optional[str], year: Optional[int]) -> bool:
+    """CEPiK must return this exact VIN, and its make and year must fit the car we hold."""
+    if (report.get("identifying_feature") or "").strip().upper() != vin.strip().upper():
+        return False
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", (s or "").lower())
+    theirs, ours = norm(report.get("make")), norm(make)
+    # Alpina cars can be registered as BMW
+    if {theirs, ours} == {"bmw", "alpina"}:
+        theirs = ours
+    if theirs and ours and theirs not in ours and ours not in theirs:
+        return False
+    their_year = report.get("year_of_manufacture")
+    return not (their_year and year and abs(int(their_year) - int(year)) > 1)
+
+
+def confirm_queue_with_cepik(limit: int = 0) -> Dict[str, int]:
+    """Check every number on pending review cards with CEPiK and approve the ones it confirms.
+
+    A plate that matches the VIN and first registration date, on a report for the same car, needs
+    no human review. Misses are remembered per VIN + plate + date, so each number is asked once;
+    they don't touch the card, because a wrong OCR guess says nothing about the car's plate.
+    """
+    from validation import is_valid_registration_plate
+    from webapp.services.plates import approve_plate, normalize_plate
+
+    conn = db.get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_plate_checks (
+            vin TEXT NOT NULL,
+            plate TEXT NOT NULL,
+            first_registration_date TEXT NOT NULL,
+            found INTEGER NOT NULL,
+            checked_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (vin, plate, first_registration_date)
+        )
+    """)
+    conn.commit()
+    done = {(r["vin"], r["plate"], r["first_registration_date"])
+            for r in conn.execute("SELECT vin, plate, first_registration_date FROM cepik_plate_checks").fetchall()}
+    cards = conn.execute("""
+        SELECT q.id, q.vin, q.listing_id, q.detected_plate, v.registration_plate AS car_plate, v.make, v.year,
+               COALESCE(NULLIF(v.first_registration_date, ''),
+                        (SELECT p.first_registration_date FROM pending_listings p
+                         WHERE p.vin = q.vin AND p.first_registration_date != '' ORDER BY p.id DESC LIMIT 1)) AS first_reg
+        FROM plate_review_queue q
+        JOIN vehicles v ON v.vin = q.vin
+        WHERE q.status = 'pending' AND q.vin NOT LIKE 'PLH%' AND q.vin NOT LIKE 'UNVERIFIED%'
+        ORDER BY q.id
+    """).fetchall()
+
+    client = CepikClient()
+    stats = {"cards": len(cards), "no_date": 0, "lookups": 0, "confirmed": 0, "not_same_car": 0, "errors": 0}
+    for card in cards:
+        vin, date_str = card["vin"], card["first_reg"]
+        if not date_str:
+            stats["no_date"] += 1
+            continue
+        plates = {normalize_plate(card["detected_plate"]), normalize_plate(card["car_plate"])}
+        for plate in sorted(p for p in plates if is_valid_registration_plate(p) and (vin, p, date_str) not in done):
+            if limit and stats["lookups"] >= limit:
+                break
+            stats["lookups"] += 1
+            report = client.fetch_vehicle_data(vin, plate, date_str)
+            if report and not is_same_car(report, vin, card["make"], card["year"]):
+                stats["not_same_car"] += 1
+                print(f"  ⚠️ {vin} / {plate}: CEPiK zwrócił inne auto ({report.get('make')}, {report.get('year_of_manufacture')}), bez zatwierdzenia")
+                report = None
+            elif not report and client.last_status != 404:
+                stats["errors"] += 1  # transient: ask again next time
+                time.sleep(2.0)
+                continue
+            conn.execute("""INSERT OR REPLACE INTO cepik_plate_checks (vin, plate, first_registration_date, found)
+                            VALUES (?, ?, ?, ?)""", (vin, plate, date_str, 1 if report else 0))
+            if report:
+                save_cepik_report(report, conn)
+                approve_plate(conn, card["id"], vin, card["listing_id"], plate, tag="cepik confirmed")
+                conn.execute("""INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at)
+                                VALUES (?, 'success', 'Tablica potwierdzona przez CEPiK', datetime('now'))""", (vin,))
+                stats["confirmed"] += 1
+                print(f"  ✓ {vin}: {plate} potwierdzona przez CEPiK")
+            conn.commit()
+            time.sleep(2.0)
+            if report:
+                break
+
+    conn.close()
+    print(f"=== CEPiK przed przeglądem: {stats} ===")
+    return stats
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Synchronizacja danych pojazdów z państwowym rejestrem CEPiK")
@@ -555,7 +647,12 @@ if __name__ == "__main__":
     parser.add_argument("--retry-failed", action="store_true", help="Ponów próbę dla wcześniej nieodnalezionych w CEPiK")
     parser.add_argument("--model", type=str, default=None, help="Tylko auta danej generacji (id z webapp/model_catalog.py, np. x3_m40i_g01)")
     parser.add_argument("--refresh", action="store_true", help="Pobierz ponownie także auta z istniejącym raportem")
+    parser.add_argument("--confirm-queue", action="store_true", help="Sprawdź w CEPiK numery z kolejki /plates i zatwierdź potwierdzone")
     args = parser.parse_args()
+
+    if args.confirm_queue:
+        confirm_queue_with_cepik(limit=args.limit if args.limit != 50 else 0)
+        raise SystemExit(0)
 
     run_cepik_sync(limit=args.limit, single_vin=args.vin, retry_failed=args.retry_failed,
                    model_id=args.model, refresh=args.refresh)

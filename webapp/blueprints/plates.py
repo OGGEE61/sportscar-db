@@ -1,9 +1,10 @@
+import json
 import re
 
 from flask import Blueprint, jsonify, render_template, request
 from db import get_db
 from webapp import invalidate_notifications
-from webapp.services.plates import allow_cepik_retry, clear_plate, normalize_plate
+from webapp.services.plates import approve_plate, clear_plate, normalize_plate, restore_plate
 
 bp = Blueprint("plates", __name__)
 
@@ -14,6 +15,14 @@ def _refresh_badge(resp):
     if request.method == "POST":
         invalidate_notifications()
     return resp
+
+
+def _photo_list(photos_json):
+    try:
+        photos = json.loads(photos_json or "[]")
+    except (ValueError, TypeError):
+        return []
+    return photos if isinstance(photos, list) else []
 
 
 # ── Plates Review (Human-in-the-Loop for CV License Plate Recognition) ───────
@@ -52,7 +61,10 @@ def plates_review():
                COALESCE(v.variant, p.variant) as variant,
                COALESCE(v.year, p.year) as year,
                p.price_pln, p.location_city, p.raw_title,
-               v.registration_plate AS car_plate
+               v.registration_plate AS car_plate,
+               COALESCE(NULLIF(v.first_registration_date, ''), p.first_registration_date) AS first_reg,
+               p.photos AS photos_json,
+               p.source AS listing_source
         FROM plate_review_queue q
         LEFT JOIN vehicles v ON v.vin = q.vin
         LEFT JOIN pending_listings p ON (p.id = q.listing_id OR (q.listing_id IS NULL AND p.vin = q.vin))
@@ -64,6 +76,7 @@ def plates_review():
         GROUP BY q.id
         ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
     """, (status_filter,)).fetchall()
+    candidates = [{**dict(c), "photos": _photo_list(c["photos_json"])} for c in candidates]
 
     stats = {
         "pending": conn.execute("""
@@ -144,46 +157,26 @@ def api_plates_review():
                 "message": f"Wpisany numer ma {len(clean_plate)} znaków (w Polsce standard to max 8). Jeśli na pewno chcesz zatwierdzić w tej formie, potwierdź."
             }), 400
 
-        conn.execute("""
-            UPDATE plate_review_queue
-            SET status='approved', reviewed_plate=?, reviewed_at=datetime('now')
-            WHERE id=?
-        """, (final_plate, cid))
-
-        if lid:
-            conn.execute("UPDATE pending_listings SET registration_plate=? WHERE id=?", (final_plate, lid))
-        if vin:
-            conn.execute("UPDATE pending_listings SET registration_plate=? WHERE vin=?", (final_plate, vin))
-            conn.execute("""
-                UPDATE vehicles 
-                SET registration_plate=?, 
-                    vin_status = CASE WHEN vin LIKE 'UNVERIFIED%' THEN 'placeholder' ELSE 'verified' END 
-                WHERE vin=?
-            """, (final_plate, vin))
-            conn.execute("UPDATE listing_observations SET registration_plate=? WHERE vin=?", (final_plate, vin))
-            try:
-                conn.execute("DELETE FROM tags WHERE vin=? AND tag IN ('missing plates', 'Missing plates')", (vin,))
-                conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'photo extracted', 'photo-extracted')", (vin,))
-            except Exception:
-                pass
-        if vin:
-            allow_cepik_retry(conn, vin, final_plate)
+        approve_plate(conn, cid, vin, lid, final_plate)
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action, "plate": final_plate})
 
     elif action == "reject":
+        # The number is missing or wrong, so the car must not keep it. Remembering it in
+        # reviewed_plate allows undo and stops the next scrape of the listing from putting
+        # it back (see /api/ingest_pending).
+        row = conn.execute("SELECT registration_plate FROM vehicles WHERE vin=?", (vin,)).fetchone()
+        removed = normalize_plate(row["registration_plate"] if row else None) or None
         conn.execute("""
             UPDATE plate_review_queue
-            SET status='rejected', reviewed_at=datetime('now')
+            SET status='rejected', reviewed_plate=?, reviewed_at=datetime('now')
             WHERE id=?
-        """, (cid,))
-
-        if prev_status == "approved":
-            clear_plate(conn, vin, lid, old_plate)
+        """, (removed, cid))
+        clear_plate(conn, vin, lid, removed)
         conn.commit()
         conn.close()
-        return jsonify({"status": "ok", "id": cid, "action": action})
+        return jsonify({"status": "ok", "id": cid, "action": action, "removed": removed})
 
     elif action == "revert":
         conn.execute("""
@@ -194,6 +187,8 @@ def api_plates_review():
 
         if prev_status == "approved":
             clear_plate(conn, vin, lid, old_plate)
+        elif prev_status == "rejected" and cand["reviewed_plate"]:
+            restore_plate(conn, vin, cand["reviewed_plate"])
         conn.commit()
         conn.close()
         return jsonify({"status": "ok", "id": cid, "action": action})

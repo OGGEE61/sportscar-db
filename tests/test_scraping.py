@@ -765,6 +765,197 @@ class TestPlateInput(CepikCarMixin, ScrapingTestCase):
         self.assertIn("function cleanPlate", page)
 
 
+class TestPlateReject(CepikCarMixin, ScrapingTestCase):
+    """Rejecting a plate (missing or wrong) removes it from the car, with undo."""
+
+    def card(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        return self.queue()[0][0]["id"]
+
+    def post(self, qid, action):
+        return self.client.post("/api/plates/review", json={"id": qid, "action": action})
+
+    def listing_plate(self):
+        conn = db.get_db()
+        plate = conn.execute("SELECT registration_plate FROM pending_listings WHERE vin=?", (self.VIN,)).fetchone()[0]
+        conn.close()
+        return plate
+
+    def test_reject_removes_it_from_car_and_listing(self):
+        qid = self.card()
+        self.assertEqual(self.post(qid, "reject").get_json()["removed"], "AB12345")
+        rows, plate = self.queue()
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("rejected", "AB12345"))
+        self.assertIsNone(plate)
+        self.assertIsNone(self.listing_plate())
+        conn = db.get_db()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM tags WHERE vin=? AND tag='missing plates'", (self.VIN,)).fetchone()[0], 1)
+        conn.close()
+
+    def test_reject_matches_however_the_plate_was_stored(self):
+        self.car(plate="ab 123-45", approved_from_photo=False)
+        from scripts.fetch_cepik import record_cepik_failure
+        conn = db.get_db()
+        record_cepik_failure(conn, mock.Mock(last_status=404), self.VIN, "ab 123-45")
+        conn.close()
+        self.post(self.queue()[0][0]["id"], "reject")
+        self.assertIsNone(self.queue()[1])
+
+    def test_undo_puts_the_plate_back(self):
+        qid = self.card()
+        self.post(qid, "reject")
+        self.assertEqual(self.post(qid, "revert").status_code, 200)
+        rows, plate = self.queue()
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("pending", None))
+        self.assertEqual(plate, "AB12345")
+        self.assertEqual(self.listing_plate(), "AB12345")
+
+    def test_next_scrape_does_not_bring_a_rejected_plate_back(self):
+        qid = self.card()
+        self.post(qid, "reject")
+        res = self.client.post("/api/ingest_pending", headers=TOKEN, json={
+            "source": "otomoto", "source_listing_id": "L1", "raw_title": "BMW M2", "make": "BMW", "model": "M2",
+            "price_pln": 100000, "vin": self.VIN, "registration_plate": "AB 12345", "photos": [],
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertIsNone(self.queue()[1])
+        self.assertIsNone(self.listing_plate())
+
+    def test_card_shows_date_photos_and_one_reject_button(self):
+        import json
+        qid = self.card()
+        conn = db.get_db()
+        conn.execute("UPDATE pending_listings SET photos=? WHERE vin=?", (json.dumps(["https://img/1.jpg", "https://img/2.jpg"]), self.VIN))
+        conn.commit()
+        conn.close()
+        page = self.client.get("/plates").get_data(as_text=True)
+        self.assertIn(f'id="date-{qid}"', page)
+        self.assertIn('value="2023-07-06"', page)
+        self.assertIn("https://img/2.jpg", page)
+        self.assertIn(f"reviewPlate({qid}, 'reject')", page)
+        self.assertNotIn("Nie widać tablicy", page)
+
+    def test_rejecting_when_the_car_has_no_plate_just_closes_the_card(self):
+        qid = self.card()
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET registration_plate=NULL WHERE vin=?", (self.VIN,))
+        conn.commit()
+        conn.close()
+        self.assertIsNone(self.post(qid, "reject").get_json()["removed"])
+        rows, plate = self.queue()
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("rejected", None))
+        self.assertIsNone(plate)
+
+    def test_rejecting_an_approved_plate_still_removes_it(self):
+        self.car()
+        qid = self.queue()[0][0]["id"]
+        self.post(qid, "reject")
+        self.assertEqual(self.queue()[0][0]["status"], "rejected")
+        self.assertIsNone(self.queue()[1])
+
+
+class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
+    """A number CEPiK confirms for this exact car skips human review."""
+
+    def report(self, vin=None, make="BMW", year=2023, plate="AB12345"):
+        report = dict.fromkeys(['events_json', 'first_registration_date', 'has_current_oc', 'insurance_expiry_date', 'is_stolen', 'last_odometer_date', 'last_odometer_km', 'make', 'model', 'odometer_history_json', 'registration_plate', 'registration_status', 'subtype', 'tech_inspection_status', 'tech_inspection_until', 'total_owners', 'type', 'vin'])
+        report.update({"vin": self.VIN, "registration_plate": plate, "first_registration_date": "2023-07-06",
+                       "identifying_feature": vin or self.VIN, "make": make, "model": "M2", "year_of_manufacture": year,
+                       "has_current_oc": 1, "is_stolen": 0, "total_owners": 1, "tech_inspection_status": "Aktualne",
+                       "odometer_history_json": "[]", "events_json": "[]"})
+        return report
+
+    def run_confirm(self, answer):
+        """answer maps plate -> report; everything else is a 404."""
+        from scripts import fetch_cepik
+        client = mock.Mock(last_status=404)
+        client.fetch_vehicle_data.side_effect = lambda vin, plate, date: answer.get(plate)
+        with mock.patch.object(fetch_cepik, "CepikClient", return_value=client), mock.patch.object(fetch_cepik.time, "sleep"):
+            return fetch_cepik.confirm_queue_with_cepik(), client
+
+    def card(self, proposal=None):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET make='BMW', year=2023, first_registration_date='2023-07-06' WHERE vin=?", (self.VIN,))
+        if proposal:
+            conn.execute("UPDATE plate_review_queue SET detected_plate=?, confidence=0.8", (proposal,))
+        conn.commit()
+        conn.close()
+
+    def test_confirmed_ocr_reading_is_approved_and_replaces_the_listing_number(self):
+        self.card(proposal="CD99999")
+        stats, _ = self.run_confirm({"CD99999": self.report(plate="CD99999")})
+        self.assertEqual(stats["confirmed"], 1)
+        rows, plate = self.queue()
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("approved", "CD99999"))
+        self.assertEqual(plate, "CD99999")
+        conn = db.get_db()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_reports WHERE vin=?", (self.VIN,)).fetchone()[0], 1)
+        conn.close()
+
+    def test_miss_leaves_the_card_for_a_human_and_is_not_asked_twice(self):
+        self.card(proposal="CD99999")
+        _, client = self.run_confirm({})
+        self.assertEqual(client.fetch_vehicle_data.call_count, 2)  # the proposal and the listing number
+        rows, plate = self.queue()
+        self.assertEqual(rows[0]["status"], "pending")
+        self.assertEqual(plate, "AB12345")
+        _, client = self.run_confirm({})
+        self.assertEqual(client.fetch_vehicle_data.call_count, 0)
+
+    def test_a_different_vin_in_the_answer_is_not_approved(self):
+        self.card()
+        stats, _ = self.run_confirm({"AB12345": self.report(vin="WBS00000000000000")})
+        self.assertEqual((stats["confirmed"], stats["not_same_car"]), (0, 1))
+        self.assertEqual(self.queue()[0][0]["status"], "pending")
+
+    def test_a_different_make_or_year_is_not_approved(self):
+        from scripts.fetch_cepik import is_same_car
+        self.assertFalse(is_same_car(self.report(make="AUDI"), self.VIN, "BMW", 2023))
+        self.assertFalse(is_same_car(self.report(year=2015), self.VIN, "BMW", 2023))
+        self.assertFalse(is_same_car({"make": "BMW"}, self.VIN, "BMW", 2023))
+        self.assertTrue(is_same_car(self.report(make="MERCEDES-BENZ"), self.VIN, "Mercedes-Benz", 2023))
+        self.assertTrue(is_same_car(self.report(year=2022), self.VIN, "BMW", 2023))
+        self.assertTrue(is_same_car(self.report(make="BMW"), self.VIN, "Alpina", 2023))
+        self.assertFalse(is_same_car(self.report(make="AUDI"), self.VIN, "Alpina", 2023))
+
+    def test_transient_error_is_asked_again(self):
+        self.card()
+        from scripts import fetch_cepik
+        client = mock.Mock(last_status=500)
+        client.fetch_vehicle_data.return_value = None
+        with mock.patch.object(fetch_cepik, "CepikClient", return_value=client), mock.patch.object(fetch_cepik.time, "sleep"):
+            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 1)
+        _, client = self.run_confirm({})
+        self.assertEqual(client.fetch_vehicle_data.call_count, 1)
+
+    def test_card_without_a_date_is_skipped(self):
+        self.card()
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET first_registration_date=NULL WHERE vin=?", (self.VIN,))
+        conn.execute("UPDATE pending_listings SET first_registration_date=NULL WHERE vin=?", (self.VIN,))
+        conn.commit()
+        conn.close()
+        stats, client = self.run_confirm({})
+        self.assertEqual((stats["no_date"], client.fetch_vehicle_data.call_count), (1, 0))
+
+    def test_card_shows_where_the_number_comes_from(self):
+        self.card()
+        self.assertIn("Z ogłoszenia (otomoto)", self.client.get("/plates").get_data(as_text=True))
+        conn = db.get_db()
+        conn.execute("UPDATE plate_review_queue SET confidence=0.8")
+        conn.commit()
+        conn.close()
+        self.assertIn("Odczyt ze zdjęcia", self.client.get("/plates").get_data(as_text=True))
+        conn = db.get_db()
+        conn.execute("UPDATE plate_review_queue SET detected_plate=''")
+        conn.commit()
+        conn.close()
+        self.assertIn("Nieczytelna", self.client.get("/plates").get_data(as_text=True))
+
+
 class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
     """A listing plate re-queued after a CEPiK miss gets a crop and a photo reading from the scanner."""
 
@@ -789,6 +980,16 @@ class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
         rows, plate = self.queue()
         self.assertEqual([(r["detected_plate"], r["crop_path"]) for r in rows], [("WI 666NM", "data:image/jpeg;base64,xx")])
         self.assertIsNotNone(rows[0]["listing_id"])
+        self.assertEqual(plate, "AB12345")
+
+    def test_unreadable_crop_is_kept_without_changing_the_proposal(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        out = self.scan({"detected_plate": "", "confidence": 0.5,
+                         "crop_path": "data:image/jpeg;base64,xx", "photo_url": "https://img/1.jpg"})
+        self.assertEqual(out["crops_filled"], 1)
+        rows, plate = self.queue()
+        self.assertEqual([(r["detected_plate"], r["crop_path"]) for r in rows], [("AB12345", "data:image/jpeg;base64,xx")])
         self.assertEqual(plate, "AB12345")
 
     def test_nothing_found_is_not_rescanned(self):

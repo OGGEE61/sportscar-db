@@ -229,6 +229,9 @@
             </td>
             <td>
               <span class="text-decoration-line-through text-muted font-monospace">{{ c.detected_plate }}</span>
+              {% if c.reviewed_plate %}
+              <div class="small text-danger" style="font-size: 0.75rem;">Usunięto z auta: <span class="font-monospace">{{ c.reviewed_plate }}</span></div>
+              {% endif %}
             </td>
             <td class="text-muted small">{{ (c.confidence * 100) | round(1) }}%</td>
             <td class="text-muted small">{{ (c.reviewed_at or c.created_at)[:16] }}</td>
@@ -322,6 +325,15 @@
             </div>
           </div>
 
+          {% if c.photos | length > 1 %}
+          <!-- Wszystkie zdjęcia z ogłoszenia -->
+          <div class="d-flex gap-1 overflow-auto mb-3 pb-1">
+            {% for url in c.photos %}
+            <img src="{{ url }}" alt="Zdjęcie {{ loop.index }}" loading="lazy" class="rounded border flex-shrink-0" style="height: 56px; cursor: pointer;" onclick="showImageModal(this.src, this.alt)">
+            {% endfor %}
+          </div>
+          {% endif %}
+
           <!-- Informacje o pojeździe -->
           <div class="d-flex flex-wrap gap-3 text-muted small mb-3">
             {% if c.vin %}
@@ -347,7 +359,15 @@
             </div>
             {% endif %}
             <label class="form-label small fw-semibold text-uppercase text-muted mb-1 d-flex justify-content-between">
-              <span>Rozpoznana tablica:</span>
+              <span>Rozpoznana tablica:
+                {% if not c.detected_plate %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis border fw-normal text-none" style="text-transform: none;">Nieczytelna: wpisz z wycinka</span>
+                {% elif (c.confidence or 0) > 0 %}
+                <span class="badge bg-info-subtle text-info-emphasis border fw-normal" style="text-transform: none;"><i class="bi bi-camera"></i> Odczyt ze zdjęcia</span>
+                {% else %}
+                <span class="badge bg-success-subtle text-success-emphasis border fw-normal" style="text-transform: none;"><i class="bi bi-card-text"></i> Z ogłoszenia{% if c.listing_source %} ({{ c.listing_source }}){% endif %}</span>
+                {% endif %}
+              </span>
               <span class="text-muted fw-normal" style="font-size: 0.75rem;">Klawisz [Enter] zatwierdza</span>
             </label>
             <div class="input-group">
@@ -374,20 +394,30 @@
               </span>
               {% endif %}
             </div>
+            <!-- CEPiK wymaga zgodności tablicy i daty: błędna data wygląda jak błędna tablica -->
+            <label class="form-label small fw-semibold text-uppercase text-muted mb-1 mt-2" for="date-{{ c.id }}">Pierwsza rejestracja:</label>
+            <div class="input-group input-group-sm">
+              <input type="date" id="date-{{ c.id }}" value="{{ c.first_reg or '' }}" class="form-control font-monospace bg-white">
+              <button type="button" class="btn btn-outline-dark" id="cepik-btn-{{ c.id }}"
+                      onclick="checkInCepik({{ c.id }}, '{{ c.vin }}')"
+                      title="Sprawdź tablicę i datę w CEPiK; po znalezieniu auta zapisuje je i zatwierdza">
+                <i class="bi bi-search"></i> Sprawdź w CEPiK
+              </button>
+            </div>
           </div>
 
           <!-- Przyciski akcji -->
-          <div class="d-flex gap-2">
+          <div class="d-flex flex-wrap gap-2">
             <button type="button" 
                     class="btn btn-dark flex-grow-1 fw-semibold d-flex align-items-center justify-content-center gap-2 py-2"
                     onclick="reviewPlate({{ c.id }}, 'approve')">
               <i class="bi bi-check-lg fs-5"></i> Zatwierdź numer
             </button>
-            <button type="button" 
+            <button type="button"
                     class="btn btn-outline-secondary px-3 d-flex align-items-center justify-content-center gap-1"
                     onclick="reviewPlate({{ c.id }}, 'reject')"
-                    title="Odrzuć (np. ramka reklamowa lub nieczytelna)">
-              <i class="bi bi-x-lg"></i> Odrzuć
+                    title="Brak lub błędna tablica{% if c.car_plate %}: usuwa {{ c.car_plate }} z auta{% endif %}">
+              <i class="bi bi-x-lg"></i> Odrzuć tablicę
             </button>
           </div>
         </div>
@@ -637,6 +667,37 @@ async function revertToPending(id) {
 }
 
 // Zatwierdzenie lub odrzucenie kandydata tablicy (karty do weryfikacji)
+// Sprawdza wpisaną tablicę i datę w CEPiK; zapisuje je na aucie dopiero, gdy CEPiK znajdzie pojazd
+async function checkInCepik(id, vin) {
+  const plate = cleanPlate(document.getElementById(`input-${id}`).value);
+  const date = document.getElementById(`date-${id}`).value;
+  if (!plate || !date) {
+    alert('Wpisz tablicę i datę pierwszej rejestracji.');
+    return;
+  }
+  const btn = document.getElementById(`cepik-btn-${id}`);
+  btn.disabled = true;
+  try {
+    const body = JSON.stringify({ plate: plate, first_registration_date: date });
+    const headers = { 'Content-Type': 'application/json' };
+    const check = await (await fetch(`/api/cepik/fetch/${encodeURIComponent(vin)}`, { method: 'POST', headers, body })).json();
+    if (check.status !== 'ok') {
+      alert(check.message || 'CEPiK nie znalazł pojazdu.');
+      return;
+    }
+    const fix = await (await fetch(`/api/cepik/fix/${encodeURIComponent(vin)}`, { method: 'POST', headers, body })).json();
+    if (fix.status !== 'ok') {
+      alert(fix.message || 'Nie udało się zapisać.');
+      return;
+    }
+    await reviewPlate(id, 'approve');
+  } catch (err) {
+    alert('Błąd połączenia: ' + err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function reviewPlate(id, action) {
   const card = document.getElementById(`card-${id}`);
   const input = document.getElementById(`input-${id}`);

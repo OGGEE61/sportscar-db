@@ -1,4 +1,4 @@
-"""Lokalny moduł detekcji tablic rejestracyjnych (YOLOv8 + EasyOCR).
+"""Lokalny moduł detekcji tablic rejestracyjnych (YOLOv8 + fast-plate-ocr).
 
 Wyszukuje tablice rejestracyjne na zdjęciach samochodów, wycina zbliżenie
 i odczytuje numer, a następnie zapisuje propozycje do kolejki weryfikacji
@@ -13,7 +13,7 @@ import base64
 import sqlite3
 import urllib.request
 from typing import List, Dict, Optional
-from PIL import Image, ImageEnhance
+from PIL import Image
 import numpy as np
 
 
@@ -38,24 +38,39 @@ DEALER_WORDS = {
     "POZNAN", "WARSZAWA", "KRAKOW", "WROCLAW", "GDANSK", "POLSKA", "PL"
 }
 
+# Model do tablic: na 97 tablicach poprawionych przez człowieka 89 odczytów bezbłędnych (EasyOCR: 9)
+OCR_MODEL = "cct-s-v2-global-model"
+# Najniższa pewność znaku, od której odczyt staje się propozycją; zachowuje wszystkie poprawne
+# odczyty z tego testu, a odrzuca niemal połowę ramek i napisów
+OCR_MIN_CONFIDENCE = 0.7
+
 _yolo_model = None
-_easyocr_reader = None
+_plate_reader = None
 
 
 def get_models():
     """Lazy loader dla modeli, aby nie obciążać pamięci przy samym imporcie."""
-    global _yolo_model, _easyocr_reader
-    # Silniki CV & OCR (PyTorch): import dopiero tutaj, żeby moduł ładował się bez nich
+    global _yolo_model, _plate_reader
+    # Silniki CV & OCR: import dopiero tutaj, żeby moduł ładował się bez nich
     from ultralytics import YOLO
-    import easyocr
+    from fast_plate_ocr import LicensePlateRecognizer
     if _yolo_model is None:
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(f"Brak pliku wag modelu: {MODEL_PATH}")
         _yolo_model = YOLO(MODEL_PATH)
-    if _easyocr_reader is None:
-        # Alfabet łaciński / cyfry
-        _easyocr_reader = easyocr.Reader(["en"], gpu=False)
-    return _yolo_model, _easyocr_reader
+    if _plate_reader is None:
+        _plate_reader = LicensePlateRecognizer(OCR_MODEL, device="cpu")
+    return _yolo_model, _plate_reader
+
+
+def read_plate(reader, crop: Image.Image) -> str:
+    """Odczytuje tablicę z wycinka; zwraca tekst albo "", gdy odczyt jest niepewny lub nie wygląda na tablicę."""
+    prediction = reader.run(np.array(crop.convert("RGB")), return_confidence=True)[0]
+    text = re.sub(r"[^A-Z0-9]", "", (prediction.plate or "").upper())
+    probs = prediction.char_probs
+    if probs is None or len(probs) == 0 or float(np.min(probs)) < OCR_MIN_CONFIDENCE:
+        return ""
+    return text if is_valid_plate_format(text) else ""
 
 
 def clean_plate_text(raw_text: str) -> str:
@@ -98,7 +113,7 @@ def is_valid_plate_format(norm_text: str) -> bool:
 
 
 def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
-    """Wykrywa tablice na obrazie PIL, ocenia jakość ujęcia (prostoliniowość przód/tył) i uruchamia zaawansowany OCR."""
+    """Wykrywa tablice na obrazie PIL, ocenia jakość ujęcia (prostoliniowość przód/tył) i odczytuje numer."""
     model, reader = get_models()
 
     results = model(img_pil, conf=0.30, verbose=False)
@@ -140,6 +155,22 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
 
         full_crop = img_pil.crop((x1, y1, x2, y2))
 
+        def candidate(plate_text: str) -> Dict:
+            # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
+            crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
+            full_crop.save(os.path.join(CROPS_DIR, crop_filename), "JPEG", quality=85)
+            buf = io.BytesIO()
+            full_crop.save(buf, format="JPEG", quality=85)
+            return {
+                "detected_plate": plate_text,
+                "confidence": round(conf, 3),
+                "crop_path": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii"),
+                "bbox": [x1, y1, x2, y2],
+                "aspect_ratio": round(aspect_ratio, 2),
+                "shot_quality_score": round(shot_quality_score, 3),
+                "is_standard_format": is_valid_plate_format(plate_text),
+            }
+
         # Weryfikacja tła: polska tablica musi mieć jasne (białe) tło.
         crop_arr = np.array(full_crop)
         ch, cw = crop_arr.shape[:2]
@@ -149,75 +180,11 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
             if mean_brightness < 60:
                 continue
 
-        # Przygotowanie wycinka pod OCR:
-        # 1. Odetnij dolne 15% ramki reklamowej
-        ocr_bh = max(10, int(bh * 0.85))
-        
-        # 2. Dla poziomych tablic unijnych (AR >= 3.2) odetnij lewy niebieski pasek (Euroband ~8% szerokości)
-        ocr_x1 = xyxy[0]
-        if aspect_ratio >= 3.2:
-            ocr_x1 = xyxy[0] + max(3, int(bw * 0.08))
-
-        ocr_crop = img_pil.crop((ocr_x1, xyxy[1], xyxy[2], xyxy[1] + ocr_bh))
-
-        # Skaluj do znormalizowanej wysokości 80px
-        scale = 80.0 / float(max(1, ocr_crop.size[1]))
-        ocr_scaled = ocr_crop.resize((int(ocr_crop.size[0] * scale), 80), Image.Resampling.LANCZOS)
-
-        # Wariant 1: RGB + podbity kontrast
-        enhancer = ImageEnhance.Contrast(ocr_scaled)
-        enhanced_crop = enhancer.enhance(1.4)
-        ocr_results = reader.readtext(np.array(enhanced_crop), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-        # Wariant 2 (fallback): jeśli nic nie odczytano, spróbuj skali szarości z wyższym kontrastem
-        if not ocr_results:
-            gray_crop = ocr_scaled.convert("L")
-            gray_enhanced = ImageEnhance.Contrast(gray_crop).enhance(1.8)
-            ocr_results = reader.readtext(np.array(gray_enhanced), allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-        if not ocr_results:
+        # Nieczytelny wycinek zostaje bez tekstu: człowiek często go odczyta
+        plate_text = read_plate(reader, full_crop)
+        if plate_text and is_likely_dealer_badge(plate_text):
             continue
-
-        ocr_texts = []
-        for r in ocr_results:
-            t = r[1]
-            c = r[2] if len(r) > 2 else 0.5
-            ocr_texts.append((t, c))
-
-        joined = " ".join([t[0] for t in ocr_texts])
-        norm_text = clean_plate_text(joined)
-
-        if len(norm_text) > 8 or is_likely_dealer_badge(norm_text) or not is_valid_plate_format(norm_text):
-            best_part = ""
-            for t, _ in ocr_texts:
-                cleaned_part = clean_plate_text(t)
-                if is_valid_plate_format(cleaned_part) and not is_likely_dealer_badge(cleaned_part):
-                    best_part = cleaned_part
-                    break
-            norm_text = best_part
-
-        if not norm_text or len(norm_text) < 4 or len(norm_text) > 8 or not is_valid_plate_format(norm_text):
-            continue
-
-        # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
-        crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
-        crop_save_path = os.path.join(CROPS_DIR, crop_filename)
-        full_crop.save(crop_save_path, "JPEG", quality=85)
-
-        buf = io.BytesIO()
-        full_crop.save(buf, format="JPEG", quality=85)
-        crop_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-
-        candidates.append({
-            "detected_plate": norm_text,
-            "raw_text": joined,
-            "confidence": round(conf, 3),
-            "crop_path": crop_b64,
-            "bbox": [x1, y1, x2, y2],
-            "aspect_ratio": round(aspect_ratio, 2),
-            "shot_quality_score": round(shot_quality_score, 3),
-            "is_standard_format": is_valid_plate_format(norm_text),
-        })
+        candidates.append(candidate(plate_text))
 
     return candidates
 
@@ -388,22 +355,19 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
         if c.get("is_standard_format") and 4 <= len(re.sub(r"[^A-Z0-9]", "", c.get("detected_plate") or "")) <= 8
     ]
 
-    if not valid_candidates:
-        return None
+    if valid_candidates:
+        valid_candidates.sort(
+            key=lambda c: (c["shot_quality_score"], c["confidence"]),
+            reverse=True
+        )
+        # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
+        if valid_candidates[0]["shot_quality_score"] >= 0.28:
+            return valid_candidates[0]
+        print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {valid_candidates[0]['shot_quality_score']})")
 
-    valid_candidates.sort(
-        key=lambda c: (c["shot_quality_score"], c["confidence"]),
-        reverse=True
-    )
-
-    best_candidate = valid_candidates[0]
-
-    # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
-    if best_candidate["shot_quality_score"] < 0.28:
-        print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {best_candidate['shot_quality_score']})")
-        return None
-
-    return best_candidate
+    # Nic pewnego do odczytania: zwróć najlepszy wycinek bez tekstu, żeby ocenił go człowiek
+    best_box = max(all_candidates, key=lambda c: (c["shot_quality_score"], c["confidence"]))
+    return {**best_box, "detected_plate": ""}
 
 
 def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
@@ -453,8 +417,9 @@ def fill_missing_crops(conn) -> Dict:
     Tablica z treści ogłoszenia, której CEPiK nie znalazł, trafia do kolejki bez wycinka
     (requeue_for_plate_check), bo skan zdjęć obejmuje tylko ogłoszenia bez tablicy. Tu
     dostaje wycinek ze zdjęć, a odczyt ze zdjęcia staje się propozycją; tablica z
-    ogłoszenia zostaje na aucie, więc widać ją na karcie. Pusty crop_path oznacza, że
-    na zdjęciach nic nie znaleziono (nie skanujemy ponownie).
+    ogłoszenia zostaje na aucie, więc widać ją na karcie. Wycinek bez odczytu nie zmienia
+    propozycji. Pusty crop_path oznacza, że na zdjęciach nic nie znaleziono (nie skanujemy
+    ponownie).
     """
     from webapp.services.plates import normalize_plate
 
@@ -478,6 +443,14 @@ def fill_missing_crops(conn) -> Dict:
             conn.execute("UPDATE plate_review_queue SET crop_path = '' WHERE id = ?", (q["id"],))
             conn.commit()
             print(f"  {q['vin']}: brak tablicy na zdjęciach")
+            continue
+
+        if not best["detected_plate"]:
+            conn.execute("UPDATE plate_review_queue SET crop_path = ?, photo_url = ?, listing_id = COALESCE(listing_id, ?) WHERE id = ?",
+                         (best["crop_path"], best["photo_url"], str(listing["id"]), q["id"]))
+            conn.commit()
+            filled += 1
+            print(f"  {q['vin']}: wycinek bez odczytu")
             continue
 
         same = normalize_plate(best["detected_plate"]) == normalize_plate(q["detected_plate"])
@@ -589,7 +562,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Lokalna detekcja tablic rejestracyjnych (YOLOv8 + EasyOCR)")
+    parser = argparse.ArgumentParser(description="Lokalna detekcja tablic rejestracyjnych (YOLOv8 + fast-plate-ocr)")
     parser.add_argument("--limit", type=int, default=15, help="Limit ogłoszeń")
     parser.add_argument("--rescan-empty", action="store_true", help="Ponów próbę dla ogłoszeń bez tablicy (gdzie poprzednio było 0)")
     args = parser.parse_args()
@@ -598,3 +571,7 @@ if __name__ == "__main__":
     res = run_plate_detection_batch(limit=args.limit, rescan_empty=args.rescan_empty)
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")
     print(f"Wycinki dla kolejki: {res['crops_filled']}/{res['queued_without_crop']}.")
+
+    # Tablica potwierdzona przez CEPiK nie wymaga przeglądu
+    from scripts.fetch_cepik import confirm_queue_with_cepik
+    confirm_queue_with_cepik()
