@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from flask import Blueprint, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import NOW, car_visible_sql, safe_float, safe_int, script_json
+from webapp.helpers import NOW, car_visible_sql, damaged_ad_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services.plates import normalize_plate
 
@@ -31,7 +31,8 @@ def vehicles_list():
     # Pre-aggregate per VIN (avoids the observations x tags row fan-out)
     base = """
         SELECT v.*, o.obs_count, o.ad_count, o.min_price, o.max_price,
-               o.last_observed, o.active_ads, o.sources, t.tags
+               o.last_observed, o.active_ads, o.sources, t.tags,
+               EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = v.vin AND """ + damaged_ad_sql("x") + """) AS sold_damaged
         FROM vehicles v
         LEFT JOIN (
             SELECT vin,
@@ -114,6 +115,8 @@ def vehicle_detail(vin):
         SELECT * FROM listing_observations
         WHERE vin=? ORDER BY observed_at DESC
     """, (vin,)).fetchall()
+    sold_damaged = conn.execute(
+        "SELECT 1 FROM listing_observations x WHERE x.vin = ? AND " + damaged_ad_sql("x") + " LIMIT 1", (vin,)).fetchone() is not None
 
     # Group observations by source_listing_id so UI can show timelines
     ad_groups = {}
@@ -203,6 +206,7 @@ def vehicle_detail(vin):
     conn.close()
     return render_template("vehicle.html",
         vehicle=vehicle,
+        sold_damaged=sold_damaged,
         ad_groups=ad_groups,
         ungrouped=ungrouped,
         observations=observations,

@@ -4,7 +4,7 @@ import time
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
-from webapp.helpers import car_visible_sql, script_json, trend_line
+from webapp.helpers import car_visible_sql, damaged_ad_sql, script_json, trend_line
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -169,7 +169,8 @@ def _load_summary():
             (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
              WHERE excluded_reason IS NULL AND source_listing_id IS NOT NULL)                         AS unique_ads,
             (SELECT AVG(price_pln) FROM listing_observations
-             WHERE removed_at IS NULL AND excluded_reason IS NULL AND price_pln > 0)                    AS avg_price
+             WHERE removed_at IS NULL AND excluded_reason IS NULL AND price_pln > 0
+               AND NOT """ + damaged_ad_sql("listing_observations") + """)                              AS avg_price
     """).fetchone()
     stats = {
         "total_vins":       s["total_vins"],
@@ -217,6 +218,7 @@ def _load_charts():
             END AS rng, COUNT(DISTINCT vin) AS cnt
         FROM listing_observations
         WHERE price_pln > 0 AND removed_at IS NULL AND excluded_reason IS NULL
+          AND NOT """ + damaged_ad_sql("listing_observations") + """
         GROUP BY rng ORDER BY MIN(price_pln)
     """).fetchall()
 
@@ -304,10 +306,12 @@ def model_analytics():
     base_sql = """
         SELECT v.*, 
                (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) as has_ai_plate,
-               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title
+               o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title,
+               """ + damaged_ad_sql("o") + """ AS sold_damaged
         FROM vehicles v
         LEFT JOIN (
-            SELECT vin, price_pln, mileage_km, location_city, location_region, observed_at, source_url, title,
+            SELECT vin, source, source_listing_id, price_pln, mileage_km, location_city, location_region,
+                   observed_at, source_url, title,
                    ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
             FROM listing_observations
             WHERE price_pln IS NOT NULL AND price_pln > 0 AND excluded_reason IS NULL
@@ -336,7 +340,8 @@ def model_analytics():
             v["region"] = ""
             v["region_name"] = ""
 
-    prices = [v["price_pln"] for v in vehicles if v.get("price_pln")]
+    # Prices of damaged cars say little about the market: left out of the charts and averages
+    prices = [v["price_pln"] for v in vehicles if v.get("price_pln") and not v.get("sold_damaged")]
     mileages = [v["mileage_km"] for v in vehicles if v.get("mileage_km")]
 
     import statistics
@@ -353,7 +358,7 @@ def model_analytics():
     # Price vs Mileage scatter data
     scatter_data = []
     for v in vehicles:
-        if v.get("price_pln") and v.get("mileage_km"):
+        if v.get("price_pln") and v.get("mileage_km") and not v.get("sold_damaged"):
             scatter_data.append({
                 "x": v["mileage_km"],
                 "y": v["price_pln"],

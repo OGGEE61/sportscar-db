@@ -133,6 +133,10 @@
         <span class="badge bg-warning text-dark border border-warning ms-1" title="Registration plate is missing">No plates</span>
         {% endif %}
 
+        {% if v.sold_damaged %}
+        <span class="badge bg-danger" style="font-size: 0.6em;" title="Sprzedawany jako uszkodzony">USZKODZONY</span>
+        {% endif %}
+
         {% if v.vin_status == 'verified' %}
         <span class="badge bg-success" style="font-size: 0.6em;">VERIFIED</span>
         {% elif v.vin_status == 'placeholder' %}

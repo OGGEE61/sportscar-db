@@ -178,6 +178,46 @@ class TestModelId(ScrapingTestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"label: 'Trend'", page.data)
 
+    def _ad(self, vin, sid, price, km, damaged=False):
+        conn = db.get_db()
+        conn.execute("""INSERT INTO listing_observations (vin, source, source_listing_id, price_pln, mileage_km)
+                        VALUES (?, 'otomoto', ?, ?, ?)""", (vin, sid, price, km))
+        if damaged:
+            conn.execute("INSERT INTO damaged_listings (source, source_listing_id) VALUES ('otomoto', ?)", (sid,))
+        conn.commit()
+        conn.close()
+
+    def test_damaged_car_stays_listed_but_leaves_the_price_chart(self):
+        self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m40i_g01")
+        self.add_vehicle("WBS8M9C50J5K99002", "BMW", "X3", "M40i", 2021, model_id="x3_m40i_g01")
+        self._ad("WBS8M9C50J5K99001", "1", 200000, 50000)
+        self._ad("WBS8M9C50J5K99002", "2", 91234, 60000, damaged=True)
+        page = self.client.get("/models?model=x3_m40i_g01").data.decode()
+        self.assertIn("WBS8M9C50J5K99002", page)            # still listed in the table
+        self.assertIn(">Uszkodzony<", page)
+        chart = page.split("const scatterData =")[1].split(";")[0]
+        self.assertIn("WBS8M9C50J5K99001", chart)
+        self.assertNotIn("WBS8M9C50J5K99002", chart)
+
+    def test_vehicle_pages_say_sold_as_damaged(self):
+        self.add_vehicle("WBS8M9C50J5K99002", "BMW", "X3", "M40i", 2021, model_id="x3_m40i_g01")
+        self._ad("WBS8M9C50J5K99002", "2", 91234, 60000, damaged=True)
+        self.assertIn(b"Sprzedawany jako uszkodzony", self.client.get("/vehicle/WBS8M9C50J5K99002").data)
+        self.assertIn(b"USZKODZONY", self.client.get("/vehicles").data)
+
+    def test_ingest_records_a_damaged_ad(self):
+        with mock.patch("webapp.blueprints.api.check_api_token", return_value=None):
+            self.client.post("/api/ingest_pending", json={
+                "source": "otomoto", "source_listing_id": "77", "source_url": "https://x", "raw_title": "BMW",
+                "make": "BMW", "model": "M3", "damaged": True})
+            self.client.post("/api/ingest_pending", json={
+                "source": "otomoto", "source_listing_id": "78", "source_url": "https://y", "raw_title": "BMW",
+                "make": "BMW", "model": "M3", "damaged": False})
+        conn = db.get_db()
+        got = [r[0] for r in conn.execute("SELECT source_listing_id FROM damaged_listings").fetchall()]
+        conn.close()
+        self.assertEqual(got, ["77"])
+
     def test_models_page_uses_stored_model_id(self):
         self.add_vehicle("WBS8M9C50J5K99001", "BMW", "X3", "M40i", 2022, model_id="x3_m_f97")
         page = self.client.get("/models?model=x3_m40i_g01")

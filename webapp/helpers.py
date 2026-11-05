@@ -53,6 +53,12 @@ except OSError:
     pass  # Serverless read-only filesystem (e.g. Vercel)
 
 
+def damaged_ad_sql(alias):
+    """SQL condition: this observation's ad is marked as damaged on its site."""
+    return (f"EXISTS (SELECT 1 FROM damaged_listings d WHERE d.source = {alias}.source "
+            f"AND d.source_listing_id = {alias}.source_listing_id)")
+
+
 def car_visible_sql(alias="v"):
     """SQL condition: the car has a sighting that is not excluded, or has no sightings at all.
 

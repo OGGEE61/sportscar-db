@@ -1,16 +1,15 @@
-"""Hide stored listings that their site marks as damaged.
+"""Record stored ads that their site marks as damaged.
 
-The scrapers skip damaged cars (detail["damaged"]); this applies the same check to ads already
-stored by opening every ad that is still online. Matching listing_observations get
-excluded_reason = 'damaged': the rows and VINs stay (the car remains known) and the dashboard,
-model analytics and /vehicles skip them. Only that ad is hidden, so the same car in another,
-undamaged ad stays visible. Ads no longer online can't be checked and are left as they are.
+New ads are recorded when scraped; this applies the same check to ads already stored, by opening
+every ad that is still online. Nothing is hidden or deleted: the ad goes into damaged_listings, so
+the car's VIN shows it was sold as damaged and its price is left out of the price charts and
+averages. Ads no longer online can't be checked and are left as they are.
 
-Usage: python scripts/maintenance/hide_damaged.py [--yes] [--undo]
+Usage: python scripts/maintenance/mark_damaged.py [--yes] [--undo]
 
-  (no flag)  list what would be hidden, change nothing
-  --yes      hide them
-  --undo     show the listings hidden as damaged again
+  (no flag)  list what would be recorded, change nothing
+  --yes      record them
+  --undo     forget every recorded ad
 
 Writes against the backend selected by DB_BACKEND (d1 = production).
 """
@@ -29,9 +28,9 @@ DELAY_S = 1.0
 def main():
     conn = get_db()
     if "--undo" in sys.argv:
-        conn.execute("UPDATE listing_observations SET excluded_reason = NULL WHERE excluded_reason = 'damaged'")
+        conn.execute("DELETE FROM damaged_listings")
         conn.commit()
-        print("Listings hidden as damaged are visible again.")
+        print("Recorded damaged ads forgotten.")
         return
 
     ads = conn.execute("""
@@ -55,19 +54,16 @@ def main():
         elif detail["damaged"]:
             damaged.append(ad)
             print(f"  [damaged] {ad['source']} {ad['vin']} {_safe(ad['title'] or '')} {ad['url']}")
+            if "--yes" in sys.argv:
+                conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id) VALUES (?, ?)",
+                             (ad["source"], ad["source_listing_id"]))
+                conn.commit()
         if i % 50 == 0:
             print(f"  ... {i}/{len(ads)}, {len(damaged)} damaged, {unreadable} unreadable", flush=True)
         time.sleep(DELAY_S)
 
     print(f"\n{len(damaged)} damaged out of {len(ads)} ads ({unreadable} could not be read).")
-    if "--yes" not in sys.argv:
-        print("Nothing changed. Run with --yes to hide them.")
-        return
-    for ad in damaged:
-        conn.execute("UPDATE listing_observations SET excluded_reason = 'damaged' "
-                     "WHERE source = ? AND source_listing_id = ?", (ad["source"], ad["source_listing_id"]))
-    conn.commit()
-    print(f"Hidden: {len(damaged)} ads.")
+    print("Recorded." if "--yes" in sys.argv else "Nothing changed. Run with --yes to record them.")
 
 
 if __name__ == "__main__":

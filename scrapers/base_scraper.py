@@ -1318,11 +1318,6 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             print(f"  [skip] Year {detail['year']} > max {car.max_year}")
                             continue
 
-                    # Damaged cars are not the market this project tracks
-                    if detail.get("damaged"):
-                        print("  [skip] Marked as damaged on the site")
-                        continue
-
                     if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
     
@@ -1360,6 +1355,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "fuel_type":         detail.get("fuel_type"),
                     "transmission":      detail.get("transmission"),
                     "color_ext":         detail.get("color_ext"),
+                    "damaged":           bool(detail.get("damaged")),
                     "price_pln":         final_price,
                     "mileage_km":        detail.get("mileage_km"),
                     "location_city":     final_loc,
