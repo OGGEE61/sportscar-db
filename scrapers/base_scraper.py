@@ -227,7 +227,7 @@ def load_cookies() -> dict:
 
 _token_error_logged = False
 
-def refresh_session(cookies: dict) -> dict:
+def refresh_session(cookies: dict, log_errors: bool = True) -> dict:
     global _token_error_logged
     """Try to get a fresh id_token using the Cognito refresh_token.
 
@@ -237,6 +237,8 @@ def refresh_session(cookies: dict) -> dict:
 
     Returns an updated cookies dict with a fresh id_token, or the original
     dict unchanged if refresh fails (scraper will still work, just no VINs).
+    log_errors=False keeps a failure off the production log: dry runs use the local
+    cookies file, which says nothing about the session the scheduled runs use.
     """
     refresh_token = cookies.get("refresh_token")
     client_id     = cookies.get("client_id")
@@ -278,7 +280,7 @@ def refresh_session(cookies: dict) -> dict:
         )
         if r.status_code != 200:
             print(f"[auth] Token refresh failed: HTTP {r.status_code} -- {r.text[:120]}")
-            if not _token_error_logged:
+            if log_errors and not _token_error_logged:
                 _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.", source="otomoto")
                 _token_error_logged = True
             return cookies
@@ -286,7 +288,7 @@ def refresh_session(cookies: dict) -> dict:
         new_id_token = tokens.get("IdToken")
         if not new_id_token:
             print("[auth] Token refresh: no IdToken in response")
-            if not _token_error_logged:
+            if log_errors and not _token_error_logged:
                 _log_run("error", "Token refresh failed: No IdToken in response.", source="otomoto")
                 _token_error_logged = True
             return cookies
@@ -1110,7 +1112,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     logged_in   = False
     if cookies:
         print(f"[auth] Cookies loaded ({len(cookies)} cookies) -- attempting token refresh...")
-        cookies   = refresh_session(cookies)
+        cookies   = refresh_session(cookies, log_errors=post_to_api)
         logged_in = check_session(cookies)
     elif cfg.source != "autoplac":
         print("[auth] No cookies -- VINs will stay encrypted.")

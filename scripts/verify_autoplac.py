@@ -8,7 +8,7 @@ against expectations written here, independent of the scrapers' own validators:
   WARN  power or engine size outside what the model can have (tuned cars, typos)
 
 Usage:
-    python scripts/verify_autoplac.py                 # all 35 scrapers
+    python scripts/verify_autoplac.py                 # all 42 scrapers
     python scripts/verify_autoplac.py bmw mercedes    # run_autoplac.py targets
     python scripts/verify_autoplac.py --cache c.json  # reuse detail pages from earlier runs
 """
@@ -32,7 +32,7 @@ import run_autoplac  # noqa: E402
 MAKE_WMI = {
     "BMW":           ("WBA", "WBS", "WBY", "WBX", "5UX", "5YM", "3MW", "3MF", "WB1"),
     "Alpina":        ("WAP",),
-    "Mercedes-Benz": ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S"),
+    "Mercedes-Benz": ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S", "VAG"),
     "Audi":          ("WAU", "WUA", "TRU", "WA1"),
     "Porsche":       ("WP0", "WP1"),
     "Toyota":        ("JTD", "JTM", "JTE", "SB1", "VNK", "JT"),
@@ -51,6 +51,7 @@ EXPECT = {
     ("Seria 1", "1M E82"):             (330, 350, 2900, 3100),
     ("Seria 1", "135i E82/E88"):       (300, 335, 2900, 3100),
     ("M5", "E39 M5"):                  (390, 410, 4900, 5000),
+    ("M5", "F10 M5"):                  (540, 620, 4300, 4500),
     ("Z3", "Z3 M"):                    (240, 330, 3100, 3300),
     ("BMW", "Alpina"):                 (None, None, None, None),
     ("Klasa C", "W204 C63 AMG"):       (440, 540, 6000, 6300),
@@ -63,7 +64,13 @@ EXPECT = {
     ("Klasa S", "S55 AMG W220"):       (450, 520, 5300, 5500),
     ("SL", "SL55 AMG R230"):           (450, 520, 5300, 5500),
     ("CL", "CL55 AMG C215"):           (450, 520, 5300, 5500),
+    ("Klasa E", "W211 E63 AMG"):       (480, 520, 6000, 6300),
+    ("Klasa E", "W212 E63 AMG"):       (521, 620, 5400, 6300),
+    ("Klasa S", "W140"):               (140, 420, 2700, 7300),
+    ("Klasa G", "W460 / W461 / W463"): (70, 650, 2200, 6300),
     ("RS3", "8V"):                     (360, 430, 2400, 2500),
+    ("RS Q3", "8U"):                   (300, 380, 2400, 2500),
+    ("RS Q3", "F3"):                   (390, 420, 2400, 2500),
     ("RS4", "B8.5 Avant"):             (440, 460, 4100, 4300),
     ("RS4", "B9 Avant"):               (440, 460, 2800, 3000),
     ("TT", "TT RS"):                   (330, 420, 2400, 2600),

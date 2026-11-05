@@ -1074,3 +1074,49 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         self.assertIn("B" * 17, html)
         self.assertIn("B" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
         self.assertNotIn("A" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
+
+
+class TestNewModelRules(unittest.TestCase):
+    def test_catalog_keeps_new_generations_apart_from_old_rules(self):
+        import sqlite3
+        from webapp.model_catalog import STANDARD_MODELS, resolve_model_ids
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE vehicles (vin TEXT, make TEXT, model TEXT, variant TEXT, power_hp INT, engine_cc INT, year INT, body_type TEXT, notes TEXT)")
+        cars = [("A", "Mercedes-Benz", "Klasa E", "W211 E63 AMG", 514, 6208, "e63_w211"),
+                ("B", "Mercedes-Benz", "Klasa E", "W212 E63 AMG", 557, 5461, "e63_w212"),
+                ("C", "Mercedes-Benz", "Klasa E", "W211 E55 AMG", 476, 5439, "e55_w211"),
+                ("D", "Mercedes-Benz", "Klasa G", "W460 / W461 / W463", 544, 5461, "g_w463"),
+                ("E", "Mercedes-Benz", "Klasa G", "G55 AMG W463", 507, 5439, "g55_w463"),
+                ("F", "Mercedes-Benz", "Klasa S", "W140", 394, 5987, "s_w140"),
+                ("G", "Audi", "RS Q3", "8U", 340, 2480, "rsq3_8u"),
+                ("H", "Audi", "RS Q3", "F3", 400, 2480, "rsq3_f3")]
+        conn.executemany("INSERT INTO vehicles VALUES (?,?,?,?,?,?,NULL,NULL,NULL)", [c[:6] for c in cars])
+        out = resolve_model_ids(conn)
+        for car in cars:
+            self.assertEqual(out[car[0]], car[6], car[3])
+        # Only the single rule matches: /models and CEPiK use the rule directly
+        for car in cars:
+            hits = [m["id"] for m in STANDARD_MODELS
+                    if conn.execute(f"SELECT 1 FROM vehicles v WHERE v.vin = ? AND ({m['where']})", (car[0],)).fetchone()]
+            self.assertEqual(hits, [car[6]], car[3])
+        conn.close()
+
+    def test_rsq3_f3_skips_dealer_stock(self):
+        from datetime import date
+        from otomoto.audi_rsq3_f3 import CONFIG
+        year = date.today().year
+        self.assertFalse(CONFIG.validator({"year": year, "mileage_km": 50}))
+        self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
+        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
+
+    def test_g_class_title_filter_skips_g55_but_not_g550(self):
+        from otomoto.mercedes_g_w463 import CONFIG
+        skip = lambda title: any(w in title.lower() for w in CONFIG.title_must_not_contain)
+        self.assertTrue(skip("Mercedes W463 G55 AMG Brabus"))
+        self.assertTrue(skip("Mercedes G-klasa 55amg"))
+        self.assertTrue(skip("Mercedes-Benz Klasa G 55 AMG"))
+        self.assertFalse(skip("Mercedes-Benz Klasa G 550"))
+        self.assertFalse(skip("Mercedes-Benz Klasa G AMG 63"))
+        self.assertTrue(CONFIG.validator({"vin": "WDB4632481X123456"}))
+        self.assertFalse(CONFIG.validator({"vin": "WDB2200751A123456"}))

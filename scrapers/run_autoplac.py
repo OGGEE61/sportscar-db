@@ -32,6 +32,7 @@ from autoplac.bmw_m4_f82 import CONFIG as M4_F82_AUTOPLAC
 from autoplac.bmw_1m_e82 import CONFIG as ONE_M_E82_AUTOPLAC
 from autoplac.bmw_135i_e82 import CONFIG as I135_E82_AUTOPLAC
 from autoplac.bmw_m5_e39 import CONFIG as M5_E39_AUTOPLAC
+from autoplac.bmw_m5_f10 import CONFIG as M5_F10_AUTOPLAC
 from autoplac.bmw_z3_m_coupe import CONFIG as Z3_M_AUTOPLAC
 from autoplac.bmw_alpina import CONFIG as ALPINA_AUTOPLAC
 
@@ -45,6 +46,10 @@ from autoplac.mercedes_g55_w463 import CONFIG as G55_W463_AUTOPLAC
 from autoplac.mercedes_s55_w220 import CONFIG as S55_W220_AUTOPLAC
 from autoplac.mercedes_sl55_r230 import CONFIG as SL55_R230_AUTOPLAC
 from autoplac.mercedes_cl55_c215 import CONFIG as CL55_C215_AUTOPLAC
+from autoplac.mercedes_e63_w211 import CONFIG as E63_W211_AUTOPLAC
+from autoplac.mercedes_e63_w212 import CONFIG as E63_W212_AUTOPLAC
+from autoplac.mercedes_s_w140 import CONFIG as S_W140_AUTOPLAC
+from autoplac.mercedes_g_w463 import CONFIG as G_W463_AUTOPLAC
 
 from autoplac.audi_rs3_8v import CONFIG as RS3_8V_AUTOPLAC
 from autoplac.audi_rs4_b85 import CONFIG as RS4_B85_AUTOPLAC
@@ -52,6 +57,8 @@ from autoplac.audi_rs4_b9 import CONFIG as RS4_B9_AUTOPLAC
 from autoplac.audi_ttrs import CONFIG as TTRS_AUTOPLAC
 from autoplac.audi_r8_v8 import CONFIG as R8_V8_AUTOPLAC
 from autoplac.audi_r8_v10 import CONFIG as R8_V10_AUTOPLAC
+from autoplac.audi_rsq3_8u import CONFIG as RSQ3_8U_AUTOPLAC
+from autoplac.audi_rsq3_f3 import CONFIG as RSQ3_F3_AUTOPLAC
 
 from autoplac.porsche_cayman_987 import CONFIG as CAYMAN_987_AUTOPLAC
 from autoplac.porsche_cayman_981 import CONFIG as CAYMAN_981_AUTOPLAC
@@ -73,6 +80,7 @@ BMW_FLEET = [
     ONE_M_E82_AUTOPLAC,
     I135_E82_AUTOPLAC,
     M5_E39_AUTOPLAC,
+    M5_F10_AUTOPLAC,
     Z3_M_AUTOPLAC,
     ALPINA_AUTOPLAC,
 ]
@@ -88,6 +96,10 @@ MERCEDES_FLEET = [
     S55_W220_AUTOPLAC,
     SL55_R230_AUTOPLAC,
     CL55_C215_AUTOPLAC,
+    E63_W211_AUTOPLAC,
+    E63_W212_AUTOPLAC,
+    S_W140_AUTOPLAC,
+    G_W463_AUTOPLAC,
 ]
 
 AUDI_FLEET = [
@@ -97,6 +109,8 @@ AUDI_FLEET = [
     TTRS_AUTOPLAC,
     R8_V8_AUTOPLAC,
     R8_V10_AUTOPLAC,
+    RSQ3_8U_AUTOPLAC,
+    RSQ3_F3_AUTOPLAC,
 ]
 
 PORSCHE_FLEET = [
@@ -126,7 +140,8 @@ SCRAPER_MAP = {
     "m4":       [M4_F82_AUTOPLAC],
     "1m":       [ONE_M_E82_AUTOPLAC],
     "135i":     [I135_E82_AUTOPLAC],
-    "m5":       [M5_E39_AUTOPLAC],
+    "m5":       [M5_E39_AUTOPLAC, M5_F10_AUTOPLAC],
+    "m5_f10":   [M5_F10_AUTOPLAC],
     "m5_e39":   [M5_E39_AUTOPLAC],
     "z3_m":     [Z3_M_AUTOPLAC],
     "alpina":   [ALPINA_AUTOPLAC],
@@ -141,6 +156,11 @@ SCRAPER_MAP = {
     "s55":      [S55_W220_AUTOPLAC],
     "sl55":     [SL55_R230_AUTOPLAC],
     "cl55":     [CL55_C215_AUTOPLAC],
+    "e63":      [E63_W211_AUTOPLAC, E63_W212_AUTOPLAC],
+    "e63_w211": [E63_W211_AUTOPLAC],
+    "e63_w212": [E63_W212_AUTOPLAC],
+    "w140":     [S_W140_AUTOPLAC],
+    "g_w463":   [G_W463_AUTOPLAC],
     "mercedes": MERCEDES_FLEET,
     "rs3":      [RS3_8V_AUTOPLAC],
     "rs3_8v":   [RS3_8V_AUTOPLAC],
@@ -151,6 +171,9 @@ SCRAPER_MAP = {
     "r8":       [R8_V8_AUTOPLAC, R8_V10_AUTOPLAC],
     "r8_v8":    [R8_V8_AUTOPLAC],
     "r8_v10":   [R8_V10_AUTOPLAC],
+    "rsq3":     [RSQ3_8U_AUTOPLAC, RSQ3_F3_AUTOPLAC],
+    "rsq3_8u":  [RSQ3_8U_AUTOPLAC],
+    "rsq3_f3":  [RSQ3_F3_AUTOPLAC],
     "audi":     AUDI_FLEET,
     "cayman":   [CAYMAN_987_AUTOPLAC, CAYMAN_981_AUTOPLAC, CAYMAN_GT4_AUTOPLAC, CAYMAN_718_AUTOPLAC],
     "cayman_987": [CAYMAN_987_AUTOPLAC],

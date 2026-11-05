@@ -57,6 +57,7 @@ from bmw_1m_e82           import CONFIG    as M1_E82
 from bmw_135i_e82         import CONFIG    as BMW_135I
 from bmw_z3_m_coupe       import CONFIG    as Z3_M
 from bmw_m5_e39           import CONFIG    as M5_E39
+from bmw_m5_f10           import CONFIG    as M5_F10
 
 from audi_r8_v8           import CONFIG    as R8_V8
 from audi_r8_v10          import CONFIG    as R8_V10
@@ -73,6 +74,13 @@ from porsche_cayman_718   import CONFIG    as CAYMAN_718
 from porsche_macan_gen1   import CONFIG    as MACAN_G1
 from honda_s2000          import CONFIG    as S2000
 
+from mercedes_e63_w211    import CONFIG    as E63_W211
+from mercedes_e63_w212    import CONFIG    as E63_W212
+from mercedes_s_w140      import CONFIG    as S_W140
+from mercedes_g_w463      import CONFIG    as G_W463
+from audi_rsq3_8u         import CONFIG    as RSQ3_8U
+from audi_rsq3_f3         import CONFIG    as RSQ3_F3
+
 # Active target fleet
 ALL_FLEET = [
     C63, E55, CLS55, CLK63,
@@ -86,6 +94,7 @@ ALL_FLEET = [
     A45, GLA45, G55, S55, SL55, CL55,
     CAYMAN_987, CAYMAN_981, CAYMAN_718, MACAN_G1,
     S2000,
+    M5_F10, E63_W211, E63_W212, S_W140, G_W463, RSQ3_8U, RSQ3_F3,
 ]
 
 # Dynamically distribute 3 runs per week for every scraper across the 7 days
@@ -111,7 +120,8 @@ SCRAPER_MAP = {
     "m3": [M3, M3_E46],
     "m3_e46": [M3_E46],
     "m4": [M4],
-    "m5": [M5_E39],
+    "m5": [M5_E39, M5_F10],
+    "m5_f10": [M5_F10],
     "m5_e39": [M5_E39],
     "1m": [M1_E82],
     "135i": [BMW_135I],
@@ -133,6 +143,14 @@ SCRAPER_MAP = {
     "cayman": [CAYMAN_987, CAYMAN_981, CAYMAN_718, CAYMAN_GT4],
     "macan": [MACAN_G1],
     "s2000": [S2000],
+    "e63": [E63_W211, E63_W212],
+    "e63_w211": [E63_W211],
+    "e63_w212": [E63_W212],
+    "w140": [S_W140],
+    "g_w463": [G_W463],
+    "rsq3": [RSQ3_8U, RSQ3_F3],
+    "rsq3_8u": [RSQ3_8U],
+    "rsq3_f3": [RSQ3_F3],
     "x3_m": [X3_M],
     "x3_m40i": [X3_M40I],
     "all": ALL_FLEET,

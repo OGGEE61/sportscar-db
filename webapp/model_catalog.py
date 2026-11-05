@@ -252,7 +252,7 @@ STANDARD_MODELS = [
         "variant": "W211 E55 AMG",
         "years": "2003–2006",
         "engine": "5.4L V8 Kompressor M113K · 476 HP · RWD",
-        "where": "v.make = 'Mercedes-Benz' AND (v.variant LIKE '%W211%' OR v.variant LIKE '%E55%' OR v.variant LIKE '%E 55%' OR (v.model = 'Klasa E' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
+        "where": "v.make = 'Mercedes-Benz' AND COALESCE(v.variant, '') NOT LIKE '%E63%' AND (v.variant LIKE '%W211%' OR v.variant LIKE '%E55%' OR v.variant LIKE '%E 55%' OR (v.model = 'Klasa E' AND (v.power_hp >= 460 OR v.engine_cc = 5439)))"
     },
     {
         "id": "g55_w463",
@@ -262,7 +262,7 @@ STANDARD_MODELS = [
         "variant": "G55 AMG W463",
         "years": "2004–2012",
         "engine": "5.4L V8 Kompressor M113K · 476-507 HP · 4WD",
-        "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa G' OR v.variant LIKE '%G55%' OR v.variant LIKE '%W463%') AND (v.variant LIKE '%G55%' OR v.power_hp >= 470)"
+        "where": "v.make = 'Mercedes-Benz' AND COALESCE(v.variant, '') NOT LIKE 'W460%' AND (v.model = 'Klasa G' OR v.variant LIKE '%G55%' OR v.variant LIKE '%W463%') AND (v.variant LIKE '%G55%' OR v.power_hp >= 470)"
     },
     {
         "id": "gla45_x156",
@@ -282,7 +282,7 @@ STANDARD_MODELS = [
         "variant": "S55 AMG W220",
         "years": "2002–2005",
         "engine": "5.4L V8 Kompressor M113K · 500 HP · RWD",
-        "where": "v.make = 'Mercedes-Benz' AND (v.model = 'Klasa S' OR v.variant LIKE '%S55%' OR v.variant LIKE '%W220%') AND (v.variant LIKE '%S55%' OR v.power_hp >= 490)"
+        "where": "v.make = 'Mercedes-Benz' AND COALESCE(v.variant, '') != 'W140' AND (v.model = 'Klasa S' OR v.variant LIKE '%S55%' OR v.variant LIKE '%W220%') AND (v.variant LIKE '%S55%' OR v.power_hp >= 490)"
     },
     {
         "id": "sl55_r230",
@@ -344,7 +344,78 @@ STANDARD_MODELS = [
         "engine": "1.6L 3-cyl Turbo · 261-280 HP · AWD",
         "where": "v.make = 'Toyota' AND (v.model = 'GR Yaris' OR (v.model = 'Yaris' AND (v.variant LIKE '%GR%' OR v.power_hp >= 250)))"
     },
+    {
+        "id": "m5_f10",
+        "name": "BMW M5 (F10)",
+        "make": "BMW",
+        "model": "M5",
+        "variant": "F10 M5",
+        "years": "2011–2017",
+        "engine": "4.4L V8 Biturbo S63 · 560-600 HP · RWD",
+        "where": "v.make = 'BMW' AND v.variant = 'F10 M5'"
+    },
+    {
+        "id": "e63_w211",
+        "name": "Mercedes E63 AMG (W211)",
+        "make": "Mercedes-Benz",
+        "model": "Klasa E",
+        "variant": "W211 E63 AMG",
+        "years": "2006–2009",
+        "engine": "6.2L V8 M156 · 514 HP · RWD",
+        "where": "v.make = 'Mercedes-Benz' AND v.variant = 'W211 E63 AMG'"
+    },
+    {
+        "id": "e63_w212",
+        "name": "Mercedes E63 AMG (W212)",
+        "make": "Mercedes-Benz",
+        "model": "Klasa E",
+        "variant": "W212 E63 AMG",
+        "years": "2009–2016",
+        "engine": "6.2L V8 M156 / 5.5L V8 Biturbo M157 · 525-585 HP · RWD/4MATIC",
+        "where": "v.make = 'Mercedes-Benz' AND v.variant = 'W212 E63 AMG'"
+    },
+    {
+        "id": "s_w140",
+        "name": "Mercedes Klasa S (W140)",
+        "make": "Mercedes-Benz",
+        "model": "Klasa S",
+        "variant": "W140",
+        "years": "1991–1998",
+        "engine": "2.8-6.0L R6 / V8 / V12, diesel · 150-408 HP · RWD",
+        "where": "v.make = 'Mercedes-Benz' AND v.variant = 'W140'"
+    },
+    {
+        "id": "g_w463",
+        "name": "Mercedes Klasa G (W460 / W461 / W463)",
+        "make": "Mercedes-Benz",
+        "model": "Klasa G",
+        "variant": "W460 / W461 / W463",
+        "years": "1979–2018",
+        "engine": "2.3-6.0L benzyna / diesel · 72-630 HP · 4WD",
+        "where": "v.make = 'Mercedes-Benz' AND v.variant = 'W460 / W461 / W463'"
+    },
+    {
+        "id": "rsq3_8u",
+        "name": "Audi RS Q3 (8U)",
+        "make": "Audi",
+        "model": "RS Q3",
+        "variant": "8U",
+        "years": "2013–2018",
+        "engine": "2.5L TFSI R5 · 310-367 HP · quattro",
+        "where": "v.make = 'Audi' AND v.model = 'RS Q3' AND v.variant = '8U'"
+    },
+    {
+        "id": "rsq3_f3",
+        "name": "Audi RS Q3 (F3)",
+        "make": "Audi",
+        "model": "RS Q3",
+        "variant": "F3",
+        "years": "2019–",
+        "engine": "2.5L TFSI R5 · 400 HP · quattro",
+        "where": "v.make = 'Audi' AND v.model = 'RS Q3' AND v.variant = 'F3'"
+    },
 ]
+
 STANDARD_MODELS = sorted(STANDARD_MODELS, key=lambda m: (m["make"], m["name"]))
 
 DEFAULT_MODEL_ID = "x3_m40i_g01"
