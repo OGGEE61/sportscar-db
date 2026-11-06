@@ -1405,3 +1405,19 @@ class TestRevealVinPacing(TestRevealVin):
         self.assertEqual(post.call_count, base_scraper.VIN_REVEALS_PER_RUN)
         self.assertEqual(self.sleep.call_count, base_scraper.VIN_REVEALS_PER_RUN - 1)
 
+
+class TestWorthRevealing(unittest.TestCase):
+    def test_no_reveal_for_a_listing_the_validator_rejects(self):
+        from otomoto.bmw_m340i_g20 import CONFIG
+        self.assertFalse(base_scraper._worth_revealing(CONFIG, {"year": 2021, "mileage_km": 1, "fuel_type": "diesel"}))
+        self.assertTrue(base_scraper._worth_revealing(CONFIG, {"year": 2021, "mileage_km": 60000, "fuel_type": "petrol"}))
+
+    def test_a_2017_m5_waits_for_its_vin(self):
+        from otomoto.bmw_m5_f90 import CONFIG
+        self.assertTrue(base_scraper._worth_revealing(CONFIG, {"year": 2017}))
+        self.assertFalse(CONFIG.validator({"year": 2017}))
+
+    def test_scrapers_that_pick_the_model_by_vin_always_reveal(self):
+        from otomoto.bmw_x3_m_f97 import CONFIG
+        self.assertTrue(base_scraper._worth_revealing(CONFIG, {"year": 2021, "power_hp": 360}))
+

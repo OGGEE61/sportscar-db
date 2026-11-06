@@ -6,7 +6,8 @@ reveal, at the scraper's pace (base_scraper.VIN_REVEAL_DELAY_S), and stops at th
 A VIN is stored only if it passes validation.is_plausible_vin, the same check the scraper uses.
 Only pending_listings.vin is filled in: nothing is approved, rejected or deleted.
 
-Needs a logged-in scrapers/otomoto_cookies.json.
+Needs a logged-in scrapers/otomoto_cookies.json. Runs every few hours on the Mac through launchd:
+see scripts/launchd/README.md. Each run writes one line to the run log.
 
 Usage: python scripts/maintenance/reveal_pending_vins.py [--limit N]
 
@@ -19,7 +20,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path[:0] = [ROOT, os.path.join(ROOT, "scrapers")]
 import base_scraper
-from base_scraper import check_session, load_cookies, refresh_session, reveal_vin
+from base_scraper import _log_run, check_session, load_cookies, refresh_session, reveal_vin
 from db import get_db
 from validation import is_plausible_vin
 
@@ -32,6 +33,8 @@ def main():
     cookies = refresh_session(load_cookies(), log_errors=False)
     refreshed_at = time.monotonic()
     if not check_session(cookies):
+        _log_run("error", "VIN backfill: not logged in to Otomoto, update scrapers/otomoto_cookies.json on the Mac.",
+                 source="otomoto")
         sys.exit("Not logged in to Otomoto: update scrapers/otomoto_cookies.json first.")
     # The per-run cap is for the scheduled runs; here the pace and the stop on 403 are enough
     base_scraper.VIN_REVEALS_PER_RUN = 10 ** 6
@@ -47,6 +50,8 @@ def main():
     print(f"{len(rows)} pending Otomoto listings with a VIN behind 'Show VIN'.")
 
     found = 0
+    if not rows:
+        return
     for i, r in enumerate(rows, 1):
         if not base_scraper.vin_reveal_allowed():
             print("Stopped: Otomoto blocked the reveals (HTTP 403).")
@@ -61,7 +66,12 @@ def main():
             conn.commit()
             found += 1
         print(f"  [{i}/{len(rows)}] {r['variant']} {r['source_listing_id']}: {'VIN' if vin else 'no VIN'}", flush=True)
+    blocked = base_scraper._vin_reveals["blocked"]
     print(f"Done: {found} VINs filled in.")
+    _log_run("partial" if blocked else "success",
+             f"VIN backfill: {found} of {len(rows)} pending Otomoto listings got a VIN"
+             + (" (stopped: Otomoto blocked the reveals)." if blocked else "."),
+             processed=found, source="otomoto")
 
 
 if __name__ == "__main__":
