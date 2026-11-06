@@ -1,11 +1,11 @@
-"""Moduł integracji z CEPiK (HistoriaPojazdu.gov.pl).
+"""CEPiK integration (HistoriaPojazdu.gov.pl).
 
-Pobiera oficjalne dane państwowe z rejestru CEPiK dla pojazdów posiadających
-komplet danych (VIN + Tablica Rejestracyjna + Data 1. rejestracji):
-- Ważność polisy OC i okresowego badania technicznego (SKP),
-- Liczbę właścicieli w Polsce,
-- Pełną historię odczytów licznika z badań technicznych i kontroli drogowych Policji,
-- Automatyczne wykrywanie cofniętych liczników (rollback detection).
+Fetches official data from the state CEPiK vehicle register for vehicles that have
+all of VIN + registration plate + first registration date:
+- validity of the OC insurance policy and the periodic technical inspection (SKP),
+- number of owners in Poland,
+- full odometer history from technical inspections and police roadside checks,
+- automatic detection of rolled-back odometers.
 """
 
 import os
@@ -42,7 +42,7 @@ class CepikClient:
         self._initialized = False
 
     def init_session(self) -> bool:
-        """Inicjalizuje sesję z portalem rządowym i pobiera tokeny XSRF oraz sesyjne."""
+        """Open a session with the government portal and get the XSRF and session tokens."""
         self.session = requests.Session()
         self.wid = f"HistoriaPojazdu:{int(time.time() * 1000)}"
         headers = {
@@ -79,21 +79,21 @@ class CepikClient:
 
     @staticmethod
     def normalize_date(date_str: str) -> Optional[str]:
-        """Normalizuje datę do formatu YYYY-MM-DD wymaganego przez API."""
+        """Normalize a date to the YYYY-MM-DD format the API requires."""
         if not date_str:
             return None
         date_str = date_str.strip()
-        # Format DD.MM.YYYY lub DD/MM/YYYY
+        # DD.MM.YYYY or DD/MM/YYYY format
         m1 = re.match(r"^(\d{1,2})[./\-](\d{1,2})[./\-](\d{4})$", date_str)
         if m1:
             d, m, y = m1.groups()
             return f"{y}-{int(m):02d}-{int(d):02d}"
-        # Format YYYY-MM-DD
+        # YYYY-MM-DD format
         m2 = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", date_str)
         if m2:
             y, m, d = m2.groups()
             return f"{y}-{int(m):02d}-{int(d):02d}"
-        # Format YYYY-MM (uzupełnij do 1. dnia)
+        # YYYY-MM format (pad to the 1st of the month)
         m3 = re.match(r"^(\d{4})-(\d{1,2})$", date_str)
         if m3:
             y, m, d = m3.group(1), m3.group(2), "01"
@@ -101,7 +101,7 @@ class CepikClient:
         return None
 
     def fetch_vehicle_data(self, vin: str, plate: str, first_reg_date: str) -> Optional[Dict[str, Any]]:
-        """Pobiera dane techniczne i osi czasu dla danego pojazdu."""
+        """Fetch the technical data and the timeline of a vehicle."""
         self.last_status = None  # HTTP status of the last vehicle-data call (404 = CEPiK has no such vehicle)
         if not self._initialized:
             if not self.init_session():
@@ -123,11 +123,11 @@ class CepikClient:
 
         for attempt in range(2):
             try:
-                # 1. Pobierz dane techniczne i podstawowe
+                # 1. Fetch technical and basic data
                 v_url = f"{self.API_BASE}/data/vehicle-data"
                 v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
 
-                # Jeśli wygasła sesja lub przekroczono limit zapytań
+                # Session expired or request limit exceeded
                 if v_resp.status_code in (401, 403, 406) or "HTTP_HEADER_REQUIRED" in v_resp.text:
                     self.init_session()
                     v_resp = self.session.post(v_url, json=payload, headers=self.headers, timeout=20)
@@ -153,7 +153,7 @@ class CepikClient:
 
                 basic_data = v_json.get("technicalData", {}).get("basicData", {})
 
-                # 2. Pobierz oś czasu i historię przebiegów
+                # 2. Fetch the timeline and odometer history
                 time.sleep(0.5)
                 t_url = f"{self.API_BASE}/data/timeline-data"
                 t_resp = self.session.post(t_url, json=payload, headers=self.headers, timeout=20)
@@ -177,21 +177,21 @@ class CepikClient:
     def _parse_cepik_response(
         self, vin: str, plate: str, first_reg_date: str, basic: Dict[str, Any], timeline: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Parsuje i strukturyzuje dane z obu endpointów CEPiK."""
-        # Polisa OC
+        """Parse and structure the data from both CEPiK endpoints."""
+        # OC insurance policy
         has_oc = basic.get("hasCurrentOCPolicy", timeline.get("validOcInsurance", False))
         oc_expiry = timeline.get("insuranceExpiryDate")
 
-        # Badanie techniczne
+        # Technical inspection
         tech_status = basic.get("technicalInspectionStatus", timeline.get("technicalInspectionStatus", "brak"))
 
-        # Kradzież
+        # Theft
         is_stolen = 1 if (basic.get("vehicleLost") or timeline.get("vehicleLost")) else 0
 
-        # Właściciele
+        # Owners
         total_owners = timeline.get("totalOwners") or 1
 
-        # Odczyty drogomierza z historii zdarzeń
+        # Odometer readings from the event history
         odometer_history = []
         raw_events = timeline.get("events", [])
         clean_events = []
@@ -203,13 +203,13 @@ class CepikClient:
             ev_name = ev.get("eventName") or ""
             details = ev.get("eventDetails", [])
 
-            # Sprawdź datę ważności badania technicznego jeśli obecna w tytule
+            # Take the inspection expiry date from the title when present
             if "ważne do" in ev_name.lower():
                 m_valid = re.search(r"ważne do\s+(\d{2}\.\d{2}\.\d{4})", ev_name, re.IGNORECASE)
                 if m_valid:
                     last_tech_until = self.normalize_date(m_valid.group(1))
 
-            # Szukaj odczytu drogomierza w szczegółach
+            # Look for an odometer reading in the details
             odo_km = None
             odo_src = "SKP" if "badanie techniczne" in ev_name.lower() else "Inne"
 
@@ -241,7 +241,7 @@ class CepikClient:
                 "details": details
             })
 
-        # Posortuj historię przebiegów chronologicznie
+        # Sort the odometer history chronologically
         odometer_history.sort(key=lambda x: x["date"] or "")
 
         last_odometer_km = None
@@ -295,14 +295,14 @@ def record_cepik_failure(conn, client, vin: str, plate: str) -> str:
     return "error"
 
 
-# Minimalna różnica (SKP vs ogłoszenie), od której uznajemy licznik za cofnięty
+# Minimum difference (SKP vs listing) at which the odometer counts as rolled back
 ROLLBACK_MIN_DIFF_KM = 40000
 
 
 def detect_rollback(conn, vin: str, last_cepik_km: Optional[int]):
-    """Porównuje ostatni odczyt SKP z przebiegiem z ogłoszeń.
+    """Compare the last SKP reading with the mileage from the listings.
 
-    Zwraca (odometer_rollback, rollback_diff_km, listing_mileage).
+    Returns (odometer_rollback, rollback_diff_km, listing_mileage).
     """
     listing_obs = conn.execute("""
         SELECT MIN(mileage_km) as min_mileage, MAX(mileage_km) as max_mileage
@@ -326,7 +326,7 @@ def detect_rollback(conn, vin: str, last_cepik_km: Optional[int]):
                 listing_mileage = pending_obs[0] if len(pending_obs) > 0 else None
 
     if last_cepik_km and listing_mileage:
-        # Jeśli na przeglądzie SKP było WIĘCEJ niż sprzedawca podaje w ogłoszeniu (o co najmniej ROLLBACK_MIN_DIFF_KM)
+        # The SKP inspection recorded MORE than the seller states in the listing (by at least ROLLBACK_MIN_DIFF_KM)
         diff = last_cepik_km - listing_mileage
         if diff >= ROLLBACK_MIN_DIFF_KM:
             return 1, diff, listing_mileage
@@ -334,7 +334,7 @@ def detect_rollback(conn, vin: str, last_cepik_km: Optional[int]):
 
 
 def save_cepik_report(report: Dict[str, Any], conn) -> bool:
-    """Zapisuje raport CEPiK do bazy oraz sprawdza ewentualny rollback licznika."""
+    """Save a CEPiK report to the DB and check for an odometer rollback."""
     vin = report["vin"]
     last_cepik_km = report.get("last_odometer_km")
 
@@ -343,7 +343,7 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
         print(f"  🚨 WYKRYTO COFNIĘTY LICZNIK dla {vin}!")
         print(f"     Ostatni odczyt SKP: {last_cepik_km:,} km vs Ogłoszenie: {listing_mileage:,} km (różnica: -{rollback_diff_km:,} km)")
 
-        # Wstaw tag ostrzegawczy do tabeli tags
+        # Add a warning tag to the tags table
         try:
             conn.execute("""
                 INSERT OR REPLACE INTO tags (vin, tag, source_method)
@@ -383,7 +383,7 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
         odometer_rollback, rollback_diff_km
     ))
 
-    # Opcjonalnie dodaj tag o ważnym OC i SKP jeśli bez uwag
+    # Tag a valid OC and SKP when there are no issues
     if report["has_current_oc"] and report["tech_inspection_status"].lower() == "aktualne" and not odometer_rollback and not report["is_stolen"]:
         try:
             conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'CEPiK: Ważne OC i SKP', 'cepik')", (vin,))
@@ -396,10 +396,10 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
 
 def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_failed: bool = False,
                    model_id: Optional[str] = None, refresh: bool = False):
-    """Główna funkcja synchronizacji raportów CEPiK.
+    """Main CEPiK report sync.
 
-    model_id — id z webapp.model_catalog (np. 'x3_m40i_g01'): tylko auta tej generacji.
-    refresh  — pobierz ponownie także auta, które mają już raport.
+    model_id — id from webapp.model_catalog (e.g. 'x3_m40i_g01'): only cars of that generation.
+    refresh  — also fetch again cars that already have a report.
     """
     conn = db.get_db()
     client = CepikClient()
@@ -436,7 +436,7 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
             raise SystemExit(f"Nieznany model: {model_id}")
         log_filter = "" if (retry_failed or refresh) else "AND (l.vin IS NULL OR l.status != 'not_found')"
         report_filter = "" if refresh else "AND c.vin IS NULL"
-        # Tablica/data z vehicles, a jeśli brak — z najnowszego ogłoszenia
+        # Plate/date from vehicles, or from the newest listing when missing there
         rows = conn.execute(f"""
             SELECT * FROM (
                 SELECT v.vin, v.make, v.model,
@@ -463,7 +463,7 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
         """, (limit,)).fetchall()
     else:
         log_filter = "" if retry_failed else "AND (l.vin IS NULL OR l.status != 'not_found')"
-        # Pobierz auta, które mają komplet danych i nie były jeszcze sprawdzone
+        # Cars with complete data that have not been checked yet
         rows = conn.execute(f"""
             SELECT DISTINCT 
                 v.vin, 
@@ -488,7 +488,7 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
             LIMIT ?
         """, (limit,)).fetchall()
 
-        # Jeśli brak w vehicles, sprawdź dodatkowo pending_listings
+        # If none in vehicles, also check pending_listings
         if not rows:
             rows = conn.execute(f"""
                 SELECT DISTINCT p.vin, p.registration_plate, p.first_registration_date, p.make, p.model

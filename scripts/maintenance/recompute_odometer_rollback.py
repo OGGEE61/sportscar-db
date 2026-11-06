@@ -1,6 +1,6 @@
-"""Przelicza flagę cofniętego licznika dla wszystkich raportów CEPiK wg aktualnego progu.
+"""Recompute the rolled-back odometer flag of every CEPiK report with the current threshold.
 
-Użycie (domyślnie dry-run, bez zapisu):
+Usage (dry run by default, writes nothing):
     DB_BACKEND=d1 python scripts/maintenance/recompute_odometer_rollback.py
     DB_BACKEND=d1 python scripts/maintenance/recompute_odometer_rollback.py --apply
 """

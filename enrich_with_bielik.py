@@ -212,7 +212,7 @@ def main():
                 interior.append(data.get("interior_material"))
             ai_interior_str = " / ".join(interior) if interior else None
 
-            # Województwo (kod ISO np. 'PL-MZ')
+            # Voivodeship (ISO code, e.g. 'PL-MZ')
             ai_region_raw = data.get("location_region")
             ai_region = None
             if ai_region_raw:
