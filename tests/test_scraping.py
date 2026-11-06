@@ -1352,3 +1352,31 @@ class TestRevealVin(unittest.TestCase):
         with self.reply({}, status=403):
             self.assertIsNone(base_scraper.reveal_vin("1", {}))
 
+
+class TestRunLogOrigin(unittest.TestCase):
+    def sent(self, env):
+        import importlib
+        with mock.patch.dict(os.environ, env, clear=False):
+            if "GITHUB_ACTIONS" not in env:
+                os.environ.pop("GITHUB_ACTIONS", None)
+            mod = importlib.reload(base_scraper)
+            with mock.patch.object(mod._API_SESSION, "post") as post:
+                mod._log_run("success", "Processed 'F10 M5'", source="otomoto")
+        importlib.reload(base_scraper)
+        return post.call_args.kwargs["json"]["message"]
+
+    def test_local_and_github_runs_are_told_apart(self):
+        self.assertEqual(self.sent({"GITHUB_ACTIONS": "true"}), "[GitHub] Processed 'F10 M5'")
+        self.assertEqual(self.sent({}), "[lokalnie] Processed 'F10 M5'")
+
+    def test_firewall_block_is_not_reported_as_expired_cookies(self):
+        cookies = {"refresh_token": "r", "client_id": "c",
+                   "id_token": "x.eyJpc3MiOiJodHRwczovL2NvZ25pdG8taWRwLmV1LXdlc3QtMS5hbWF6b25hd3MuY29tL3AifQ.y"}
+        resp = mock.Mock(status_code=403, text='{"message":"Request not allowed due to WAF challenge."}')
+        base_scraper._token_error_logged = False
+        with mock.patch.object(base_scraper.requests, "post", return_value=resp), \
+             mock.patch.object(base_scraper, "_log_run") as log:
+            base_scraper.refresh_session(cookies)
+        self.assertIn("WAF", log.call_args.args[1])
+        self.assertNotIn("update GitHub Secrets", log.call_args.args[1])
+

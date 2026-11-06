@@ -104,6 +104,8 @@ def pick_longest_waiting(source: str, configs: list, count: int) -> list:
 
 
 def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", found_count: int = 0, new_count: int = 0, dup_count: int = 0, rej_count: int = 0, source: str = "", session_status: str = ""):
+    # Tag where the run happened, so a local test is never mistaken for the scheduled runs
+    message = f"[{RUN_ORIGIN}] {message}"
     try:
         _API_SESSION.post(
             LOG_URL,
@@ -113,6 +115,8 @@ def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", 
         )
     except Exception as e:
         print(f"[log_run] failed: {e}")
+
+RUN_ORIGIN = "GitHub" if os.environ.get("GITHUB_ACTIONS") else "lokalnie"
 
 LAST_RUN_STATUS = {}   # source -> status of the most recent run(), read by the runners
 LIST_FETCH_ATTEMPTS = 3   # transient list-page timeouts are common on OLX
@@ -300,7 +304,12 @@ def refresh_session(cookies: dict, log_errors: bool = True) -> dict:
         if r.status_code != 200:
             print(f"[auth] Token refresh failed: HTTP {r.status_code} -- {r.text[:120]}")
             if log_errors and not _token_error_logged:
-                _log_run("error", "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies.", source="otomoto")
+                if "WAF" in r.text:
+                    # AWS blocks some requests from cloud IPs: the cookies are fine, the next run usually passes
+                    msg = "Token refresh blocked by the AWS firewall (WAF), not an expired session: cookies are fine."
+                else:
+                    msg = "Token refresh failed: Otomoto session has expired. Please update GitHub Secrets with new cookies."
+                _log_run("error", msg, source="otomoto")
                 _token_error_logged = True
             return cookies
         tokens       = r.json().get("AuthenticationResult", {})
