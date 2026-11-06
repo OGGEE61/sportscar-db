@@ -1421,3 +1421,15 @@ class TestWorthRevealing(unittest.TestCase):
         from otomoto.bmw_x3_m_f97 import CONFIG
         self.assertTrue(base_scraper._worth_revealing(CONFIG, {"year": 2021, "power_hp": 360}))
 
+
+
+class TestSessionCheckKeepsAccountPrivate(unittest.TestCase):
+    def test_session_check_never_prints_the_account_email_or_name(self):
+        import io, contextlib
+        resp = mock.Mock()
+        resp.json.return_value = {"user": {"name": "Jan Kowalski", "email": "someone@example.com"}}
+        out = io.StringIO()
+        with mock.patch.object(base_scraper.requests, "get", return_value=resp), contextlib.redirect_stdout(out):
+            self.assertTrue(base_scraper.check_session({}))
+        self.assertNotIn("someone@example.com", out.getvalue())
+        self.assertNotIn("Kowalski", out.getvalue())
