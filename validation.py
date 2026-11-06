@@ -48,6 +48,7 @@ def is_plausible_vin(vin: str) -> bool:
         r"WBA|WBS|WBY|WB[0-9A-Z]|5UX|5YM|3MW|3MF|" # BMW
         r"WAP|"                   # Alpina
         r"WDB|WDD|WDC|W1N|W1K|1MB|" # Mercedes
+        r"VAG|VAD|"               # Mercedes G-Class built in Graz, Austria (Steyr-Daimler-Puch / Magna Steyr)
         r"WP0|WP1|"               # Porsche
         r"JT|"                    # Toyota
         r"1C6|3C6|"               # RAM
@@ -130,8 +131,8 @@ def is_dealer_new(year, mileage_km, first_registration_date=None, on=None) -> bo
     return bool(year) and year >= on.year
 
 
-# VAG: G-Class built by Steyr-Daimler-Puch
-MERCEDES_WMI = ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S", "VAG")
+# VAG / VAD: G-Class built in Graz, Austria (Steyr-Daimler-Puch / Magna Steyr)
+MERCEDES_WMI = ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S", "VAG", "VAD")
 
 
 def is_other_mercedes_chassis(vin, chassis) -> bool:
