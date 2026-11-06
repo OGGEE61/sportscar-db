@@ -366,8 +366,8 @@ def check_session(cookies: dict) -> bool:
         data = r.json()
         user = data.get("user") or data.get("data", {}).get("user")
         if user:
-            name = user.get("name") or user.get("email") or "?"
-            print(f"[auth] Logged in as: {_safe(str(name))}")
+            # Never print the account name or email: GitHub Actions logs of this public repo are public
+            print("[auth] Logged in to Otomoto")
             return True
         print("[auth] Session check: NOT logged in (VINs will stay encrypted)")
         return False
