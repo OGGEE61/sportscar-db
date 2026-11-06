@@ -396,7 +396,10 @@ _VIN_QUERY = """
 # without a VIN stay incomplete and are tried again on later runs.
 VIN_REVEAL_DELAY_S = (4.0, 8.0)
 VIN_REVEALS_PER_RUN = 20
-_vin_reveals = {"count": 0, "blocked": False}
+# Past a daily limit otomoto answers with a masked VIN (all X, or ending in "XXX") instead of a 403. One masked
+# VIN may be a seller's own, so this many in a row stop the reveals like a 403 does.
+VIN_MASKED_IN_A_ROW_STOP = 2
+_vin_reveals = {"count": 0, "blocked": False, "masked_in_a_row": 0}
 
 
 def vin_reveal_allowed() -> bool:
@@ -421,7 +424,8 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
 
     Returns the 17-char VIN string or None. Why it failed (HTTP status, GraphQL error, AdVinError
     code) is printed, so a change on otomoto's side shows up in the run log. Paced and capped: see
-    VIN_REVEAL_DELAY_S and VIN_REVEALS_PER_RUN; an HTTP 403 stops reveals for the rest of the run.
+    VIN_REVEAL_DELAY_S and VIN_REVEALS_PER_RUN; an HTTP 403, or VIN_MASKED_IN_A_ROW_STOP masked VINs
+    in a row, stop reveals for the rest of the run. A masked VIN gives None.
     """
     if not vin_reveal_allowed():
         return None
@@ -448,6 +452,14 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
         result = ((data.get("data") or {}).get("viewer") or {}).get("adVin") or {}
         value  = ((result.get("vin") or {}).get("value") or "").strip().upper()
         if value and len(value) == 17 and VIN_RE.fullmatch(value):
+            if value.endswith("XXX"):
+                _vin_reveals["masked_in_a_row"] += 1
+                print("    [vin] masked VIN from otomoto")
+                if _vin_reveals["masked_in_a_row"] >= VIN_MASKED_IN_A_ROW_STOP:
+                    _vin_reveals["blocked"] = True
+                    print("    [vin] otomoto is masking VINs: no more VIN reveals this run")
+                return None
+            _vin_reveals["masked_in_a_row"] = 0
             return value
         why = result.get("code") or result.get("__typename") or (data.get("errors") or [{}])[0].get("message")
         print(f"    [vin] no VIN: {_safe(str(why))[:120]}")
