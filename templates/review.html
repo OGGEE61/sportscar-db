@@ -53,7 +53,7 @@
     <button type="button" class="btn btn-outline-success btn-sm" id="approve-all-vin-btn">
       Approve All with VIN
     </button>
-    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings that are missing a valid VIN?')) { fetch('/review/bulk_reject_novin?{{ '&source=' ~ source if source else '' }}', {method: 'POST'}).then(r => window.location.reload()); }">
+    <button type="button" class="btn btn-warning btn-sm" id="reject-novin-btn">
       Reject All w/o VIN
     </button>
     <button type="button" class="btn btn-outline-danger btn-sm" id="reject-all-btn">
@@ -67,7 +67,7 @@
 {% if status_filter == 'approved' %}
 <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-3 p-2 bg-light border rounded">
   <div class="d-flex flex-wrap gap-2 ms-md-auto">
-    <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL approved listings that are missing a valid VIN? This will completely remove their vehicle profiles and observation data.')) { fetch('/review/bulk_reject_approved_novin?{{ '&source=' ~ source if source else '' }}', {method: 'POST'}).then(r => window.location.reload()); }">
+    <button type="button" class="btn btn-warning btn-sm" id="reject-approved-novin-btn">
       Reject All w/o VIN
     </button>
   </div>
@@ -204,6 +204,14 @@
 
 <!-- Operation Tracker (Toasts) -->
 <div id="op-tracker" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055; pointer-events: none;"></div>
+<!-- Grey veil while a bulk action runs; clicks pass through, so the app stays usable -->
+<div id="bg-op-veil"></div>
+<style>
+  #bg-op-veil { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.12); pointer-events: none;
+                opacity: 0; transition: opacity .25s; z-index: 1050; }
+  body.bg-op-running #bg-op-veil { opacity: 1; }
+  .bg-op { width: 320px; max-width: calc(100vw - 2rem); pointer-events: auto; }
+</style>
 
 <script>
 function showToast(title, msg, type='success') {
@@ -225,6 +233,96 @@ function showToast(title, msg, type='success') {
     const el = document.getElementById(id);
     if (el) el.remove();
   }, 4000);
+}
+
+// Background operation: a progress card in the bottom-right corner and a grey veil while a bulk
+// action runs. Pass total for a counted bar, or null for one long request. Leaving the page asks
+// first, because the remaining steps run in this tab.
+const BgOp = (() => {
+  let running = 0;
+  window.addEventListener('beforeunload', e => {
+    if (running) { e.preventDefault(); e.returnValue = ''; }
+  });
+  function start(title, total) {
+    running++;
+    document.body.classList.add('bg-op-running');
+    const el = document.createElement('div');
+    el.className = 'bg-op card shadow border-0 mb-2';
+    el.innerHTML = `
+      <div class="card-body p-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+          <strong class="small bg-op-title"></strong>
+        </div>
+        <div class="progress" style="height: 6px;"><div class="progress-bar"></div></div>
+        <div class="small text-muted mt-1 bg-op-detail"></div>
+      </div>`;
+    el.querySelector('.bg-op-title').textContent = title;
+    const bar = el.querySelector('.progress-bar');
+    const detail = el.querySelector('.bg-op-detail');
+    if (total == null) {
+      bar.classList.add('progress-bar-striped', 'progress-bar-animated');
+      bar.style.width = '100%';
+      detail.textContent = 'Working… you can keep using the app.';
+    } else {
+      bar.style.width = '0%';
+      detail.textContent = `0 of ${total} done`;
+    }
+    document.getElementById('op-tracker').appendChild(el);
+    let done = false;
+    return {
+      update(n, failed = 0) {
+        bar.style.width = Math.round(100 * (n + failed) / total) + '%';
+        detail.textContent = `${n} of ${total} done` + (failed ? `, ${failed} failed` : '');
+      },
+      finish(message, type = 'success') {
+        if (done) return;
+        done = true;
+        running--;
+        if (!running) document.body.classList.remove('bg-op-running');
+        el.remove();
+        showToast(title, message, type);
+      },
+    };
+  }
+  return { start, isRunning: () => running > 0 };
+})();
+
+// One request per listing, so no single request runs into the function timeout
+async function approveOneByOne(ids, title) {
+  const op = BgOp.start(title, ids.length);
+  let completed = 0, failed = 0;
+  for (const id of ids) {
+    try {
+      const res = await fetch(`/review/${id}/approve?ajax=1`, { method: 'POST' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      completed++;
+      const row = document.querySelector(`.card-check[value="${id}"]`)?.closest('.list-group-item');
+      if (row) row.remove();
+    } catch (err) {
+      console.error(`Failed to approve ${id}:`, err);
+      failed++;
+    }
+    op.update(completed, failed);
+  }
+  op.finish(`Approved ${completed} of ${ids.length} listings` + (failed ? ` (${failed} failed).` : '.'),
+            failed ? 'warning' : 'success');
+  if (typeof updateBar === 'function') updateBar();
+  return { completed, failed };
+}
+
+// A bulk action done by one request: progress card while it runs, then reload to show the result
+async function runOneRequest(url, title, doneMessage) {
+  const op = BgOp.start(title, null);
+  try {
+    const res = await fetch(url, { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    op.finish(doneMessage, 'success');
+    return true;
+  } catch (err) {
+    op.finish('Failed: ' + err.message, 'danger');
+    return false;
+  }
 }
 
 function handleQuickAction(btn, actionName, confirmMsg) {
@@ -316,74 +414,35 @@ function submitBulkAction(actionUrl, actionName) {
     }
   });
 
-  const isApprove = actionUrl.includes('bulk_approve');
-  const btn = isApprove ? approveBtn : rejectBtn;
-  const originalText = btn ? btn.textContent : '';
+  const restore = () => selected.forEach(c => {
+    const row = c.closest('.list-group-item');
+    if (row) { row.style.opacity = '1'; row.style.pointerEvents = 'auto'; }
+  });
 
-  if (isApprove) {
-    // Sequential processing for approvals to show progress (approving is slow)
-    let completed = 0;
-    
-    async function processSequentially() {
-      for (const c of selected) {
-        if (btn) btn.textContent = `Approving ${completed + 1}/${selected.length}...`;
-        try {
-          const res = await fetch(`/review/${c.value}/approve?ajax=1`, { method: 'POST' });
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          const row = c.closest('.list-group-item');
-          if (row) row.remove();
-          completed++;
-        } catch (err) {
-          console.error(`Failed to approve ${c.value}:`, err);
-          const row = c.closest('.list-group-item');
-          if (row) {
-            row.style.opacity = '1';
-            row.style.pointerEvents = 'auto';
-          }
-        }
-      }
-      
-      if (btn) btn.textContent = originalText;
-      showToast(actionName + ' Complete', `Successfully approved ${completed} out of ${selected.length} listings.`, 'success');
-      updateBar();
-    }
-    
-    processSequentially();
-  } else {
-    // Standard bulk request for rejects (fast)
-    if (btn) btn.textContent = 'Processing...';
-    const formData = new FormData();
-    selected.forEach(c => formData.append('ids', c.value));
-    
-    fetch(actionUrl + '?ajax=1', {
-      method: 'POST',
-      body: formData
-    })
-    .then(res => {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    })
-    .then(data => {
-      selected.forEach(c => {
-        const row = c.closest('.list-group-item');
-        if (row) row.remove();
-      });
-      if (btn) btn.textContent = originalText;
-      showToast(actionName + ' Complete', `Processed ${selected.length} listings.`, 'success');
-      updateBar();
-    })
-    .catch(err => {
-      selected.forEach(c => {
-        const row = c.closest('.list-group-item');
-        if (row) {
-          row.style.opacity = '1';
-          row.style.pointerEvents = 'auto';
-        }
-      });
-      if (btn) btn.textContent = originalText;
-      showToast('Error', 'Failed to process bulk request: ' + err.message, 'danger');
-    });
+  if (actionUrl.includes('bulk_approve')) {
+    // Approving is slow: one listing at a time, with progress
+    approveOneByOne(selected.map(c => c.value), `Approving ${selected.length} selected`).then(restore);
+    return;
   }
+
+  // Rejecting is one fast request
+  const op = BgOp.start(`Rejecting ${selected.length} selected`, null);
+  const formData = new FormData();
+  selected.forEach(c => formData.append('ids', c.value));
+  fetch(actionUrl + '?ajax=1', { method: 'POST', body: formData })
+  .then(res => {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(() => {
+    selected.forEach(c => c.closest('.list-group-item')?.remove());
+    op.finish(`Rejected ${selected.length} listings.`);
+    updateBar();
+  })
+  .catch(err => {
+    restore();
+    op.finish('Failed: ' + err.message, 'danger');
+  });
 }
 
 if (rejectBtn) {
@@ -419,29 +478,34 @@ if (rejectAllBtn) {
   rejectAllBtn.onclick = (e) => {
     e.preventDefault();
     if (!confirm('Reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings?')) return;
-    
-    document.querySelectorAll('.list-group-item').forEach(row => {
-      row.style.opacity = '0.3';
-      row.style.pointerEvents = 'none';
-    });
-    
-    fetch('/review/reject_all_pending?ajax=1{{ '&source=' ~ source if source else '' }}', { method: 'POST' })
-    .then(res => {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    })
-    .then(data => {
-      document.querySelectorAll('.list-group-item').forEach(row => row.remove());
-      showToast('Bulk Reject All Complete', 'All pending listings rejected.', 'success');
-      updateBar();
-    })
-    .catch(err => {
-      document.querySelectorAll('.list-group-item').forEach(row => {
-        row.style.opacity = '1';
-        row.style.pointerEvents = 'auto';
-      });
-      showToast('Error', 'Failed to reject all: ' + err.message, 'danger');
-    });
+    rejectAllBtn.disabled = true;
+    runOneRequest('/review/reject_all_pending?ajax=1{{ '&source=' ~ source if source else '' }}',
+                  'Rejecting all pending', 'All pending listings rejected.')
+      .then(ok => ok ? setTimeout(() => window.location.reload(), 1200) : (rejectAllBtn.disabled = false));
+  };
+}
+
+const rejectNovinBtn = document.getElementById('reject-novin-btn');
+if (rejectNovinBtn) {
+  rejectNovinBtn.onclick = (e) => {
+    e.preventDefault();
+    if (!confirm('Are you sure you want to reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings that are missing a valid VIN?')) return;
+    rejectNovinBtn.disabled = true;
+    runOneRequest('/review/bulk_reject_novin?{{ 'source=' ~ source if source else '' }}',
+                  'Rejecting listings without VIN', 'Done. Reloading…')
+      .then(ok => ok ? setTimeout(() => window.location.reload(), 800) : (rejectNovinBtn.disabled = false));
+  };
+}
+
+const rejectApprovedNovinBtn = document.getElementById('reject-approved-novin-btn');
+if (rejectApprovedNovinBtn) {
+  rejectApprovedNovinBtn.onclick = (e) => {
+    e.preventDefault();
+    if (!confirm('Are you sure you want to reject ALL approved listings that are missing a valid VIN? This will completely remove their vehicle profiles and observation data.')) return;
+    rejectApprovedNovinBtn.disabled = true;
+    runOneRequest('/review/bulk_reject_approved_novin?{{ 'source=' ~ source if source else '' }}',
+                  'Rejecting approved listings without VIN', 'Done. Reloading…')
+      .then(ok => ok ? setTimeout(() => window.location.reload(), 800) : (rejectApprovedNovinBtn.disabled = false));
   };
 }
 
@@ -451,7 +515,6 @@ const approveAllVinBtn = document.getElementById('approve-all-vin-btn');
 if (approveAllVinBtn) {
   approveAllVinBtn.onclick = async (e) => {
     e.preventDefault();
-    const originalText = approveAllVinBtn.textContent;
     let ids;
     try {
       const res = await fetch('/review/pending_with_vin?{{ 'source=' ~ source if source else '' }}');
@@ -468,25 +531,8 @@ if (approveAllVinBtn) {
     if (!confirm(`Approve ALL ${ids.length} {% if source %}{{ source|upper }} {% endif %}pending listings that have a valid VIN?`)) return;
 
     approveAllVinBtn.disabled = true;
-    let completed = 0, failed = 0;
-    for (const id of ids) {
-      approveAllVinBtn.textContent = `Approving ${completed + failed + 1}/${ids.length}...`;
-      try {
-        const res = await fetch(`/review/${id}/approve?ajax=1`, { method: 'POST' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        completed++;
-        const row = document.querySelector(`.card-check[value="${id}"]`)?.closest('.list-group-item');
-        if (row) row.remove();
-      } catch (err) {
-        console.error(`Failed to approve ${id}:`, err);
-        failed++;
-      }
-    }
-    approveAllVinBtn.textContent = originalText;
+    await approveOneByOne(ids, `Approving ${ids.length} listings with VIN`);
     approveAllVinBtn.disabled = false;
-    showToast('Approve All with VIN Complete',
-      `Approved ${completed} of ${ids.length} listings` + (failed ? ` (${failed} failed).` : '.'),
-      failed ? 'warning' : 'success');
     setTimeout(() => window.location.reload(), 1500);
   };
 }
@@ -496,28 +542,10 @@ if (clearRejectedBtn) {
   clearRejectedBtn.onclick = (e) => {
     e.preventDefault();
     if (!confirm('Permanently delete ALL rejected listings?')) return;
-    
-    document.querySelectorAll('.list-group-item').forEach(row => {
-      row.style.opacity = '0.3';
-      row.style.pointerEvents = 'none';
-    });
-    
-    fetch('/review/clear_rejected?ajax=1{{ '&source=' ~ source if source else '' }}', { method: 'POST' })
-    .then(res => {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    })
-    .then(data => {
-      document.querySelectorAll('.list-group-item').forEach(row => row.remove());
-      showToast('Clear Rejected Complete', 'All rejected listings deleted.', 'success');
-    })
-    .catch(err => {
-      document.querySelectorAll('.list-group-item').forEach(row => {
-        row.style.opacity = '1';
-        row.style.pointerEvents = 'auto';
-      });
-      showToast('Error', 'Failed to clear rejected: ' + err.message, 'danger');
-    });
+    clearRejectedBtn.disabled = true;
+    runOneRequest('/review/clear_rejected?ajax=1{{ '&source=' ~ source if source else '' }}',
+                  'Deleting rejected listings', 'All rejected listings deleted.')
+      .then(ok => ok ? setTimeout(() => window.location.reload(), 1200) : (clearRejectedBtn.disabled = false));
   };
 }
 </script>
