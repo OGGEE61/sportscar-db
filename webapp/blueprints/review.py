@@ -149,6 +149,22 @@ def review_bulk_approve():
     return redirect(url_for("review.review_queue"))
 
 
+@bp.route("/review/pending_with_vin")
+def review_pending_with_vin():
+    """Ids of pending listings with a plausible VIN, for "Approve all with VIN".
+
+    The counterpart of bulk_reject_novin (same check, same source filter). The page approves them
+    one by one through review_approve, as "Approve selected" does, so no request runs long.
+    """
+    src_sql, src_params = _source_scope()
+    conn = get_db()
+    pending = conn.execute(
+        f"SELECT id, vin FROM pending_listings WHERE status='pending'{src_sql} ORDER BY scraped_at DESC",
+        src_params).fetchall()
+    conn.close()
+    return {"ids": [p["id"] for p in pending if is_plausible_vin(p["vin"])]}
+
+
 @bp.route("/review/bulk_reject_novin", methods=["POST"])
 def review_bulk_reject_novin():
     src_sql, src_params = _source_scope()
