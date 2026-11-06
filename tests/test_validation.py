@@ -24,8 +24,14 @@ class TestVin(unittest.TestCase):
             "WDD2040771F408260",   # Mercedes
             "WP0ZZZ98ZGK194519",   # Porsche
             "wbs11dm0108e8ag77",   # case-insensitive
+            "VAG46023117104748",   # Mercedes G-Class built in Graz, Austria
+            "VAD46333817104512",   # Mercedes G-Class built in Graz, Austria
         ]:
             self.assertTrue(is_plausible_vin(vin), vin)
+
+    def test_only_the_g_class_austrian_wmis_are_accepted(self):
+        for vin in ("VAN46023117104748", "VAA46023117104748", "VAG4602311710XXXX"):
+            self.assertFalse(is_plausible_vin(vin), vin)
 
     def test_rejects_fake_or_masked_vins(self):
         for vin in [
@@ -130,6 +136,8 @@ class TestOtherMercedesChassis(unittest.TestCase):
     def test_vin_of_another_make_is_ruled_out(self):
         self.assertTrue(self.check("WBY1Z21000V123456", "460"))
         self.assertFalse(self.check("VAG46023117104748", "460"))
+        self.assertFalse(self.check("VAD46333817104512", "463"))
+        self.assertTrue(self.check("VAD46333817104512", "211"))
 
     def test_unknown_chassis_is_never_ruled_out(self):
         self.assertFalse(self.check("WDDHF7HB0AA123456", "212"))   # US-spec, letters

@@ -32,7 +32,7 @@ import run_autoplac  # noqa: E402
 MAKE_WMI = {
     "BMW":           ("WBA", "WBS", "WBY", "WBX", "5UX", "5YM", "3MW", "3MF", "WB1"),
     "Alpina":        ("WAP",),
-    "Mercedes-Benz": ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S", "VAG"),
+    "Mercedes-Benz": ("WDB", "WDC", "WDD", "WDF", "W1K", "W1N", "W1V", "4JG", "55S", "VAG", "VAD"),
     "Audi":          ("WAU", "WUA", "TRU", "WA1"),
     "Porsche":       ("WP0", "WP1"),
     "Toyota":        ("JTD", "JTM", "JTE", "SB1", "VNK", "JT"),
