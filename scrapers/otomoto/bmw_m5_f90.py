@@ -16,6 +16,8 @@ def is_f90(detail: dict) -> bool:
     vin = (detail.get("vin") or "").upper()
     if vin.startswith(("WBSFV", "WBSFK")):
         return False
+    if not vin and detail.get("before_reveal"):
+        return True     # a 2017 car is decided once its VIN is revealed
     return (detail.get("year") or 0) >= 2018 or vin.startswith(F90_VIN)
 
 

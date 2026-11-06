@@ -404,6 +404,18 @@ def vin_reveal_allowed() -> bool:
     return not _vin_reveals["blocked"] and _vin_reveals["count"] < VIN_REVEALS_PER_RUN
 
 
+def _worth_revealing(cfg, detail: dict) -> bool:
+    """False when the listing will be rejected whatever its VIN: spend no "Show VIN" request on it.
+
+    Only for scrapers without a reassign rule: those pick the model by VIN, so their validator can't
+    judge a car before the VIN is known. The validator sees `before_reveal`, so one that needs the VIN
+    to decide can let the car through for now.
+    """
+    if cfg.reassign or not cfg.validator:
+        return True
+    return bool(cfg.validator(dict(detail, before_reveal=True)))
+
+
 def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
     """Fetch the VIN through otomoto's GraphQL API, as the ad page does for a logged-in user.
 
@@ -1356,6 +1368,20 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         detail = fetch_detail(source_url, cookies=cookies)
                         if detail:
                             _DETAIL_CACHE[source_url] = detail
+                    if detail.get("year"):
+                        print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
+                              f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
+
+                        url_min_year, url_max_year = _url_year_range(url_tmpl)
+                        min_year = cfg.min_year or url_min_year
+                        max_year = cfg.max_year or url_max_year
+                        if not cfg.reassign and min_year and detail['year'] < min_year:
+                            print(f"  [skip] Year {detail['year']} < min {min_year}")
+                            continue
+                        if not cfg.reassign and max_year and detail['year'] > max_year:
+                            print(f"  [skip] Year {detail['year']} > max {max_year}")
+                            continue
+
                     vc = detail.get("vin_confidence", "none")
                     if detail.get("vin") and vc == "found_in_description":
                         print(f"    VIN (desc):   {detail['vin']}")
@@ -1363,6 +1389,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         print(f"    VIN (schema): {detail['vin']}")
                     elif vc == "invalid_vin":
                         print(f"    VIN (niepoprawny/fejk): {detail.get('invalid_vin')} — odrzucony przez walidator")
+                    elif vc == "found_in_schema" and not _worth_revealing(cfg, detail):
+                        print("    VIN: not revealed, the listing is rejected anyway")
                     elif vc == "found_in_schema" and logged_in and vin_reveal_allowed():
                         revealed = reveal_vin(listing_id, cookies)
                         if revealed:
@@ -1382,9 +1410,6 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                                   f"not {cfg.model} {cfg.variant} -- saved as {target.variant}")
 
                     if detail.get("year"):
-                        print(f"    {detail['year']} | {detail.get('mileage_km')} km | "
-                              f"{detail.get('power_hp')} HP | {_safe(detail.get('color_ext') or '')}")
-
                         url_min_year, url_max_year = _url_year_range(url_tmpl)
                         min_year = car.min_year or url_min_year
                         max_year = car.max_year or url_max_year
