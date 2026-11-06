@@ -1333,6 +1333,13 @@ class TestUrlYearRange(unittest.TestCase):
 
 
 class TestRevealVin(unittest.TestCase):
+    def setUp(self):
+        base_scraper._vin_reveals.update(count=0, blocked=False)
+        sleep = mock.patch.object(base_scraper.time, "sleep")
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+        self.addCleanup(base_scraper._vin_reveals.update, count=0, blocked=False)
+
     def reply(self, body, status=200):
         resp = mock.Mock(status_code=status, text=str(body))
         resp.json.return_value = body
@@ -1379,4 +1386,22 @@ class TestRunLogOrigin(unittest.TestCase):
             base_scraper.refresh_session(cookies)
         self.assertIn("WAF", log.call_args.args[1])
         self.assertNotIn("update GitHub Secrets", log.call_args.args[1])
+
+
+
+class TestRevealVinPacing(TestRevealVin):
+    def test_403_stops_reveals_for_the_rest_of_the_run(self):
+        with self.reply({}, status=403) as post:
+            self.assertIsNone(base_scraper.reveal_vin("1", {}))
+            self.assertIsNone(base_scraper.reveal_vin("2", {}))
+        self.assertEqual(post.call_count, 1)
+        self.assertFalse(base_scraper.vin_reveal_allowed())
+
+    def test_reveals_are_spaced_and_capped(self):
+        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": "WDB4632481X123456"}}}}}
+        with self.reply(body) as post:
+            for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
+                base_scraper.reveal_vin(str(i), {})
+        self.assertEqual(post.call_count, base_scraper.VIN_REVEALS_PER_RUN)
+        self.assertEqual(self.sleep.call_count, base_scraper.VIN_REVEALS_PER_RUN - 1)
 

@@ -391,12 +391,31 @@ _VIN_QUERY = """
 """
 
 
+# Every VIN now costs one "Show VIN" request on the account. Dozens in a row got the account or
+# runner blocked (HTTP 403 bot page), so reveals are spaced out and capped per process; ads left
+# without a VIN stay incomplete and are tried again on later runs.
+VIN_REVEAL_DELAY_S = (4.0, 8.0)
+VIN_REVEALS_PER_RUN = 20
+_vin_reveals = {"count": 0, "blocked": False}
+
+
+def vin_reveal_allowed() -> bool:
+    """False once this process hit the per-run cap or otomoto blocked a reveal."""
+    return not _vin_reveals["blocked"] and _vin_reveals["count"] < VIN_REVEALS_PER_RUN
+
+
 def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
     """Fetch the VIN through otomoto's GraphQL API, as the ad page does for a logged-in user.
 
     Returns the 17-char VIN string or None. Why it failed (HTTP status, GraphQL error, AdVinError
-    code) is printed, so a change on otomoto's side shows up in the run log.
+    code) is printed, so a change on otomoto's side shows up in the run log. Paced and capped: see
+    VIN_REVEAL_DELAY_S and VIN_REVEALS_PER_RUN; an HTTP 403 stops reveals for the rest of the run.
     """
+    if not vin_reveal_allowed():
+        return None
+    if _vin_reveals["count"]:
+        time.sleep(random.uniform(*VIN_REVEAL_DELAY_S))
+    _vin_reveals["count"] += 1
     try:
         r = requests.post(
             "https://www.otomoto.pl/graphql",
@@ -409,6 +428,9 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
         )
         if r.status_code != 200:
             print(f"    [vin] HTTP {r.status_code}: {_safe(r.text[:120])}")
+            if r.status_code == 403:
+                _vin_reveals["blocked"] = True
+                print("    [vin] blocked by otomoto: no more VIN reveals this run")
             return None
         data   = r.json()
         result = ((data.get("data") or {}).get("viewer") or {}).get("adVin") or {}
@@ -1341,7 +1363,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         print(f"    VIN (schema): {detail['vin']}")
                     elif vc == "invalid_vin":
                         print(f"    VIN (niepoprawny/fejk): {detail.get('invalid_vin')} — odrzucony przez walidator")
-                    elif vc == "found_in_schema" and logged_in:
+                    elif vc == "found_in_schema" and logged_in and vin_reveal_allowed():
                         revealed = reveal_vin(listing_id, cookies)
                         if revealed:
                             detail["vin"]            = revealed
