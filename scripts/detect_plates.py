@@ -1,8 +1,7 @@
-"""Lokalny moduł detekcji tablic rejestracyjnych (YOLOv8 + fast-plate-ocr).
+"""Local registration plate detection (YOLOv8 + fast-plate-ocr).
 
-Wyszukuje tablice rejestracyjne na zdjęciach samochodów, wycina zbliżenie
-i odczytuje numer, a następnie zapisuje propozycje do kolejki weryfikacji
-Human-in-the-Loop (`plate_review_queue`).
+Finds registration plates in car photos, crops a close-up, reads the number,
+and saves the proposals to the human-in-the-loop review queue (`plate_review_queue`).
 """
 
 import os
@@ -31,17 +30,17 @@ DB_PATH = os.path.join(BASE_DIR, "sportscar_market.db")
 
 os.makedirs(CROPS_DIR, exist_ok=True)
 
-# Słowa-klucze na ramkach tablic lub tablicach komisowych / reklamowych do odfiltrowania
+# Words on plate frames and dealer / advertising plates, to filter out
 DEALER_WORDS = {
     "OTOMOTO", "OLX", "KOMIS", "SALON", "AUTOPLUS", "VIP", "CAR",
     "DEALER", "SERVICE", "BMW", "AUDI", "MERCEDES", "PORSCHE", "AUTA",
     "POZNAN", "WARSZAWA", "KRAKOW", "WROCLAW", "GDANSK", "POLSKA", "PL"
 }
 
-# Model do tablic: na 97 tablicach poprawionych przez człowieka 89 odczytów bezbłędnych (EasyOCR: 9)
+# Plate model: on 97 plates corrected by a human it read 89 without error (EasyOCR: 9)
 OCR_MODEL = "cct-s-v2-global-model"
-# Najniższa pewność znaku, od której odczyt staje się propozycją; zachowuje wszystkie poprawne
-# odczyty z tego testu, a odrzuca niemal połowę ramek i napisów
+# Lowest per-character confidence for a reading to become a proposal; keeps every correct
+# reading from that test and drops almost half of the frames and lettering
 OCR_MIN_CONFIDENCE = 0.7
 
 _yolo_model = None
@@ -49,9 +48,9 @@ _plate_reader = None
 
 
 def get_models():
-    """Lazy loader dla modeli, aby nie obciążać pamięci przy samym imporcie."""
+    """Load the models lazily, so importing the module costs no memory."""
     global _yolo_model, _plate_reader
-    # Silniki CV & OCR: import dopiero tutaj, żeby moduł ładował się bez nich
+    # CV and OCR engines are imported only here, so the module loads without them
     from ultralytics import YOLO
     from fast_plate_ocr import LicensePlateRecognizer
     if _yolo_model is None:
@@ -64,7 +63,7 @@ def get_models():
 
 
 def read_plate(reader, crop: Image.Image) -> str:
-    """Odczytuje tablicę z wycinka; zwraca tekst albo "", gdy odczyt jest niepewny lub nie wygląda na tablicę."""
+    """Read the plate from a crop; return the text, or "" when the reading is uncertain or does not look like a plate."""
     prediction = reader.run(np.array(crop.convert("RGB")), return_confidence=True)[0]
     text = re.sub(r"[^A-Z0-9]", "", (prediction.plate or "").upper())
     probs = prediction.char_probs
@@ -74,12 +73,12 @@ def read_plate(reader, crop: Image.Image) -> str:
 
 
 def clean_plate_text(raw_text: str) -> str:
-    """Czyści odczytany ciąg znaków do standardu tablicy rejestracyjnej."""
+    """Clean the read text into the registration plate format."""
     if not raw_text:
         return ""
-    # Tylko wielkie litery i cyfry
+    # Uppercase letters and digits only
     cleaned = re.sub(r"[^A-Z0-9]", "", raw_text.upper())
-    # Euroband z flagą PL często jest czytany przez OCR jako prefiks 'PL', '1PL', 'IPL' itp.
+    # OCR often reads the PL euroband as a 'PL', '1PL', 'IPL' etc. prefix
     for pfx in ("1PL", "IPL", "PL"):
         if cleaned.startswith(pfx) and len(cleaned) - len(pfx) >= 4:
             rem = cleaned[len(pfx):]
@@ -90,7 +89,7 @@ def clean_plate_text(raw_text: str) -> str:
 
 
 def is_likely_dealer_badge(norm_text: str) -> bool:
-    """Sprawdza, czy odczytany tekst to napis reklamowy typu OTOMOTO / KOMIS."""
+    """Check whether the read text is dealer lettering such as OTOMOTO / KOMIS."""
     cleaned = re.sub(r"[^A-Z0-9]", "", (norm_text or "").upper())
     if cleaned in DEALER_WORDS:
         return True
@@ -101,7 +100,7 @@ def is_likely_dealer_badge(norm_text: str) -> bool:
 
 
 def is_valid_plate_format(norm_text: str) -> bool:
-    """Sprawdza, czy długość i struktura przypomina tablicę rejestracyjną (PL: 4-8 znaków, zaczyna się od litery)."""
+    """Check whether length and structure look like a registration plate (PL: 4-8 characters, starting with a letter)."""
     cleaned = clean_plate_text(norm_text)
     if not cleaned or len(cleaned) < 4 or len(cleaned) > 8:
         return False
@@ -113,7 +112,7 @@ def is_valid_plate_format(norm_text: str) -> bool:
 
 
 def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
-    """Wykrywa tablice na obrazie PIL, ocenia jakość ujęcia (prostoliniowość przód/tył) i odczytuje numer."""
+    """Detect plates in a PIL image, score the shot (straight front/rear view) and read the number."""
     model, reader = get_models()
 
     results = model(img_pil, conf=0.30, verbose=False)
@@ -131,20 +130,20 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         if bw < 30 or bh < 8:
             continue
 
-        # Ocena ujęcia pod kątem prostoliniowości (przód / tył pojazdu)
+        # Score how straight-on the shot is (front / rear of the car)
         aspect_ratio = float(bw) / float(max(1, bh))
         ar_diff = abs(aspect_ratio - 4.56)
 
         aspect_score = max(0.0, 1.0 - (ar_diff / 2.2))
         area_score = min(1.0, float(bw * bh) / 14000.0)
 
-        # Środek kadru (zdjęcia prostopadłe przód/tył zwykle mają tablicę w centrum)
+        # Frame centre (straight front/rear photos usually have the plate in the middle)
         cx = (xyxy[0] + xyxy[2]) / (2.0 * max(1, w))
         center_score = 1.0 - min(1.0, abs(cx - 0.5) * 1.8)
 
         shot_quality_score = (aspect_score * 0.40) + (area_score * 0.25) + (center_score * 0.15) + (conf * 0.20)
 
-        # Marginesy dla pełnego cropa do UI
+        # Padding for the full crop shown in the UI
         pad_x = max(4, int(bw * 0.05))
         pad_y = max(4, int(bh * 0.06))
 
@@ -156,7 +155,7 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
         full_crop = img_pil.crop((x1, y1, x2, y2))
 
         def candidate(plate_text: str) -> Dict:
-            # Zapisz wycięty fragment do pliku lokalnego oraz wygeneruj base64 data URI
+            # Save the crop to a local file and build a base64 data URI
             crop_filename = f"crop_{img_id_prefix}_{i}.jpg"
             full_crop.save(os.path.join(CROPS_DIR, crop_filename), "JPEG", quality=85)
             buf = io.BytesIO()
@@ -171,7 +170,7 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
                 "is_standard_format": is_valid_plate_format(plate_text),
             }
 
-        # Weryfikacja tła: polska tablica musi mieć jasne (białe) tło.
+        # Background check: a Polish plate has a light (white) background.
         crop_arr = np.array(full_crop)
         ch, cw = crop_arr.shape[:2]
         center_area = crop_arr[int(ch * 0.2):int(ch * 0.8), int(cw * 0.2):int(cw * 0.8)]
@@ -180,7 +179,7 @@ def process_image(img_pil: Image.Image, img_id_prefix: str) -> List[Dict]:
             if mean_brightness < 60:
                 continue
 
-        # Nieczytelny wycinek zostaje bez tekstu: człowiek często go odczyta
+        # An unreadable crop is kept without text: a human can often read it
         plate_text = read_plate(reader, full_crop)
         if plate_text and is_likely_dealer_badge(plate_text):
             continue
@@ -203,7 +202,7 @@ def get_curl_session():
 
 
 def download_image(url: str, timeout: int = 12) -> Optional[Image.Image]:
-    """Pobiera zdjęcie z adresu URL i zwraca obiekt PIL."""
+    """Download a photo from a URL and return it as a PIL image."""
     if not url:
         return None
     session = get_curl_session()
@@ -235,7 +234,7 @@ def download_image(url: str, timeout: int = 12) -> Optional[Image.Image]:
 
 
 def fetch_listing_gallery_photos(source_url: str) -> List[str]:
-    """Pobiera pełną listę zdjęć z ogłoszenia (np. z Otomoto __NEXT_DATA__ lub OLX), gdy w bazie jest tylko 1 miniatura."""
+    """Fetch the full photo list of a listing (Otomoto __NEXT_DATA__ or OLX) when the DB has only 1 thumbnail."""
     if not source_url or not source_url.startswith("http"):
         return []
     html = ""
@@ -297,7 +296,7 @@ def fetch_listing_gallery_photos(source_url: str) -> List[str]:
 
 
 def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional[Dict]:
-    """Skanuje zdjęcia ogłoszenia i zwraca najlepsze ujęcie tablicy (przód/tył) albo None."""
+    """Scan the listing photos and return the best plate shot (front/rear), or None."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
     vin = (listing.get("vin") or "").strip().upper()
     source_url = listing.get("source_url") or ""
@@ -314,8 +313,8 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
                 if photos_raw.startswith("http"):
                     photo_urls = [photos_raw]
 
-    # Jeśli w bazie mamy tylko 1 zdjęcie (lub brak), a mamy link do ogłoszenia,
-    # dynamicznie pobieramy całą galerię (do kilkunastu zdjęć) i aktualizujemy bazę!
+    # With only 1 photo (or none) in the DB and a link to the listing,
+    # fetch the whole gallery (up to a dozen or so photos) and update the DB
     if len(photo_urls) <= 1 and source_url:
         gallery = fetch_listing_gallery_photos(source_url)
         if gallery:
@@ -330,7 +329,7 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
     if not photo_urls:
         return None
 
-    # Sprawdź do 12 zdjęć w poszukiwaniu najlepszego ujęcia (przód / tył)
+    # Check up to 12 photos for the best shot (front / rear)
     photo_urls = photo_urls[:12]
     all_candidates = []
 
@@ -348,8 +347,8 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
     if not all_candidates:
         return None
 
-    # Inteligentny wybór najlepszego zdjęcia (Best Shot Selection):
-    # Dopuszczamy TYLKO kandydatów o prawidłowym formacie tablicy (ściśle 4 do 8 znaków)
+    # Best shot selection:
+    # only candidates with a valid plate format (strictly 4 to 8 characters)
     valid_candidates = [
         c for c in all_candidates 
         if c.get("is_standard_format") and 4 <= len(re.sub(r"[^A-Z0-9]", "", c.get("detected_plate") or "")) <= 8
@@ -360,24 +359,24 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
             key=lambda c: (c["shot_quality_score"], c["confidence"]),
             reverse=True
         )
-        # Odrzuć ujęcia o skrajnie niskiej jakości (np. ucięty zderzak lub kąt > 60 stopni)
+        # Drop very poor shots (e.g. a cut-off bumper or an angle over 60 degrees)
         if valid_candidates[0]["shot_quality_score"] >= 0.28:
             return valid_candidates[0]
         print(f"    [skipped] Zbyt duży kąt zdjęcia dla {vin or lid} (score: {valid_candidates[0]['shot_quality_score']})")
 
-    # Nic pewnego do odczytania: zwróć najlepszy wycinek bez tekstu, żeby ocenił go człowiek
+    # Nothing reliable to read: return the best crop without text for a human to judge
     best_box = max(all_candidates, key=lambda c: (c["shot_quality_score"], c["confidence"]))
     return {**best_box, "detected_plate": ""}
 
 
 def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[Dict]:
-    """Skanuje zdjęcia ogłoszenia, znajduje najlepsze ujęcie przód/tył i zapisuje optymalnego kandydata."""
+    """Scan the listing photos, find the best front/rear shot and save that candidate."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
     vin = (listing.get("vin") or "").strip().upper()
     status = (listing.get("status") or "").strip().lower()
     source_url = listing.get("source_url") or ""
 
-    # Ignoruj ogłoszenia odrzucone lub bez prawidłowego VIN
+    # Skip rejected listings and listings without a valid VIN
     if status == "rejected" or not vin or vin.startswith("PLH"):
         return []
 
@@ -390,7 +389,7 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
     crop_path = best_candidate["crop_path"]
     purl = best_candidate["photo_url"]
 
-    # Sprawdź, czy ta tablica już istnieje w kolejce dla tego pojazdu
+    # Check whether this plate is already queued for this vehicle
     exists = db_conn.execute("""
         SELECT id FROM plate_review_queue 
         WHERE (vin = ? OR listing_id = ?) AND (REPLACE(detected_plate, ' ', '') = ? OR status = 'approved')
@@ -412,14 +411,14 @@ def scan_listing_for_plates(listing: dict, db_conn: sqlite3.Connection) -> List[
 
 
 def fill_missing_crops(conn) -> Dict:
-    """Skanuje zdjęcia dla pozycji kolejki bez wycinka.
+    """Scan photos for queue entries that have no crop.
 
-    Tablica z treści ogłoszenia, której CEPiK nie znalazł, trafia do kolejki bez wycinka
-    (requeue_for_plate_check), bo skan zdjęć obejmuje tylko ogłoszenia bez tablicy. Tu
-    dostaje wycinek ze zdjęć, a odczyt ze zdjęcia staje się propozycją; tablica z
-    ogłoszenia zostaje na aucie, więc widać ją na karcie. Wycinek bez odczytu nie zmienia
-    propozycji. Pusty crop_path oznacza, że na zdjęciach nic nie znaleziono (nie skanujemy
-    ponownie).
+    A plate from the listing text that CEPiK did not find is queued without a crop
+    (requeue_for_plate_check), because the photo scan covers only listings without a plate.
+    Here it gets a crop from the photos, and the reading from the photo becomes the proposal;
+    the plate from the listing stays on the car, so the card still shows it. A crop without
+    a reading leaves the proposal unchanged. An empty crop_path means nothing was found in
+    the photos (not scanned again).
     """
     from webapp.services.plates import normalize_plate
 
@@ -470,7 +469,7 @@ def fill_missing_crops(conn) -> Dict:
 
 
 def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Dict:
-    """Skanuje ogłoszenia bez numeru rejestracyjnego."""
+    """Scan listings that have no registration plate."""
     try:
         from db import get_db
         conn = get_db()
@@ -478,7 +477,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
 
-    # Upewnij się, że tabela istnieje
+    # Make sure the tables exist
     conn.execute("""
         CREATE TABLE IF NOT EXISTS plate_review_queue (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -512,7 +511,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
     else:
         scan_log_filter = "AND (id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log) OR id IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log WHERE plates_found = 0))"
 
-    # Pobierz zatwierdzone ogłoszenia z prawdziwym VIN, bez tablicy (ani na ogłoszeniu, ani na pojeździe), ze zdjęciami
+    # Approved listings with a real VIN and photos, and no plate (neither on the listing nor on the vehicle)
     rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
@@ -572,6 +571,6 @@ if __name__ == "__main__":
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")
     print(f"Wycinki dla kolejki: {res['crops_filled']}/{res['queued_without_crop']}.")
 
-    # Tablica potwierdzona przez CEPiK nie wymaga przeglądu
+    # A plate CEPiK confirms needs no review
     from scripts.fetch_cepik import confirm_queue_with_cepik
     confirm_queue_with_cepik()

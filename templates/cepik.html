@@ -2,7 +2,7 @@
 {% block title %}CEPiK Info & Historia Pojazdu – SportsCar DB{% endblock %}
 
 {% block content %}
-<!-- Nagłówek strony -->
+<!-- Page header -->
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
   <div>
     <h2 class="h4 fw-bold mb-1 text-dark">
@@ -19,7 +19,7 @@
   </div>
 </div>
 
-<!-- Kompaktowy pasek statystyk (bez zbędnego tekstu) -->
+<!-- Compact stats bar -->
 <div class="card border shadow-sm mb-4 bg-white">
   <div class="card-body py-2 px-3">
     <div class="row text-center text-md-start align-items-center g-2 g-md-3">
@@ -48,7 +48,7 @@
   </div>
 </div>
 
-<!-- Zakładki (czysty tekst bez zbędnych emoji) -->
+<!-- Tabs (plain text, no emoji) -->
 <ul class="nav nav-tabs">
   <li class="nav-item">
     <a class="nav-link {% if tab == 'all' %}active{% endif %}" href="/cepik?tab=all">
@@ -91,7 +91,7 @@
   </li>
 </ul>
 
-<!-- Wyszukiwarka -->
+<!-- Search -->
 <div class="card border shadow-sm p-3 mb-4 bg-white">
   <form method="get" action="/cepik" class="row g-2 align-items-center">
     <input type="hidden" name="tab" value="{{ tab }}">
@@ -117,7 +117,7 @@
   </form>
 </div>
 
-<!-- Tabela raportów CEPiK (Czysta, czytelna, bez zepsutych zdjęć) -->
+<!-- CEPiK report table -->
 {% if tab in ('all', 'rollback', 'issues') %}
 <div class="card border shadow-sm rounded-3 overflow-hidden bg-white mb-4">
   <div class="table-responsive">
@@ -136,7 +136,7 @@
       <tbody>
         {% for r in reports %}
         <tr class="{% if r.odometer_rollback %}table-danger-subtle{% endif %}">
-          <!-- Pojazd & VIN -->
+          <!-- Vehicle & VIN -->
           <td>
             <div class="fw-bold text-dark">
               {{ r.v_make or r.make }} {{ r.v_model or r.model }} {% if r.v_year %}<span class="text-muted fw-normal">({{ r.v_year }})</span>{% endif %}
@@ -158,7 +158,7 @@
             {% endif %}
           </td>
 
-          <!-- Tablica & Data 1. Rejestracji -->
+          <!-- Plate & first registration date -->
           <td>
             <div class="mb-1">
               <span class="plate-badge">
@@ -171,7 +171,7 @@
             </div>
           </td>
 
-          <!-- Badanie SKP -->
+          <!-- SKP inspection -->
           <td>
             {% if r.tech_inspection_status == 'Aktualne' %}
             <span class="badge bg-success-subtle text-success border border-success-subtle">Aktualne</span>
@@ -183,7 +183,7 @@
             {% endif %}
           </td>
 
-          <!-- Polisa OC -->
+          <!-- OC insurance policy -->
           <td>
             {% if r.has_current_oc %}
             <span class="badge bg-success-subtle text-success border border-success-subtle">Aktywna</span>
@@ -195,7 +195,7 @@
             {% endif %}
           </td>
 
-          <!-- Przebieg & Licznik -->
+          <!-- Mileage & odometer -->
           <td>
             {% if r.odometer_rollback %}
             <div class="fw-bold text-danger font-monospace">
@@ -216,7 +216,7 @@
             {% endif %}
           </td>
 
-          <!-- Właściciele & Kradzież -->
+          <!-- Owners & theft -->
           <td>
             <div class="small fw-semibold text-dark">
               {{ r.total_owners or '1' }} w PL
@@ -230,7 +230,7 @@
             </div>
           </td>
 
-          <!-- Akcje -->
+          <!-- Actions -->
           <td class="text-end">
             <div class="btn-group btn-group-sm">
               <button type="button" class="btn btn-outline-primary" onclick="openDetailsModal('{{ r.vin }}')">
@@ -258,7 +258,7 @@
 </div>
 {% endif %}
 
-<!-- Zawartość: Zakładka "Oczekujące w CEPiK" -->
+<!-- Content: "Oczekujące w CEPiK" (pending in CEPiK) tab -->
 {% if tab == 'missing' %}
 <div class="card border shadow-sm rounded-3 overflow-hidden bg-white mb-4">
   <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light">
@@ -282,7 +282,7 @@
       <tbody>
         {% for m in missing_items %}
         <tr>
-          <!-- Pojazd & VIN -->
+          <!-- Vehicle & VIN -->
           <td>
             <div class="fw-bold text-dark">
               {{ m.make }} {{ m.model }} {% if m.year %}<span class="text-muted fw-normal">({{ m.year }})</span>{% endif %}
@@ -294,7 +294,7 @@
             </div>
           </td>
 
-          <!-- Tablica -->
+          <!-- Plate -->
           <td>
             <span class="plate-badge">
               <span class="plate-flag">PL</span>
@@ -302,12 +302,12 @@
             </span>
           </td>
 
-          <!-- Data 1. Rejestracji -->
+          <!-- First registration date -->
           <td>
             <span class="fw-bold text-dark font-monospace">{{ m.first_registration_date }}</span>
           </td>
 
-          <!-- Ostatnia Próba -->
+          <!-- Last attempt -->
           <td>
             {% if m.last_sync_attempt %}
             <div class="small text-muted">{{ m.last_sync_attempt[:16] }}</div>
@@ -316,7 +316,7 @@
             {% endif %}
           </td>
 
-          <!-- Status / Diagnoza -->
+          <!-- Status / diagnosis -->
           <td>
             {% if m.last_sync_status == 'not_found' %}
             <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Nie znaleziono w CEPiK</span>
@@ -331,7 +331,7 @@
             {% endif %}
           </td>
 
-          <!-- Akcje -->
+          <!-- Actions -->
           <td class="text-end">
             <div class="btn-group btn-group-sm">
               <button type="button" class="btn btn-primary" onclick="fetchSingleMissing('{{ m.vin }}', '{{ m.registration_plate }}', '{{ m.first_registration_date }}', this)">
@@ -356,7 +356,7 @@
 </div>
 {% endif %}
 
-<!-- Zawartość: Zakładka "Do poprawy" -->
+<!-- Content: "Do poprawy" (to fix) tab -->
 {% if tab == 'fix' %}
 <div class="card border shadow-sm rounded-3 overflow-hidden bg-white mb-4">
   <div class="p-3 border-bottom bg-light">
@@ -393,7 +393,7 @@
 </div>
 {% endif %}
 
-<!-- Zawartość: Zakładka "Historia zapytań" -->
+<!-- Content: "Historia zapytań" (query history) tab -->
 {% if tab == 'log' %}
 <div class="card border shadow-sm rounded-3 overflow-hidden bg-white mb-4">
   <div class="table-responsive">
@@ -448,7 +448,7 @@
 
 
 <!-- ========================================================================= -->
-<!-- MODAL: Szczegółowa Historia CEPiK                                         -->
+<!-- MODAL: detailed CEPiK history                                           -->
 <!-- ========================================================================= -->
 <div class="modal fade" id="cepikDetailsModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -461,21 +461,21 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
       </div>
       <div class="modal-body p-4">
-        <!-- Alert Rollbacku w modalu -->
+        <!-- Rollback alert in the modal -->
         <div id="modalRollbackAlert" class="alert alert-danger d-none mb-4" role="alert">
           <h6 class="mb-1 fw-bold">Wykryto rozbieżność odczytu drogomierza</h6>
           <p class="small mb-0" id="modalRollbackText"></p>
         </div>
 
-        <!-- Parametry pojazdu wg CEPiK -->
+        <!-- Vehicle parameters according to CEPiK -->
         <div class="card p-3 mb-4 rounded-3 bg-light border">
           <h6 class="fw-bold small text-uppercase text-muted mb-3">Dane Identyfikacyjne w Rejestrze</h6>
           <div class="row g-2 small" id="modalVehicleInfo">
-            <!-- Wstrzykiwane przez JS -->
+            <!-- Filled in by JS -->
           </div>
         </div>
 
-        <!-- Tabela: Historia badań technicznych i odczytów licznika -->
+        <!-- Table: technical inspections and odometer readings -->
         <h6 class="fw-bold small text-uppercase text-dark mb-2">
           Historia Odczytów Licznika (SKP / Policja)
         </h6>
@@ -491,18 +491,18 @@
                 </tr>
               </thead>
               <tbody id="modalOdometerTableBody">
-                <!-- Wstrzykiwane przez JS -->
+                <!-- Filled in by JS -->
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- Oś Czasu: Zdarzenia urzędowe -->
+        <!-- Timeline: official events -->
         <h6 class="fw-bold small text-uppercase text-dark mb-2">
           Oś Czasu Zdarzeń Rejestracyjnych
         </h6>
         <div class="p-3 bg-white rounded-3 border" id="modalEventsContainer">
-          <!-- Wstrzykiwane przez JS -->
+          <!-- Filled in by JS -->
         </div>
       </div>
       <div class="modal-footer border-top py-2 bg-light">
@@ -517,7 +517,7 @@
 
 
 <!-- ========================================================================= -->
-<!-- MODAL: Ręczne Sprawdzenie w CEPiK                                         -->
+<!-- MODAL: manual CEPiK check                                               -->
 <!-- ========================================================================= -->
 <div class="modal fade" id="manualCheckModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -556,7 +556,7 @@
   </div>
 </div>
 
-<!-- Dane raportów dla modalu -->
+<!-- Report data for the modal -->
 <script>
 window.CEPIK_REPORTS = {};
 {% for r in reports %}

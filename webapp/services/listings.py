@@ -263,7 +263,7 @@ def _approve_listing(conn, listing, overrides=None):
     except Exception as e:  # model_id column not migrated yet
         print(f"[model_id] not assigned for {vin}: {e}")
 
-    # Jeśli tablica pochodzi ze zdjęcia (plate_review_queue), dodaj tag 'photo extracted'
+    # A plate read from a photo (plate_review_queue) gets the 'photo extracted' tag
     try:
         lid_str = str(listing.get("id") or "")
         pq = conn.execute("SELECT id FROM plate_review_queue WHERE (vin=? OR listing_id=?) AND status='approved'", (vin, lid_str)).fetchone()

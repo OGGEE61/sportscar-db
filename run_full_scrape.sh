@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# SportsCar DB — Pełne scrapowanie portali (Otomoto + OLX)
-# Uruchomienie w tle: nohup ./run_full_scrape.sh > /dev/null 2>&1 &
-# Chroni Maca przed uśpieniem (caffeinate). Wyniki w: scraper_full.log
+# SportsCar DB — full scrape of the portals (Otomoto + OLX)
+# Run in the background: nohup ./run_full_scrape.sh > /dev/null 2>&1 &
+# Keeps the Mac awake (caffeinate). Output in: scraper_full.log
 # =============================================================================
 
 set -e
@@ -25,7 +25,7 @@ echo "=================================================================" | tee -
 
 START_SECONDS=$SECONDS
 
-# 1. Otomoto - Wszystkie modele (35 scraperów)
+# 1. Otomoto - all models (35 scrapers)
 echo "" | tee -a "$LOG_FILE"
 echo ">>> [$(date '+%H:%M:%S')] 1/2: Scrapowanie Otomoto (wszystkie 35 modeli)..." | tee -a "$LOG_FILE"
 caffeinate -i -s "$PYTHON_BIN" scrapers/run_all.py all 2>&1 | tee -a "$LOG_FILE"
@@ -46,7 +46,7 @@ echo "  Czas trwania: ${MINUTES}m ${SECS}s" | tee -a "$LOG_FILE"
 echo "  Zakończono: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a "$LOG_FILE"
 echo "=================================================================" | tee -a "$LOG_FILE"
 
-# Powiadomienie dźwiękowe i systemowe na Macu
+# Sound and system notification on the Mac
 if command -v osascript >/dev/null 2>&1; then
     osascript -e "display notification \"Wszystkie ogłoszenia zapisane w bazie! Czas: ${MINUTES}m ${SECS}s.\" with title \"SportsCar DB — Scrapowanie zakończone!\" sound name \"Glass\"" 2>/dev/null || true
 fi
