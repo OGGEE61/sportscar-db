@@ -169,5 +169,42 @@ class TestSportsCarDB(unittest.TestCase):
         self.assertEqual(obs[1]["price_pln"], 280000)
         self.assertEqual(obs[1]["registration_plate"], "NEW6789")
 
+    def _approve(self, source, sid, plate=None):
+        headers = {"Authorization": "Bearer test-token"}
+        payload = {"source": source, "source_listing_id": sid, "vin": "WUAZZZ8U5HR900489",
+                   "make": "Audi", "model": "RS Q3", "price_pln": 150000}
+        if plate:
+            payload["registration_plate"] = plate
+        self.client.post("/api/ingest_pending", json=payload, headers=headers)
+        conn = db.get_db()
+        pid = conn.execute("SELECT id FROM pending_listings WHERE source=? AND source_listing_id=?",
+                           (source, sid)).fetchone()["id"]
+        conn.close()
+        with self.client.session_transaction() as sess:
+            sess["logged_in"] = True
+        self.client.post(f"/review/{pid}/approve", data={})
+
+    def _vin_status(self):
+        conn = db.get_db()
+        row = conn.execute("SELECT vin_status, registration_plate FROM vehicles WHERE vin='WUAZZZ8U5HR900489'").fetchone()
+        conn.close()
+        return row["vin_status"], row["registration_plate"]
+
+    def test_plate_from_a_later_listing_verifies_the_car(self):
+        """First listing has no plate, the second one does: the car ends up verified."""
+        self._approve("olx", "rsq3-olx")
+        self.assertEqual(self._vin_status(), ("unverified", None))
+        self._approve("autoplac", "rsq3-autoplac", plate="SD3097N")
+        self.assertEqual(self._vin_status(), ("verified", "SD3097N"))
+
+    def test_status_set_by_hand_is_kept(self):
+        self._approve("autoplac", "rsq3-autoplac", plate="SD3097N")
+        with self.client.session_transaction() as sess:
+            sess["logged_in"] = True
+        self.client.post("/vehicle/WUAZZZ8U5HR900489/update_status", data={"vin_status": "unverified"})
+        self.assertEqual(self._vin_status()[0], "unverified")
+        db.init_db()   # the one-off fix of migration 16 must not run again
+        self.assertEqual(self._vin_status()[0], "unverified")
+
 if __name__ == '__main__':
     unittest.main()

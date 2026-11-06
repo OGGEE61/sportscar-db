@@ -595,6 +595,32 @@ def init_db():
         UPDATE vehicles SET updated_at = datetime('now') WHERE vin = NEW.vin;
     END""")
 
+    # ── Migration 16: a car that gets a plate becomes 'verified' ──────────────
+    # A car is 'verified' once it has a plate. Approving a listing set this only when it created
+    # the vehicle, so a car first approved from a listing without a plate stayed 'unverified'
+    # after a later listing (or ingest, CEPiK entry, placeholder resolution) added one. These
+    # triggers cover every path that writes a plate; changing only vin_status (by hand on the
+    # vehicle page) does not fire them.
+    for event, name in (("INSERT", "trg_vehicles_plate_verifies_ins"),
+                        ("UPDATE OF registration_plate", "trg_vehicles_plate_verifies_upd")):
+        db.execute(f"DROP TRIGGER IF EXISTS {name}")
+        db.execute(f"""
+        CREATE TRIGGER {name}
+        AFTER {event} ON vehicles
+        WHEN NEW.vin_status = 'unverified' AND COALESCE(NEW.registration_plate, '') <> ''
+             AND NEW.vin NOT LIKE 'UNVERIFIED%'
+        BEGIN
+            UPDATE vehicles SET vin_status = 'verified' WHERE vin = NEW.vin;
+        END""")
+    # Fix the cars already stuck, once: later runs must not undo a status set by hand
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 16").fetchone():
+        db.execute("""
+            UPDATE vehicles SET vin_status = 'verified'
+            WHERE vin_status = 'unverified' AND COALESCE(registration_plate, '') <> ''
+              AND vin NOT LIKE 'UNVERIFIED%'
+        """)
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(16,'plate_verifies_vin')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
