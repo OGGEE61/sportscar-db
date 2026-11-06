@@ -1334,11 +1334,11 @@ class TestUrlYearRange(unittest.TestCase):
 
 class TestRevealVin(unittest.TestCase):
     def setUp(self):
-        base_scraper._vin_reveals.update(count=0, blocked=False)
+        base_scraper._vin_reveals.update(count=0, blocked=False, masked_in_a_row=0)
         sleep = mock.patch.object(base_scraper.time, "sleep")
         self.sleep = sleep.start()
         self.addCleanup(sleep.stop)
-        self.addCleanup(base_scraper._vin_reveals.update, count=0, blocked=False)
+        self.addCleanup(base_scraper._vin_reveals.update, count=0, blocked=False, masked_in_a_row=0)
 
     def reply(self, body, status=200):
         resp = mock.Mock(status_code=status, text=str(body))
@@ -1404,6 +1404,26 @@ class TestRevealVinPacing(TestRevealVin):
                 base_scraper.reveal_vin(str(i), {})
         self.assertEqual(post.call_count, base_scraper.VIN_REVEALS_PER_RUN)
         self.assertEqual(self.sleep.call_count, base_scraper.VIN_REVEALS_PER_RUN - 1)
+
+    @staticmethod
+    def vin_body(value):
+        return {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": value}}}}}
+
+    def test_masked_vins_in_a_row_stop_reveals_for_the_rest_of_the_run(self):
+        with self.reply(self.vin_body("XXXXXXXXXXXXXXXXX")) as post:
+            for i in range(5):
+                self.assertIsNone(base_scraper.reveal_vin(str(i), {}))
+        self.assertEqual(post.call_count, base_scraper.VIN_MASKED_IN_A_ROW_STOP)
+        self.assertFalse(base_scraper.vin_reveal_allowed())
+
+    def test_one_masked_vin_between_real_ones_does_not_stop_reveals(self):
+        real, masked = self.vin_body("WDB4632481X123456"), self.vin_body("WDD2040771F123XXX")
+        for body in (masked, real, masked, real):
+            with self.reply(body):
+                base_scraper.reveal_vin("1", {})
+        self.assertTrue(base_scraper.vin_reveal_allowed())
+        with self.reply(real):
+            self.assertEqual(base_scraper.reveal_vin("2", {}), "WDB4632481X123456")
 
 
 class TestWorthRevealing(unittest.TestCase):

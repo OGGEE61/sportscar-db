@@ -54,7 +54,7 @@ def main():
         return
     for i, r in enumerate(rows, 1):
         if not base_scraper.vin_reveal_allowed():
-            print("Stopped: Otomoto blocked the reveals (HTTP 403).")
+            print("Stopped: Otomoto blocked the reveals (HTTP 403 or masked VINs).")
             break
         if time.monotonic() - refreshed_at > TOKEN_REFRESH_S:
             cookies = refresh_session(cookies, log_errors=False)
@@ -65,12 +65,15 @@ def main():
                          (vin, r["id"]))
             conn.commit()
             found += 1
-        print(f"  [{i}/{len(rows)}] {r['variant']} {r['source_listing_id']}: {'VIN' if vin else 'no VIN'}", flush=True)
+            outcome = "VIN"
+        else:
+            outcome = "implausible VIN, not stored" if vin else "no VIN"
+        print(f"  [{i}/{len(rows)}] {r['variant']} {r['source_listing_id']}: {outcome}", flush=True)
     blocked = base_scraper._vin_reveals["blocked"]
     print(f"Done: {found} VINs filled in.")
     _log_run("partial" if blocked else "success",
              f"VIN backfill: {found} of {len(rows)} pending Otomoto listings got a VIN"
-             + (" (stopped: Otomoto blocked the reveals)." if blocked else "."),
+             + (" (stopped: Otomoto blocked or masked the reveals)." if blocked else "."),
              processed=found, source="otomoto")
 
 
