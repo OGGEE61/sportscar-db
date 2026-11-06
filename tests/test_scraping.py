@@ -1331,3 +1331,24 @@ class TestUrlYearRange(unittest.TestCase):
         self.assertEqual((lo, hi), (1998, 2003))
         self.assertEqual(years(run_all.M5_F90.list_url)[1], 2024)
 
+
+class TestRevealVin(unittest.TestCase):
+    def reply(self, body, status=200):
+        resp = mock.Mock(status_code=status, text=str(body))
+        resp.json.return_value = body
+        return mock.patch.object(base_scraper.requests, "post", return_value=resp)
+
+    def test_reads_the_vin_from_the_viewer_query(self):
+        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": " wdb4632481x123456 "}}}}}
+        with self.reply(body) as post:
+            self.assertEqual(base_scraper.reveal_vin("6151216780", {}), "WDB4632481X123456")
+        sent = post.call_args.kwargs["json"]
+        self.assertEqual(sent["operationName"], "AdvertDetails_ViewerAdVin")
+        self.assertEqual(sent["variables"], {"adId": "6151216780"})
+
+    def test_error_code_or_bad_status_gives_none(self):
+        with self.reply({"data": {"viewer": {"adVin": {"__typename": "AdVinError", "code": "NOT_FOUND"}}}}):
+            self.assertIsNone(base_scraper.reveal_vin("1", {}))
+        with self.reply({}, status=403):
+            self.assertIsNone(base_scraper.reveal_vin("1", {}))
+

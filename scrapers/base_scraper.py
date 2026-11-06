@@ -367,40 +367,49 @@ def check_session(cookies: dict) -> bool:
         return False
 
 
-def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
-    """Try to fetch the decrypted VIN via otomoto's GraphQL API.
+# The query otomoto's ad page sends when a logged-in user clicks "Show VIN" (since early November 2026;
+# the older RevealAdVin mutation no longer returns the VIN)
+_VIN_QUERY = """
+    query AdvertDetails_ViewerAdVin($adId: ID!) {
+        viewer {
+            adVin(adId: $adId) {
+                __typename
+                ... on AdVin { vin { value } }
+                ... on AdVinError { code }
+            }
+        }
+    }
+"""
 
-    When a logged-in user clicks 'Show VIN', the browser sends this mutation.
-    Returns the 17-char VIN string or None.
+
+def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
+    """Fetch the VIN through otomoto's GraphQL API, as the ad page does for a logged-in user.
+
+    Returns the 17-char VIN string or None. Why it failed (HTTP status, GraphQL error, AdVinError
+    code) is printed, so a change on otomoto's side shows up in the run log.
     """
     try:
         r = requests.post(
             "https://www.otomoto.pl/graphql",
-            json={
-                "operationName": "RevealAdVin",
-                "query": """
-                    mutation RevealAdVin($id: ID!) {
-                        revealAdVin(id: $id) {
-                            vin
-                        }
-                    }
-                """,
-                "variables": {"id": str(ad_id)},
-            },
+            json={"operationName": "AdvertDetails_ViewerAdVin", "query": _VIN_QUERY,
+                  "variables": {"adId": str(ad_id)}},
             headers={**HEADERS, "Content-Type": "application/json"},
             cookies=cookies,
             timeout=10,
             impersonate="chrome",
         )
         if r.status_code != 200:
+            print(f"    [vin] HTTP {r.status_code}: {_safe(r.text[:120])}")
             return None
-        data  = r.json()
-        vin   = (data.get("data") or {}).get("revealAdVin", {}) or {}
-        value = vin.get("vin") or vin.get("value")
+        data   = r.json()
+        result = ((data.get("data") or {}).get("viewer") or {}).get("adVin") or {}
+        value  = ((result.get("vin") or {}).get("value") or "").strip().upper()
         if value and len(value) == 17 and VIN_RE.fullmatch(value):
             return value
-    except Exception:
-        pass
+        why = result.get("code") or result.get("__typename") or (data.get("errors") or [{}])[0].get("message")
+        print(f"    [vin] no VIN: {_safe(str(why))[:120]}")
+    except Exception as e:
+        print(f"    [vin] request failed: {_safe(str(e))[:120]}")
     return None
 
 
