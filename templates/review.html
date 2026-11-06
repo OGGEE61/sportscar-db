@@ -50,6 +50,9 @@
     <button type="button" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
       Reject selected
     </button>
+    <button type="button" class="btn btn-outline-success btn-sm" id="approve-all-vin-btn">
+      Approve All with VIN
+    </button>
     <button type="button" class="btn btn-warning btn-sm" onclick="if(confirm('Are you sure you want to reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings that are missing a valid VIN?')) { fetch('/review/bulk_reject_novin?{{ '&source=' ~ source if source else '' }}', {method: 'POST'}).then(r => window.location.reload()); }">
       Reject All w/o VIN
     </button>
@@ -439,6 +442,52 @@ if (rejectAllBtn) {
       });
       showToast('Error', 'Failed to reject all: ' + err.message, 'danger');
     });
+  };
+}
+
+// Approve every pending listing with a valid VIN (all pages, current source filter), one request
+// per listing like "Approve selected", so no single request runs long
+const approveAllVinBtn = document.getElementById('approve-all-vin-btn');
+if (approveAllVinBtn) {
+  approveAllVinBtn.onclick = async (e) => {
+    e.preventDefault();
+    const originalText = approveAllVinBtn.textContent;
+    let ids;
+    try {
+      const res = await fetch('/review/pending_with_vin?{{ 'source=' ~ source if source else '' }}');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      ids = (await res.json()).ids;
+    } catch (err) {
+      showToast('Error', 'Failed to load listings with VIN: ' + err.message, 'danger');
+      return;
+    }
+    if (!ids.length) {
+      showToast('Nothing to approve', 'No {% if source %}{{ source|upper }} {% endif %}pending listings have a valid VIN.', 'info');
+      return;
+    }
+    if (!confirm(`Approve ALL ${ids.length} {% if source %}{{ source|upper }} {% endif %}pending listings that have a valid VIN?`)) return;
+
+    approveAllVinBtn.disabled = true;
+    let completed = 0, failed = 0;
+    for (const id of ids) {
+      approveAllVinBtn.textContent = `Approving ${completed + failed + 1}/${ids.length}...`;
+      try {
+        const res = await fetch(`/review/${id}/approve?ajax=1`, { method: 'POST' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        completed++;
+        const row = document.querySelector(`.card-check[value="${id}"]`)?.closest('.list-group-item');
+        if (row) row.remove();
+      } catch (err) {
+        console.error(`Failed to approve ${id}:`, err);
+        failed++;
+      }
+    }
+    approveAllVinBtn.textContent = originalText;
+    approveAllVinBtn.disabled = false;
+    showToast('Approve All with VIN Complete',
+      `Approved ${completed} of ${ids.length} listings` + (failed ? ` (${failed} failed).` : '.'),
+      failed ? 'warning' : 'success');
+    setTimeout(() => window.location.reload(), 1500);
   };
 }
 

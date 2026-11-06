@@ -140,6 +140,34 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertIsNone(self.status("o2"))
         self.assertEqual(self.status("m1"), "rejected")
 
+    def test_pending_with_vin_lists_the_listings_reject_novin_would_keep(self):
+        self.add("m1", "otomoto", vin="WBS8M9C59J5K12345")
+        self.add("m2", "otomoto")
+        self.add("m3", "otomoto", vin="UNVERIFIED-OTOMOTO-m3")
+        self.add("o1", "olx", vin="WBS8M9C59J5K54321")
+        self.add("m4", "otomoto", status="rejected", vin="WBS8M9C59J5K11111")
+
+        def listed(query=""):
+            ids = self.client.get("/review/pending_with_vin" + query).get_json()["ids"]
+            conn = db.get_db()
+            sids = {r["source_listing_id"] for r in conn.execute(
+                f"SELECT source_listing_id FROM pending_listings WHERE id IN ({','.join('?' * len(ids))})", ids)}
+            conn.close()
+            return sids
+
+        self.assertEqual(listed(), {"m1", "o1"})
+        self.assertEqual(listed("?source=otomoto"), {"m1"})
+        self.client.post("/review/bulk_reject_novin?source=otomoto")
+        self.assertEqual(self.status("m1"), "pending")
+        self.assertEqual({self.status("m2"), self.status("m3")}, {"rejected"})
+
+    def test_review_page_has_approve_all_with_vin_button(self):
+        self.add("m1", "otomoto", vin="WBS8M9C59J5K12345")
+        page = self.client.get("/review?source=otomoto").get_data(as_text=True)
+        self.assertIn('id="approve-all-vin-btn"', page)
+        self.assertIn("/review/pending_with_vin?source=otomoto", page)
+
+
 class TestModelId(ScrapingTestCase):
     def add_vehicle(self, vin, make, model, variant, year, hp=None, model_id=None):
         conn = db.get_db()
