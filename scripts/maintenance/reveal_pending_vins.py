@@ -14,6 +14,7 @@ Writes against the backend selected by DB_BACKEND (d1 = production).
 """
 import os
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path[:0] = [ROOT, os.path.join(ROOT, "scrapers")]
@@ -22,10 +23,14 @@ from base_scraper import check_session, load_cookies, refresh_session, reveal_vi
 from db import get_db
 from validation import is_plausible_vin
 
+# Otomoto's id_token lasts 15 minutes; a longer run needs a fresh one
+TOKEN_REFRESH_S = 10 * 60
+
 
 def main():
     limit = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else None
     cookies = refresh_session(load_cookies(), log_errors=False)
+    refreshed_at = time.monotonic()
     if not check_session(cookies):
         sys.exit("Not logged in to Otomoto: update scrapers/otomoto_cookies.json first.")
     # The per-run cap is for the scheduled runs; here the pace and the stop on 403 are enough
@@ -46,6 +51,9 @@ def main():
         if not base_scraper.vin_reveal_allowed():
             print("Stopped: Otomoto blocked the reveals (HTTP 403).")
             break
+        if time.monotonic() - refreshed_at > TOKEN_REFRESH_S:
+            cookies = refresh_session(cookies, log_errors=False)
+            refreshed_at = time.monotonic()
         vin = reveal_vin(r["source_listing_id"], cookies)
         if vin and is_plausible_vin(vin):
             conn.execute("UPDATE pending_listings SET vin = ? WHERE id = ? AND (vin IS NULL OR vin = '')",
