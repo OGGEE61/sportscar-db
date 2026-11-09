@@ -1,9 +1,7 @@
 name: Run Scrapers
 
 on:
-  schedule:
-    # Run every 2 hours at :15 past the hour (12 runs per day, 1 model per run in continuous rotation)
-    - cron: '15 */2 * * *'
+  # Scheduled runs moved to the VPS (deploy/scrapers/crontab); this workflow is for manual runs.
   workflow_dispatch:
     inputs:
       target:

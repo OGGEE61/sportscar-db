@@ -116,7 +116,8 @@ def _log_run(status: str, message: str, processed: int = 0, list_url: str = "", 
     except Exception as e:
         print(f"[log_run] failed: {e}")
 
-RUN_ORIGIN = "GitHub" if os.environ.get("GITHUB_ACTIONS") else "lokalnie"
+# Shown in front of each run log line. The VPS sets RUN_ORIGIN=VPS (deploy/scrapers/compose.yml).
+RUN_ORIGIN = os.environ.get("RUN_ORIGIN") or ("GitHub" if os.environ.get("GITHUB_ACTIONS") else "lokalnie")
 
 LAST_RUN_STATUS = {}   # source -> status of the most recent run(), read by the runners
 LIST_FETCH_ATTEMPTS = 3   # transient list-page timeouts are common on OLX

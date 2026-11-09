@@ -1402,8 +1402,9 @@ class TestRunLogOrigin(unittest.TestCase):
     def sent(self, env):
         import importlib
         with mock.patch.dict(os.environ, env, clear=False):
-            if "GITHUB_ACTIONS" not in env:
-                os.environ.pop("GITHUB_ACTIONS", None)
+            for name in ("GITHUB_ACTIONS", "RUN_ORIGIN"):
+                if name not in env:
+                    os.environ.pop(name, None)
             mod = importlib.reload(base_scraper)
             with mock.patch.object(mod._API_SESSION, "post") as post:
                 mod._log_run("success", "Processed 'F10 M5'", source="otomoto")
@@ -1413,6 +1414,9 @@ class TestRunLogOrigin(unittest.TestCase):
     def test_local_and_github_runs_are_told_apart(self):
         self.assertEqual(self.sent({"GITHUB_ACTIONS": "true"}), "[GitHub] Processed 'F10 M5'")
         self.assertEqual(self.sent({}), "[lokalnie] Processed 'F10 M5'")
+
+    def test_the_vps_names_itself(self):
+        self.assertEqual(self.sent({"RUN_ORIGIN": "VPS"}), "[VPS] Processed 'F10 M5'")
 
     def test_firewall_block_is_not_reported_as_expired_cookies(self):
         cookies = {"refresh_token": "r", "client_id": "c",

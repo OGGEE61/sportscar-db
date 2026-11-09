@@ -1,0 +1,13 @@
+# Scrapers on the VPS. Not a long-running service: cron starts one container per run (run.sh).
+# Secrets live outside the repo, in /opt/sportscar-secrets (see README.md).
+services:
+  scraper:
+    build:
+      context: ../..
+      dockerfile: deploy/scrapers/Dockerfile
+    image: sportscar-scraper
+    env_file: /opt/sportscar-secrets/scrapers.env   # API_TOKEN, BASE_URL
+    environment:
+      RUN_ORIGIN: VPS
+    volumes:
+      - /opt/sportscar-secrets/otomoto_cookies.json:/app/scrapers/otomoto_cookies.json:ro
