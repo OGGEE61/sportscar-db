@@ -1,4 +1,5 @@
 """Regression tests for sold-marking scope, partial scrapes, detail skipping and paging."""
+import json
 import os
 import re
 import sys
@@ -166,6 +167,14 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         page = self.client.get("/review?source=otomoto").get_data(as_text=True)
         self.assertIn('id="approve-all-vin-btn"', page)
         self.assertIn("/review/pending_with_vin?source=otomoto", page)
+
+    def test_review_row_shows_the_registration_plate(self):
+        self.add("a1", "autoplac", vin="WBS8M9C59J5K12345")
+        conn = db.get_db()
+        conn.execute("UPDATE pending_listings SET registration_plate='SD3097N' WHERE source_listing_id='a1'")
+        conn.commit()
+        conn.close()
+        self.assertIn("SD3097N", self.client.get("/review?source=autoplac").get_data(as_text=True))
 
 
 class TestModelId(ScrapingTestCase):
@@ -1362,11 +1371,12 @@ class TestUrlYearRange(unittest.TestCase):
 
 class TestRevealVin(unittest.TestCase):
     def setUp(self):
-        base_scraper._vin_reveals.update(count=0, blocked=False, masked_in_a_row=0)
+        fresh = dict(count=0, plates=0, blocked=False, vins_masked=False, masked_in_a_row=0)
+        base_scraper._vin_reveals.update(fresh)
         sleep = mock.patch.object(base_scraper.time, "sleep")
         self.sleep = sleep.start()
         self.addCleanup(sleep.stop)
-        self.addCleanup(base_scraper._vin_reveals.update, count=0, blocked=False, masked_in_a_row=0)
+        self.addCleanup(base_scraper._vin_reveals.update, fresh)
 
     def reply(self, body, status=200):
         resp = mock.Mock(status_code=status, text=str(body))
@@ -1452,6 +1462,84 @@ class TestRevealVinPacing(TestRevealVin):
         self.assertTrue(base_scraper.vin_reveal_allowed())
         with self.reply(real):
             self.assertEqual(base_scraper.reveal_vin("2", {}), "WDB4632481X123456")
+
+
+class TestRevealPlate(TestRevealVin):
+    """Since early November 2026 the plate comes from a GraphQL query, like the VIN."""
+
+    def get(self, body, status=200):
+        resp = mock.Mock(status_code=status, text=str(body))
+        resp.json.return_value = body
+        return mock.patch.object(base_scraper.requests, "get", return_value=resp)
+
+    @staticmethod
+    def plate_body(value):
+        return {"data": {"viewer": {"adRegistration": {
+            "__typename": "AdRegistration",
+            "registration": {"value": value, "__typename": "AdAttribute"}}, "__typename": "Viewer"}}}
+
+    def test_reads_the_plate_as_the_ad_page_asks_for_it(self):
+        with self.get(self.plate_body(" wpr6606t ")) as get:
+            self.assertEqual(base_scraper.reveal_plate("6151103542", {}), "WPR6606T")
+        params = get.call_args.kwargs["params"]
+        self.assertEqual(params["operationName"], "AdvertDetails_ViewerAdRegistration")
+        self.assertEqual(json.loads(params["variables"]), {"adId": "6151103542"})
+        self.assertEqual(json.loads(params["extensions"])["persistedQuery"]["sha256Hash"],
+                         base_scraper._PLATE_QUERY[1])
+
+    def test_an_answer_without_a_valid_plate_is_empty(self):
+        for body in (self.plate_body(""), self.plate_body("BRAK123"),
+                     {"data": {"viewer": {"adRegistration": None}}}):
+            with self.get(body):
+                self.assertEqual(base_scraper.reveal_plate("1", {}), "", body)
+
+    def test_a_failed_request_is_none(self):
+        with self.get({"errors": [{"message": "PersistedQueryNotFound"}]}):
+            self.assertIsNone(base_scraper.reveal_plate("1", {}))
+        with self.get({}, status=500):
+            self.assertIsNone(base_scraper.reveal_plate("1", {}))
+
+    def test_403_stops_plates_and_vins(self):
+        with self.get({}, status=403) as get:
+            self.assertIsNone(base_scraper.reveal_plate("1", {}))
+            self.assertIsNone(base_scraper.reveal_plate("2", {}))
+        self.assertEqual(get.call_count, 1)
+        self.assertFalse(base_scraper.vin_reveal_allowed())
+
+    def test_masked_vins_do_not_stop_plates(self):
+        with self.reply(TestRevealVinPacing.vin_body("XXXXXXXXXXXXXXXXX")):
+            for i in range(base_scraper.VIN_MASKED_IN_A_ROW_STOP):
+                base_scraper.reveal_vin(str(i), {})
+        self.assertFalse(base_scraper.vin_reveal_allowed())
+        self.assertTrue(base_scraper.plate_reveal_allowed())
+
+    def test_plates_are_capped_and_paced_with_the_vins(self):
+        with self.reply(TestRevealVinPacing.vin_body("WDB4632481X123456")):
+            base_scraper.reveal_vin("0", {})
+        with self.get(self.plate_body("WA12345")) as get:
+            for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
+                base_scraper.reveal_plate(str(i), {})
+        self.assertEqual(get.call_count, base_scraper.VIN_REVEALS_PER_RUN)
+        self.assertEqual(self.sleep.call_count, base_scraper.VIN_REVEALS_PER_RUN)   # after the VIN too
+        self.assertTrue(base_scraper.vin_reveal_allowed())
+
+
+class TestOtomotoDetailPlate(unittest.TestCase):
+    def detail(self, params_dict, details=()):
+        nd = {"props": {"pageProps": {"advert": {
+            "id": "6151103542", "details": list(details), "parametersDict": params_dict}}}}
+        html = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(nd)}</script>'
+        with mock.patch.object(base_scraper.requests, "get", return_value=mock.Mock(status_code=200, text=html)):
+            return base_scraper.fetch_detail("https://www.otomoto.pl/osobowe/oferta/x-ID1.html")
+
+    def test_an_ad_with_a_plate_behind_the_button_is_flagged(self):
+        d = self.detail({"has_registration": {"values": [{"value": "1"}]}},
+                        details=[{"key": "registration", "value": ""}])
+        self.assertIsNone(d["registration_plate"])
+        self.assertTrue(d["plate_behind_reveal"])
+
+    def test_an_ad_without_a_plate_is_not_flagged(self):
+        self.assertFalse(self.detail({})["plate_behind_reveal"])
 
 
 class TestWorthRevealing(unittest.TestCase):
