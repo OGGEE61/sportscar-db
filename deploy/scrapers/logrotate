@@ -1,0 +1,9 @@
+# Installed as /etc/logrotate.d/sportscar (see README.md)
+/opt/sportscar/logs/*.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

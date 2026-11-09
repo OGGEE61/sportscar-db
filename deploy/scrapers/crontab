@@ -1,0 +1,14 @@
+# Scraper schedule on the VPS. Installed as /etc/cron.d/sportscar-scrapers (see README.md).
+# Times are the server's (Europe/Warsaw). Each source runs one job at a time (run.sh).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Otomoto: the 3 models that waited longest, every 2 hours
+15 */2 * * *    root  /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py next_3
+# OLX: the 4 models that waited longest, every 4 hours
+45 1-23/4 * * * root  /opt/sportscar/deploy/scrapers/run.sh olx scrapers/run_olx.py next_4
+# Autoplac: all models, once a day
+30 5 * * *      root  /opt/sportscar/deploy/scrapers/run.sh autoplac scrapers/run_autoplac.py all
+
+# Follow master: pull and rebuild the image when it changed
+5 * * * *       root  /opt/sportscar/deploy/scrapers/update.sh

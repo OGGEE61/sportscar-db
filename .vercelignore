@@ -18,3 +18,5 @@ requirements-cv.txt
 .pytest_cache/
 .ruff_cache/
 __pycache__/
+deploy/
+.dockerignore
