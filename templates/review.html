@@ -158,6 +158,11 @@
         <span class="badge bg-danger" style="font-size: 0.6em;">NO VIN</span>
         {% endif %}
 
+        {% if l.registration_plate %}
+        <span class="badge bg-light text-dark border font-monospace" style="font-size: 0.7em;"
+              title="Numer rejestracyjny z ogłoszenia">{{ l.registration_plate }}</span>
+        {% endif %}
+
         <span class="ms-auto small">
           {% if l.is_listing_active %}
           <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle me-1">active</span>

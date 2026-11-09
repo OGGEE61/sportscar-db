@@ -167,6 +167,14 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertIn('id="approve-all-vin-btn"', page)
         self.assertIn("/review/pending_with_vin?source=otomoto", page)
 
+    def test_review_row_shows_the_registration_plate(self):
+        self.add("a1", "autoplac", vin="WBS8M9C59J5K12345")
+        conn = db.get_db()
+        conn.execute("UPDATE pending_listings SET registration_plate='SD3097N' WHERE source_listing_id='a1'")
+        conn.commit()
+        conn.close()
+        self.assertIn("SD3097N", self.client.get("/review?source=autoplac").get_data(as_text=True))
+
 
 class TestModelId(ScrapingTestCase):
     def add_vehicle(self, vin, make, model, variant, year, hp=None, model_id=None):
