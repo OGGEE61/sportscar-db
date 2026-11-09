@@ -1,11 +1,10 @@
-# Every 3 days, or manually (Actions -> Run Autoplac Scrapers -> Run workflow). The first run
+# Manually (Actions -> Run Autoplac Scrapers -> Run workflow); scheduled runs are on the VPS. The first run
 # opens every detail page (~35 models); known listings with VIN + plate skip it afterwards,
 # so later runs are short.
 name: Run Autoplac Scrapers
 
 on:
-  schedule:
-    - cron: '30 5 */3 * *'
+  # Scheduled runs moved to the VPS (deploy/scrapers/crontab); this workflow is for manual runs.
   workflow_dispatch:
     inputs:
       target:

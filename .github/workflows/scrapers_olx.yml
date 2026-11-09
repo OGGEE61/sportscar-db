@@ -1,9 +1,7 @@
 name: Run OLX Scrapers
 
 on:
-  schedule:
-    # Every 4 hours at :45 (6 runs/day), each run scrapes a rotating window of 4 scrapers
-    - cron: '45 */4 * * *'
+  # Scheduled runs moved to the VPS (deploy/scrapers/crontab); this workflow is for manual runs.
   workflow_dispatch:
     inputs:
       target:
