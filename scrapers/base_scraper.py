@@ -399,12 +399,26 @@ VIN_REVEALS_PER_RUN = 20
 # Past a daily limit otomoto answers with a masked VIN (all X, or ending in "XXX") instead of a 403. One masked
 # VIN may be a seller's own, so this many in a row stop the reveals like a 403 does.
 VIN_MASKED_IN_A_ROW_STOP = 2
-_vin_reveals = {"count": 0, "blocked": False, "masked_in_a_row": 0}
+# "count" = VIN reveals, "plates" = plate reveals. Both share the pace and the stop on a 403
+# ("blocked"); masked VINs ("vins_masked") stop only the VIN reveals.
+_vin_reveals = {"count": 0, "plates": 0, "blocked": False, "vins_masked": False, "masked_in_a_row": 0}
 
 
 def vin_reveal_allowed() -> bool:
     """False once this process hit the per-run cap or otomoto blocked a reveal."""
-    return not _vin_reveals["blocked"] and _vin_reveals["count"] < VIN_REVEALS_PER_RUN
+    return (not _vin_reveals["blocked"] and not _vin_reveals["vins_masked"]
+            and _vin_reveals["count"] < VIN_REVEALS_PER_RUN)
+
+
+def plate_reveal_allowed() -> bool:
+    """Like vin_reveal_allowed, for plates: their own per-run cap, the same stop on a block."""
+    return not _vin_reveals["blocked"] and _vin_reveals["plates"] < VIN_REVEALS_PER_RUN
+
+
+def _pace_reveal():
+    """Wait VIN_REVEAL_DELAY_S between any two reveals (VIN or plate) of this process."""
+    if _vin_reveals["count"] or _vin_reveals["plates"]:
+        time.sleep(random.uniform(*VIN_REVEAL_DELAY_S))
 
 
 def _worth_revealing(cfg, detail: dict) -> bool:
@@ -429,8 +443,7 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
     """
     if not vin_reveal_allowed():
         return None
-    if _vin_reveals["count"]:
-        time.sleep(random.uniform(*VIN_REVEAL_DELAY_S))
+    _pace_reveal()
     _vin_reveals["count"] += 1
     try:
         r = requests.post(
@@ -456,7 +469,7 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
                 _vin_reveals["masked_in_a_row"] += 1
                 print("    [vin] masked VIN from otomoto")
                 if _vin_reveals["masked_in_a_row"] >= VIN_MASKED_IN_A_ROW_STOP:
-                    _vin_reveals["blocked"] = True
+                    _vin_reveals["vins_masked"] = True
                     print("    [vin] otomoto is masking VINs: no more VIN reveals this run")
                 return None
             _vin_reveals["masked_in_a_row"] = 0
@@ -465,6 +478,62 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
         print(f"    [vin] no VIN: {_safe(str(why))[:120]}")
     except Exception as e:
         print(f"    [vin] request failed: {_safe(str(e))[:120]}")
+    return None
+
+
+# The query otomoto's ad page sends when a logged-in user clicks to show the registration plate
+# (since early November 2026 the plate in the page data is empty). Sent as a persisted query,
+# like the browser: otomoto knows the query by this hash. If the hash goes stale, the log shows
+# PersistedQueryNotFound; capture the new one from the browser's Network tab.
+_PLATE_QUERY = ("AdvertDetails_ViewerAdRegistration",
+                "cdda1ef9f0e5fde0b5e834e9140069d5176903a2ca94a51ca158d80b133d7f90")
+
+
+def reveal_plate(ad_id: str, cookies: dict) -> Optional[str]:
+    """Fetch the registration plate through otomoto's GraphQL API, as the ad page does.
+
+    Returns the normalised plate; "" when otomoto answered but gave no valid plate (the ad has
+    none, or a value that fails is_valid_registration_plate); None when the request failed or
+    was not sent. Shares the pace and the stop on HTTP 403 with reveal_vin, with its own per-run
+    cap (plate_reveal_allowed).
+    """
+    if not plate_reveal_allowed():
+        return None
+    _pace_reveal()
+    _vin_reveals["plates"] += 1
+    name, sha = _PLATE_QUERY
+    try:
+        r = requests.get(
+            "https://www.otomoto.pl/graphql",
+            params={"operationName": name,
+                    "variables": json.dumps({"adId": str(ad_id)}, separators=(",", ":")),
+                    "extensions": json.dumps({"persistedQuery": {"sha256Hash": sha, "version": 1}},
+                                             separators=(",", ":"))},
+            headers={**HEADERS, "Accept": "application/graphql-response+json, application/json",
+                     "sitecode": "otomotopl"},
+            cookies=cookies,
+            timeout=10,
+            impersonate="chrome",
+        )
+        if r.status_code != 200:
+            print(f"    [plate] HTTP {r.status_code}: {_safe(r.text[:120])}")
+            if r.status_code == 403:
+                _vin_reveals["blocked"] = True
+                print("    [plate] blocked by otomoto: no more reveals this run")
+            return None
+        data   = r.json()
+        if data.get("errors"):
+            print(f"    [plate] GraphQL error: {_safe(str(data['errors'][0].get('message')))[:120]}")
+            return None
+        result = ((data.get("data") or {}).get("viewer") or {}).get("adRegistration") or {}
+        value  = ((result.get("registration") or {}).get("value") or "").strip()
+        if value and is_valid_registration_plate(value):
+            return re.sub(r"\s+", " ", value).upper()
+        why = result.get("code") or (value and "invalid plate") or result.get("__typename") or "empty answer"
+        print(f"    [plate] no plate: {_safe(str(why))[:120]}")
+        return ""
+    except Exception as e:
+        print(f"    [plate] request failed: {_safe(str(e))[:120]}")
     return None
 
 
@@ -924,6 +993,9 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             raw_plate = _decrypt_vin(enc_reg, advert_id)  # same decrypt fn
             if raw_plate and is_valid_registration_plate(raw_plate):
                 registration_plate = re.sub(r"\s+", " ", raw_plate).strip().upper()
+        # Since early November 2026 the plate is no longer in the page; has_registration says the
+        # seller gave one, and reveal_plate fetches it like the "show" button does
+        plate_behind_reveal = not registration_plate and str(_pd_val("has_registration") or "") == "1"
 
         # First registration date — encrypted the same way
         first_registration_date = None
@@ -992,6 +1064,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "vin_confidence":          vin_confidence,
             "invalid_vin":             invalid_vin,
             "registration_plate":      registration_plate,
+            "plate_behind_reveal":     plate_behind_reveal,
             "first_registration_date": first_registration_date,
             "photo_url":               photo_url,
             "photo_urls":              photo_urls,
@@ -1434,6 +1507,15 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
 
                     if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
+
+                    # Only for listings that are kept: each plate costs one request on the account.
+                    # detail is the cached dict, so a scraper sharing the search won't ask again.
+                    if detail.get("plate_behind_reveal") and logged_in and plate_reveal_allowed():
+                        plate = reveal_plate(listing_id, cookies)
+                        detail["plate_behind_reveal"] = False
+                        if plate:
+                            detail["registration_plate"] = plate
+                            print(f"    Plate (api):  {plate}")
     
                 photo         = detail.get("photo_url") or thumbnail
                 final_price   = detail.get("price_from_detail") or price_pln
