@@ -1546,6 +1546,39 @@ class TestOtomotoDetailPlate(unittest.TestCase):
         self.assertFalse(self.detail({})["plate_behind_reveal"])
 
 
+class TestOtomotoVinIsValidated(unittest.TestCase):
+    """A VIN from the description or from "Show VIN" must pass is_plausible_vin, like the page's own."""
+
+    def detail(self, description):
+        nd = {"props": {"pageProps": {"advert": {
+            "id": "1", "details": [], "parametersDict": {}, "description": description}}}}
+        html = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(nd)}</script>'
+        with mock.patch.object(base_scraper.requests, "get", return_value=mock.Mock(status_code=200, text=html)):
+            return base_scraper.fetch_detail("https://www.otomoto.pl/osobowe/oferta/x-ID1.html")
+
+    def test_description_vin_of_a_known_maker_is_taken(self):
+        d = self.detail("Auto bezwypadkowe, VIN: WBS11DM0108E8AG77, serwis ASO.")
+        self.assertEqual((d["vin"], d["vin_confidence"]), ("WBS11DM0108E8AG77", "found_in_description"))
+
+    def test_description_vin_of_an_unknown_maker_is_not(self):
+        d = self.detail("Kod ZZZ11DM0108E8AG77 z opisu")
+        self.assertIsNone(d["vin"])
+
+    def test_revealed_vin_is_used_only_when_plausible(self):
+        good = {"vin": None, "vin_confidence": "found_in_schema"}
+        self.assertTrue(base_scraper._use_revealed_vin(good, "WDD2040771F408260"))
+        self.assertEqual((good["vin"], good["vin_confidence"]), ("WDD2040771F408260", "found_in_schema"))
+
+        bad = {"vin": None, "vin_confidence": "found_in_schema"}
+        self.assertFalse(base_scraper._use_revealed_vin(bad, "ZZZ11DM0108E8AG77"))
+        self.assertIsNone(bad["vin"])
+        self.assertEqual((bad["invalid_vin"], bad["vin_confidence"]), ("ZZZ11DM0108E8AG77", "invalid_vin"))
+
+        none = {"vin": None, "vin_confidence": "found_in_schema"}
+        self.assertFalse(base_scraper._use_revealed_vin(none, None))
+        self.assertEqual(none, {"vin": None, "vin_confidence": "found_in_schema"})
+
+
 class TestWorthRevealing(unittest.TestCase):
     def test_no_reveal_for_a_listing_the_validator_rejects(self):
         from otomoto.bmw_m340i_g20 import CONFIG

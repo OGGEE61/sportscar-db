@@ -538,6 +538,21 @@ def reveal_plate(ad_id: str, cookies: dict) -> Optional[str]:
     return None
 
 
+def _use_revealed_vin(detail: dict, revealed: Optional[str]) -> bool:
+    """Put a VIN from reveal_vin into detail if it passes is_plausible_vin, like a VIN in the page.
+
+    One that fails is kept only as invalid_vin (vin_confidence "invalid_vin"), never as the VIN.
+    """
+    if revealed and is_plausible_vin(revealed):
+        detail["vin"]            = revealed
+        detail["vin_confidence"] = "found_in_schema"
+        return True
+    if revealed:
+        detail["invalid_vin"]    = revealed
+        detail["vin_confidence"] = "invalid_vin"
+    return False
+
+
 def extract_description(nd: dict) -> str:
     """Walk __NEXT_DATA__ to find the longest 'description' string (the ad body)."""
     best = ""
@@ -975,7 +990,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         # Tier 2: seller typed VIN in description text
         if not vin_found:
             for candidate in VIN_RE.findall(description_text):
-                if not re.fullmatch(r"[0-9A-F]{17}", candidate):
+                if not re.fullmatch(r"[0-9A-F]{17}", candidate) and is_plausible_vin(candidate):
                     vin_found      = candidate
                     vin_confidence = "found_in_description"
                     break
@@ -1479,10 +1494,10 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                         print("    VIN: not revealed, the listing is rejected anyway")
                     elif vc == "found_in_schema" and logged_in and vin_reveal_allowed():
                         revealed = reveal_vin(listing_id, cookies)
-                        if revealed:
-                            detail["vin"]            = revealed
-                            detail["vin_confidence"] = "found_in_schema"
+                        if _use_revealed_vin(detail, revealed):
                             print(f"    VIN (api):    {revealed}")
+                        elif revealed:
+                            print(f"    VIN (api, niepoprawny/fejk): {revealed} — odrzucony przez walidator")
                         else:
                             print("    VIN: brak poprawnego numeru w ogłoszeniu")
                     elif vc == "found_in_schema":
