@@ -16,5 +16,6 @@ if [ "$before" != "$after" ] || [ "${1:-}" = "--force" ] || ! docker image inspe
     echo "=== $(date '+%F %T') build ${after:0:7}"
     docker compose -f deploy/scrapers/compose.yml build -q scraper
     docker image prune -f > /dev/null
+    docker builder prune -af --filter until=168h > /dev/null   # build cache unused for a week
   } >> logs/update.log 2>&1
 fi
