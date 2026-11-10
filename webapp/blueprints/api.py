@@ -269,7 +269,8 @@ def api_reveal_queue():
     only since then). Returns {"vins": [...], "plates": [...]}, each item
     {"id", "source_listing_id", "variant"}:
       vins:   pending listings whose ad has a VIN that the scraper could not reveal;
-      plates: pending and approved listings scraped since plates_since without a plate.
+      plates: pending and approved listings scraped since plates_since without a plate, pending
+              first (they wait in the review queue), then approved.
     """
     if err := check_api_token(): return err
     since = str((request.get_json(force=True, silent=True) or {}).get("plates_since") or "2026-11-05")
@@ -284,7 +285,7 @@ def api_reveal_queue():
         SELECT id, source_listing_id, variant FROM pending_listings
         WHERE source = 'otomoto' AND status IN ('pending', 'approved')
           AND COALESCE(registration_plate, '') = '' AND scraped_at >= ?
-        ORDER BY id DESC
+        ORDER BY status = 'pending' DESC, id DESC
     """, (since,)).fetchall()
     conn.close()
 
