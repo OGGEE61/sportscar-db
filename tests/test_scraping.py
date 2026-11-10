@@ -1637,7 +1637,7 @@ class TestRevealEndpoints(ScrapingTestCase):
         q = self.client.post("/api/reveal_queue", headers=TOKEN, json={"plates_since": "2026-11-05"}).get_json()
         self.assertEqual([it["source_listing_id"] for it in q["vins"]], ["old", "novin"])
         self.assertEqual([it["source_listing_id"] for it in q["plates"]],
-                         ["approved-noplate", "novin-in-ad", "hasvin", "novin"])
+                         ["novin-in-ad", "hasvin", "novin", "approved-noplate"])
 
     def test_vin_is_stored_only_if_plausible_and_missing(self):
         good, bad = self.add("good"), self.add("bad")
