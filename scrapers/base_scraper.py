@@ -1500,8 +1500,11 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             print(f"    VIN (api, niepoprawny/fejk): {revealed} — odrzucony przez walidator")
                         else:
                             print("    VIN: brak poprawnego numeru w ogłoszeniu")
+                    elif vc == "found_in_schema" and logged_in:
+                        print("    VIN: not revealed (per-run limit reached or Otomoto blocked); "
+                              "the reveal job (reveal_pending_vins.py) will get it")
                     elif vc == "found_in_schema":
-                        print("    VIN: brak poprawnego numeru w ogłoszeniu")
+                        print("    VIN: not revealed (not logged in to Otomoto)")
 
                     target = cfg.reassign(detail) if cfg.reassign and detail else None
                     if target:

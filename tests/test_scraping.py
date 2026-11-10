@@ -1606,3 +1606,125 @@ class TestSessionCheckKeepsAccountPrivate(unittest.TestCase):
             self.assertTrue(base_scraper.check_session({}))
         self.assertNotIn("someone@example.com", out.getvalue())
         self.assertNotIn("Kowalski", out.getvalue())
+
+
+class TestRevealEndpoints(ScrapingTestCase):
+    """/api/reveal_queue and /api/reveal_result, used by the reveal job on the VPS."""
+
+    def add(self, sid, status="pending", vin=None, vc="found_in_schema", plate=None, scraped="2026-11-08 10:00:00"):
+        conn = db.get_db()
+        cur = conn.execute("""INSERT INTO pending_listings (source, source_listing_id, make, model, variant, status,
+                              vin, vin_confidence, registration_plate, scraped_at)
+                              VALUES ('otomoto', ?, 'BMW', 'Seria 3', 'M340i', ?, ?, ?, ?, ?)""",
+                           (sid, status, vin, vc, plate, scraped))
+        conn.commit()
+        conn.close()
+        return cur.lastrowid
+
+    def row(self, listing_id):
+        conn = db.get_db()
+        r = conn.execute("SELECT vin, registration_plate FROM pending_listings WHERE id=?", (listing_id,)).fetchone()
+        conn.close()
+        return r
+
+    def test_queue(self):
+        self.add("novin")
+        self.add("hasvin", vin="WBA5U91010FK21968")
+        self.add("novin-in-ad", vc="none")
+        self.add("rejected", status="rejected")
+        self.add("old", plate=None, scraped="2026-10-01 10:00:00")
+        self.add("approved-noplate", status="approved", vin="WBA5U91010FK21968")
+        q = self.client.post("/api/reveal_queue", headers=TOKEN, json={"plates_since": "2026-11-05"}).get_json()
+        self.assertEqual([it["source_listing_id"] for it in q["vins"]], ["old", "novin"])
+        self.assertEqual([it["source_listing_id"] for it in q["plates"]],
+                         ["approved-noplate", "novin-in-ad", "hasvin", "novin"])
+
+    def test_vin_is_stored_only_if_plausible_and_missing(self):
+        good, bad = self.add("good"), self.add("bad")
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": good, "vin": "wba5u91010fk21968"})
+        self.assertEqual(res.get_json(), {"vin": True, "plate": False})
+        self.assertEqual(self.row(good)["vin"], "WBA5U91010FK21968")
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": bad, "vin": "WDD15666600000000"})
+        self.assertFalse(res.get_json()["vin"])
+        self.assertIsNone(self.row(bad)["vin"])
+
+    def test_plate_goes_to_the_approved_car_too(self):
+        self.add_active_listing("ap", "WBS8M9C50J5K99001", "F80")
+        conn = db.get_db()
+        listing_id = conn.execute("SELECT id FROM pending_listings WHERE source_listing_id='ap'").fetchone()["id"]
+        conn.close()
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": listing_id, "plate": "dw 12345"})
+        self.assertTrue(res.get_json()["plate"])
+        self.assertEqual(self.row(listing_id)["registration_plate"], "DW12345")
+        conn = db.get_db()
+        self.assertEqual(conn.execute("SELECT registration_plate FROM vehicles WHERE vin='WBS8M9C50J5K99001'")
+                         .fetchone()[0], "DW12345")
+        conn.close()
+
+    def test_invalid_or_rejected_plate_is_not_stored(self):
+        bad = self.add("bad")
+        self.assertFalse(self.client.post("/api/reveal_result", headers=TOKEN,
+                                          json={"id": bad, "plate": "BMWm40i"}).get_json()["plate"])
+        rejected = self.add("rej", vin="WBA5U91010FK21968")
+        conn = db.get_db()
+        conn.execute("INSERT INTO plate_review_queue (vin, status, reviewed_plate) "
+                     "VALUES ('WBA5U91010FK21968', 'rejected', 'DW12345')")
+        conn.commit()
+        conn.close()
+        self.assertFalse(self.client.post("/api/reveal_result", headers=TOKEN,
+                                          json={"id": rejected, "plate": "DW 12345"}).get_json()["plate"])
+        self.assertIsNone(self.row(rejected)["registration_plate"])
+
+    def test_token_and_unknown_id(self):
+        self.assertEqual(self.client.post("/api/reveal_queue", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/reveal_result", json={"id": 1}).status_code, 401)
+        self.assertEqual(self.client.post("/api/reveal_result", headers=TOKEN, json={"id": 999}).status_code, 404)
+
+
+class TestRevealJob(unittest.TestCase):
+    """scripts/maintenance/reveal_pending_vins.py: batches of 20 that move on through the queue."""
+
+    def setUp(self):
+        from scripts.maintenance import reveal_pending_vins as job
+        self.job = job
+        base_scraper._vin_reveals.update(count=0, plates=0, blocked=False, vins_masked=False, masked_in_a_row=0)
+        self.addCleanup(base_scraper._vin_reveals.update, count=0, plates=0, blocked=False,
+                        vins_masked=False, masked_in_a_row=0)
+        self.session = mock.Mock(get=mock.Mock(return_value={}))
+
+    def items(self, n):
+        return [{"id": i, "source_listing_id": str(1000 + i), "variant": "M340i"} for i in range(n)]
+
+    def test_due_skips_recent_empty_answers_and_forgets_old_ones(self):
+        tried = {"1000": 900.0, "1001": 100.0}
+        left = self.job.due(self.items(3), tried, retry_after_s=500, now=1000.0)
+        self.assertEqual([it["source_listing_id"] for it in left], ["1001", "1002"])
+        self.assertEqual(tried, {"1000": 900.0})
+
+    def test_vins_empty_answer_is_remembered_but_not_after_a_block(self):
+        tried = {}
+        with mock.patch.object(self.job, "reveal_vin", side_effect=["WBA5U91010FK21968", None]), \
+             mock.patch.object(self.job, "send_result", return_value={"vin": True}) as send:
+            self.assertEqual(self.job.fill_vins(self.items(2), self.session, tried), 1)
+        send.assert_called_once_with(0, vin="WBA5U91010FK21968")
+        self.assertEqual(list(tried), ["1001"])
+
+        tried = {}
+
+        def blocked(*a):
+            base_scraper._vin_reveals["blocked"] = True
+        with mock.patch.object(self.job, "reveal_vin", side_effect=blocked):
+            self.job.fill_vins(self.items(3), self.session, tried)
+        self.assertEqual(tried, {})
+
+    def test_plates_stop_at_the_per_run_limit(self):
+        def reveal(sid, cookies):
+            base_scraper._vin_reveals["plates"] += 1
+            return "" if sid == "1001" else "DW12345"
+        with mock.patch.object(base_scraper, "VIN_REVEALS_PER_RUN", 3), \
+             mock.patch.object(self.job, "reveal_plate", side_effect=reveal), \
+             mock.patch.object(self.job, "send_result", return_value={"plate": True}) as send:
+            tried = {}
+            self.assertEqual(self.job.fill_plates(self.items(5), self.session, tried), 2)
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(list(tried), ["1001"])
