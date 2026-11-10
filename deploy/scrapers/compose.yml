@@ -9,5 +9,8 @@ services:
     env_file: /opt/sportscar-secrets/scrapers.env   # API_TOKEN, BASE_URL
     environment:
       RUN_ORIGIN: VPS
+      REVEAL_STATE_FILE: /app/state/reveal_state.json
     volumes:
       - /opt/sportscar-secrets/otomoto_cookies.json:/app/scrapers/otomoto_cookies.json:ro
+      # what the reveal job remembers between runs (ads answered without a VIN or plate)
+      - /opt/sportscar-state:/app/state

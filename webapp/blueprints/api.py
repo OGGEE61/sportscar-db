@@ -260,6 +260,87 @@ def api_known_listings():
     return jsonify({"known": known})
 
 
+@bp.route("/api/reveal_queue", methods=["POST"])
+def api_reveal_queue():
+    """Otomoto listings whose VIN or plate is still behind a reveal, newest first.
+
+    For scripts/maintenance/reveal_pending_vins.py, which reveals them and sends each result to
+    /api/reveal_result. Body: {"plates_since": "YYYY-MM-DD"} (plates are hidden in the ad page
+    only since then). Returns {"vins": [...], "plates": [...]}, each item
+    {"id", "source_listing_id", "variant"}:
+      vins:   pending listings whose ad has a VIN that the scraper could not reveal;
+      plates: pending and approved listings scraped since plates_since without a plate.
+    """
+    if err := check_api_token(): return err
+    since = str((request.get_json(force=True, silent=True) or {}).get("plates_since") or "2026-11-05")
+    conn = get_db()
+    vins = conn.execute("""
+        SELECT id, source_listing_id, variant FROM pending_listings
+        WHERE source = 'otomoto' AND status = 'pending' AND COALESCE(vin, '') = ''
+          AND vin_confidence = 'found_in_schema'
+        ORDER BY id DESC
+    """).fetchall()
+    plates = conn.execute("""
+        SELECT id, source_listing_id, variant FROM pending_listings
+        WHERE source = 'otomoto' AND status IN ('pending', 'approved')
+          AND COALESCE(registration_plate, '') = '' AND scraped_at >= ?
+        ORDER BY id DESC
+    """, (since,)).fetchall()
+    conn.close()
+
+    def items(rows):
+        return [{"id": r["id"], "source_listing_id": str(r["source_listing_id"]), "variant": r["variant"]}
+                for r in rows]
+    return jsonify({"vins": items(vins), "plates": items(plates)})
+
+
+@bp.route("/api/reveal_result", methods=["POST"])
+def api_reveal_result():
+    """Store a revealed VIN and/or plate on a pending listing (see /api/reveal_queue).
+
+    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both).
+    Only fills what is empty: a VIN only on a pending listing and only if is_plausible_vin;
+    a plate only if is_valid_registration_plate and not one the reviewer rejected for this VIN.
+    An approved listing's car gets the plate too, if it has none.
+    Returns {"vin": bool, "plate": bool}: whether each was stored.
+    """
+    if err := check_api_token(): return err
+    p = request.get_json(force=True, silent=True) or {}
+    listing_id = safe_int(p.get("id"))
+    if not listing_id:
+        return jsonify({"error": "id required"}), 400
+    vin = (p.get("vin") or "").strip().upper()
+    plate = p.get("plate") or ""
+    plate = normalize_plate(plate) if plate and is_valid_registration_plate(plate) else ""
+
+    conn = get_db()
+    row = conn.execute("SELECT status, vin FROM pending_listings WHERE id = ? AND source = 'otomoto'",
+                       (listing_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "not found"}), 404
+    stored = {"vin": False, "plate": False}
+    if vin and is_plausible_vin(vin) and row["status"] == "pending" and not row["vin"]:
+        conn.execute("UPDATE pending_listings SET vin = ? WHERE id = ? AND COALESCE(vin, '') = ''",
+                     (vin, listing_id))
+        stored["vin"] = True
+    car_vin = row["vin"] or (vin if stored["vin"] else "")
+    if plate and car_vin and conn.execute(
+            "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
+            (car_vin, plate)).fetchone():
+        plate = ""
+    if plate:
+        conn.execute("UPDATE pending_listings SET registration_plate = ? "
+                     "WHERE id = ? AND COALESCE(registration_plate, '') = ''", (plate, listing_id))
+        if row["status"] == "approved" and row["vin"]:
+            conn.execute("UPDATE vehicles SET registration_plate = ? "
+                         "WHERE vin = ? AND COALESCE(registration_plate, '') = ''", (plate, row["vin"]))
+        stored["plate"] = True
+    conn.commit()
+    conn.close()
+    return jsonify(stored)
+
+
 @bp.route("/api/next_scrapers", methods=["POST"])
 def api_next_scrapers():
     """Pick the scrapers that have waited longest, so a skipped schedule run can't leave one out.

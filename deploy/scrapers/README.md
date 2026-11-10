@@ -4,6 +4,10 @@ The Otomoto, OLX and Autoplac scrapers run on the cyber_Folks VPS (178.250.47.19
 listings to the app on Vercel, the same way the GitHub workflows did. GitHub's runners were
 being blocked (Autoplac: Cloudflare 403, Otomoto: VIN reveals 403); the VPS is not.
 
+Besides the scrapes, `scripts/maintenance/reveal_pending_vins.py` runs every 2 hours in between:
+it reveals up to 20 VINs and 20 plates that the scrapes left behind (each scrape has its own limit
+of 20 reveals, and spends it in listing order).
+
 How it works: the host's cron (`/etc/cron.d/sportscar-scrapers`, from [crontab](crontab)) calls
 [run.sh](run.sh), which starts one fresh container from the `sportscar-scraper` image. Only one
 job per source runs at a time; a run that finds the previous one still going is skipped.
@@ -17,6 +21,7 @@ job per source runs at a time; a run that finds the previous one still going is 
 | `/opt/sportscar/logs/<source>.log` | output of each run; `update.log` for rebuilds. Rotated weekly |
 | `/opt/sportscar-secrets/scrapers.env` | `API_TOKEN=…`, `BASE_URL=https://…` (mode 600, root) |
 | `/opt/sportscar-secrets/otomoto_cookies.json` | logged-in Otomoto cookies (mode 600, owner uid 10001 = the container user) |
+| `/opt/sportscar-state` | what the reveal job remembers between runs (owner uid 10001) |
 
 ## Install (once)
 
@@ -26,6 +31,7 @@ install -d -m 700 /opt/sportscar-secrets
 # copy scrapers.env and otomoto_cookies.json in from the Mac (file to file, never through a chat), then:
 chmod 600 /opt/sportscar-secrets/*
 chown 10001 /opt/sportscar-secrets/otomoto_cookies.json
+install -d -o 10001 -m 700 /opt/sportscar-state
 /opt/sportscar/deploy/scrapers/update.sh --force          # first build, a few minutes
 /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py m2_g87   # one test run
 install -m 644 /opt/sportscar/deploy/scrapers/crontab /etc/cron.d/sportscar-scrapers
