@@ -165,20 +165,37 @@ def review_pending_with_vin():
     return {"ids": [p["id"] for p in pending if is_plausible_vin(p["vin"])]}
 
 
+def vin_awaits_reveal(listing) -> bool:
+    """True for an otomoto ad whose VIN sits behind "Show VIN" and was not revealed yet.
+
+    Such a listing has a VIN; the reveal job fills it in (scripts/maintenance/reveal_pending_vins.py).
+    Rejecting it would lose the car for good: the scrapers never look at a rejected listing again.
+    """
+    return (listing["source"] == "otomoto" and listing["vin_confidence"] == "found_in_schema"
+            and not (listing["vin"] or "").strip())
+
+
 @bp.route("/review/bulk_reject_novin", methods=["POST"])
 def review_bulk_reject_novin():
     src_sql, src_params = _source_scope()
     conn = get_db()
     pending = conn.execute(
-        f"SELECT id, vin FROM pending_listings WHERE status='pending'{src_sql}", src_params).fetchall()
-    count = 0
+        f"SELECT id, vin, source, vin_confidence FROM pending_listings WHERE status='pending'{src_sql}",
+        src_params).fetchall()
+    count = waiting = 0
     for p in pending:
-        if not is_plausible_vin(p["vin"]):
-            conn.execute("UPDATE pending_listings SET status='rejected', review_notes='Missing/Invalid VIN' WHERE id=?", (p["id"],))
-            count += 1
+        if is_plausible_vin(p["vin"]):
+            continue
+        if vin_awaits_reveal(p):
+            waiting += 1
+            continue
+        conn.execute("UPDATE pending_listings SET status='rejected', review_notes='Missing/Invalid VIN' WHERE id=?", (p["id"],))
+        count += 1
     conn.commit()
     conn.close()
-    flash(f"Automatically rejected {count} listings with missing or invalid VINs.", "success")
+    flash(f"Odrzucono {count} ogłoszeń bez VIN-u lub z błędnym VIN-em."
+          + (f" Pominięto {waiting}: VIN jest w ogłoszeniu za „Pokaż VIN” i czeka na odsłonięcie." if waiting else ""),
+          "success")
     return redirect(url_for("review.review_queue", source=request.args.get("source") or None))
 
 

@@ -3,11 +3,12 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Otomoto: the 3 models that waited longest, every 2 hours
-15 */2 * * *    root  /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py next_3
-# Otomoto VINs and plates the scrapes left behind: up to 20 of each, between the scrapes.
-# Same lock as the Otomoto scrape, so the two never reveal at the same time.
-15 1-23/2 * * * root  /opt/sportscar/deploy/scrapers/run.sh otomoto scripts/maintenance/reveal_pending_vins.py
+# Otomoto: the 3 models that waited longest, every 3 hours (about the pace GitHub kept before the
+# move: more often adds requests, not cars)
+15 */3 * * *    root  /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py next_3
+# Otomoto VINs and plates the scrapes left behind, an hour after each scrape. Within the scrapes'
+# shared limits (base_scraper.REVEALS_PER_DAY); same lock as the Otomoto scrape.
+15 1-22/3 * * * root  /opt/sportscar/deploy/scrapers/run.sh otomoto scripts/maintenance/reveal_pending_vins.py
 # OLX: the 4 models that waited longest, every 4 hours
 45 1-23/4 * * * root  /opt/sportscar/deploy/scrapers/run.sh olx scrapers/run_olx.py next_4
 # Autoplac: all models, once a day

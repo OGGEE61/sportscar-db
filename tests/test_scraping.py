@@ -12,6 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 os.environ["DB_BACKEND"] = "sqlite"
 os.environ["API_TOKEN"] = "test-token"
 TEST_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_scraping.db")
+if "REVEAL_STATE_FILE" not in os.environ:   # tests/conftest.py sets it under pytest
+    import tempfile
+    os.environ["REVEAL_STATE_FILE"] = os.path.join(tempfile.mkdtemp(prefix="reveal-state-"), "reveal_state.json")
 
 import db
 from app import app
@@ -1369,14 +1372,27 @@ class TestUrlYearRange(unittest.TestCase):
         self.assertEqual(years(run_all.M5_F90.list_url)[1], 2024)
 
 
-class TestRevealVin(unittest.TestCase):
+class RevealStateMixin:
+    """A fresh shared reveal budget (its own state file) and fresh per-process counts."""
+
+    def fresh_reveal_state(self):
+        import shutil, tempfile
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.state_file = os.path.join(tmp, "reveal_state.json")
+        patcher = mock.patch.object(base_scraper, "REVEAL_STATE_FILE", self.state_file)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        base_scraper.reset_reveals()
+        self.addCleanup(base_scraper.reset_reveals)
+
+
+class TestRevealVin(RevealStateMixin, unittest.TestCase):
     def setUp(self):
-        fresh = dict(count=0, plates=0, blocked=False, vins_masked=False, masked_in_a_row=0)
-        base_scraper._vin_reveals.update(fresh)
+        self.fresh_reveal_state()
         sleep = mock.patch.object(base_scraper.time, "sleep")
         self.sleep = sleep.start()
         self.addCleanup(sleep.stop)
-        self.addCleanup(base_scraper._vin_reveals.update, fresh)
 
     def reply(self, body, status=200):
         resp = mock.Mock(status_code=status, text=str(body))
@@ -1395,7 +1411,7 @@ class TestRevealVin(unittest.TestCase):
         with self.reply({"data": {"viewer": {"adVin": {"__typename": "AdVinError", "code": "NOT_FOUND"}}}}):
             self.assertIsNone(base_scraper.reveal_vin("1", {}))
         with self.reply({}, status=403):
-            self.assertIsNone(base_scraper.reveal_vin("1", {}))
+            self.assertIsNone(base_scraper.reveal_vin("2", {}))
 
 
 class TestRunLogOrigin(unittest.TestCase):
@@ -1432,6 +1448,10 @@ class TestRunLogOrigin(unittest.TestCase):
 
 
 class TestRevealVinPacing(TestRevealVin):
+    @staticmethod
+    def vin_body(value):
+        return {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": value}}}}}
+
     def test_403_stops_reveals_for_the_rest_of_the_run(self):
         with self.reply({}, status=403) as post:
             self.assertIsNone(base_scraper.reveal_vin("1", {}))
@@ -1440,32 +1460,85 @@ class TestRevealVinPacing(TestRevealVin):
         self.assertFalse(base_scraper.vin_reveal_allowed())
 
     def test_reveals_are_spaced_and_capped(self):
-        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": "WDB4632481X123456"}}}}}
-        with self.reply(body) as post:
+        with self.reply(self.vin_body("WDB4632481X123456")) as post:
             for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
                 base_scraper.reveal_vin(str(i), {})
         self.assertEqual(post.call_count, base_scraper.VIN_REVEALS_PER_RUN)
         self.assertEqual(self.sleep.call_count, base_scraper.VIN_REVEALS_PER_RUN - 1)
 
-    @staticmethod
-    def vin_body(value):
-        return {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": value}}}}}
-
-    def test_masked_vins_in_a_row_stop_reveals_for_the_rest_of_the_run(self):
-        with self.reply(self.vin_body("XXXXXXXXXXXXXXXXX")) as post:
+    def test_masked_vins_do_not_stop_reveals(self):
+        # "XXX" at the end is the seller hiding it, not a limit
+        with self.reply(self.vin_body("WDD2040771F123XXX")) as post:
             for i in range(5):
                 self.assertIsNone(base_scraper.reveal_vin(str(i), {}))
-        self.assertEqual(post.call_count, base_scraper.VIN_MASKED_IN_A_ROW_STOP)
-        self.assertFalse(base_scraper.vin_reveal_allowed())
-
-    def test_one_masked_vin_between_real_ones_does_not_stop_reveals(self):
-        real, masked = self.vin_body("WDB4632481X123456"), self.vin_body("WDD2040771F123XXX")
-        for body in (masked, real, masked, real):
-            with self.reply(body):
-                base_scraper.reveal_vin("1", {})
+        self.assertEqual(post.call_count, 5)
         self.assertTrue(base_scraper.vin_reveal_allowed())
-        with self.reply(real):
-            self.assertEqual(base_scraper.reveal_vin("2", {}), "WDB4632481X123456")
+        with self.reply(self.vin_body("WDB4632481X123456")):
+            self.assertEqual(base_scraper.reveal_vin("9", {}), "WDB4632481X123456")
+
+
+class TestRevealBudget(TestRevealVin):
+    """The budget is shared by every process (scrapes, the reveal job) through REVEAL_STATE_FILE."""
+
+    vin_body = staticmethod(TestRevealVinPacing.vin_body)
+
+    def new_process(self):
+        base_scraper.reset_reveals()
+
+    def test_a_403_pauses_every_process_for_a_day(self):
+        with self.reply({}, status=403):
+            base_scraper.reveal_vin("1", {})
+        self.new_process()
+        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+            self.assertIsNone(base_scraper.reveal_vin("2", {}))
+        post.assert_not_called()
+        self.assertIn("HTTP 403", base_scraper.reveal_skip_reason("plate"))
+        later = base_scraper.time.time() + base_scraper.BLOCK_PAUSE_S + 1
+        with mock.patch.object(base_scraper.time, "time", return_value=later):
+            self.assertIsNone(base_scraper.reveal_skip_reason("vin"))
+
+    def test_the_daily_limit_counts_every_process(self):
+        sent = 0
+        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+            for run in range(5):
+                self.new_process()
+                for i in range(base_scraper.VIN_REVEALS_PER_RUN):
+                    base_scraper.reveal_vin(f"{run}-{i}", {})
+            sent = post.call_count
+        self.assertEqual(sent, base_scraper.REVEALS_PER_DAY)
+        self.assertIn("per day", base_scraper.reveal_skip_reason("vin"))
+        self.assertIsNone(base_scraper.reveal_skip_reason("plate"))   # each kind has its own
+
+    def test_counts_start_again_the_next_day(self):
+        with open(self.state_file, "w") as f:
+            json.dump({"day": "2026-11-09", "vins_today": 999, "plates_today": 999}, f)
+        self.assertIsNone(base_scraper.reveal_skip_reason("vin"))
+        self.assertIsNone(base_scraper.reveal_skip_reason("plate"))
+
+    def test_an_ad_without_a_vin_is_not_asked_again_for_a_day(self):
+        with self.reply({"data": {"viewer": {"adVin": {"__typename": "AdVinError", "code": "NOT_FOUND"}}}}):
+            base_scraper.reveal_vin("1", {})
+        self.new_process()
+        self.assertTrue(base_scraper.recently_asked("vin", "1"))
+        self.assertFalse(base_scraper.recently_asked("plate", "1"))
+        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+            self.assertIsNone(base_scraper.reveal_vin("1", {}))
+        post.assert_not_called()
+        later = base_scraper.time.time() + base_scraper.VIN_RETRY_AFTER_S + 1
+        with mock.patch.object(base_scraper.time, "time", return_value=later):
+            self.assertFalse(base_scraper.recently_asked("vin", "1"))
+
+    def test_a_graphql_error_is_not_taken_for_no_vin(self):
+        with self.reply({"errors": [{"message": "Unauthorized"}]}):
+            base_scraper.reveal_vin("1", {})
+        self.assertFalse(base_scraper.recently_asked("vin", "1"))
+
+    def test_a_broken_state_file_counts_as_empty(self):
+        with open(self.state_file, "w") as f:
+            f.write('{"vin": {"1": "x"}, "blocked_until": "soon", "vins_today": [')
+        self.assertIsNone(base_scraper.reveal_skip_reason("vin", "1"))
+        base_scraper.mark_none("vin", "2")
+        self.assertTrue(base_scraper.recently_asked("vin", "2"))
 
 
 class TestRevealPlate(TestRevealVin):
@@ -1492,10 +1565,11 @@ class TestRevealPlate(TestRevealVin):
                          base_scraper._PLATE_QUERY[1])
 
     def test_an_answer_without_a_valid_plate_is_empty(self):
-        for body in (self.plate_body(""), self.plate_body("BRAK123"),
-                     {"data": {"viewer": {"adRegistration": None}}}):
+        for i, body in enumerate((self.plate_body(""), self.plate_body("BRAK123"),
+                                  {"data": {"viewer": {"adRegistration": None}}})):
             with self.get(body):
-                self.assertEqual(base_scraper.reveal_plate("1", {}), "", body)
+                self.assertEqual(base_scraper.reveal_plate(str(i), {}), "", body)
+            self.assertTrue(base_scraper.recently_asked("plate", str(i)))
 
     def test_a_failed_request_is_none(self):
         with self.get({"errors": [{"message": "PersistedQueryNotFound"}]}):
@@ -1512,9 +1586,8 @@ class TestRevealPlate(TestRevealVin):
 
     def test_masked_vins_do_not_stop_plates(self):
         with self.reply(TestRevealVinPacing.vin_body("XXXXXXXXXXXXXXXXX")):
-            for i in range(base_scraper.VIN_MASKED_IN_A_ROW_STOP):
+            for i in range(5):
                 base_scraper.reveal_vin(str(i), {})
-        self.assertFalse(base_scraper.vin_reveal_allowed())
         self.assertTrue(base_scraper.plate_reveal_allowed())
 
     def test_plates_are_capped_and_paced_with_the_vins(self):
@@ -1681,41 +1754,37 @@ class TestRevealEndpoints(ScrapingTestCase):
         self.assertEqual(self.client.post("/api/reveal_result", headers=TOKEN, json={"id": 999}).status_code, 404)
 
 
-class TestRevealJob(unittest.TestCase):
-    """scripts/maintenance/reveal_pending_vins.py: batches of 20 that move on through the queue."""
+class TestRevealJob(RevealStateMixin, unittest.TestCase):
+    """scripts/maintenance/reveal_pending_vins.py: a few per run, within the scrapes' shared budget."""
 
     def setUp(self):
         from scripts.maintenance import reveal_pending_vins as job
         self.job = job
-        base_scraper._vin_reveals.update(count=0, plates=0, blocked=False, vins_masked=False, masked_in_a_row=0)
-        self.addCleanup(base_scraper._vin_reveals.update, count=0, plates=0, blocked=False,
-                        vins_masked=False, masked_in_a_row=0)
+        self.fresh_reveal_state()
         self.session = mock.Mock(get=mock.Mock(return_value={}))
 
     def items(self, n):
         return [{"id": i, "source_listing_id": str(1000 + i), "variant": "M340i"} for i in range(n)]
 
-    def test_due_skips_recent_empty_answers_and_forgets_old_ones(self):
-        tried = {"1000": 900.0, "1001": 100.0}
-        left = self.job.due(self.items(3), tried, retry_after_s=500, now=1000.0)
-        self.assertEqual([it["source_listing_id"] for it in left], ["1001", "1002"])
-        self.assertEqual(tried, {"1000": 900.0})
+    def test_due_skips_ads_that_recently_had_none(self):
+        base_scraper.mark_none("vin", "1000")
+        self.assertEqual([it["source_listing_id"] for it in self.job.due("vin", self.items(3))], ["1001", "1002"])
+        self.assertEqual(len(self.job.due("plate", self.items(3))), 3)
 
-    def test_vins_empty_answer_is_remembered_but_not_after_a_block(self):
-        tried = {}
-        with mock.patch.object(self.job, "reveal_vin", side_effect=["WBA5U91010FK21968", None]), \
-             mock.patch.object(self.job, "send_result", return_value={"vin": True}) as send:
-            self.assertEqual(self.job.fill_vins(self.items(2), self.session, tried), 1)
-        send.assert_called_once_with(0, vin="WBA5U91010FK21968")
-        self.assertEqual(list(tried), ["1001"])
+    def test_vins_are_stored_and_an_invalid_one_is_remembered(self):
+        with mock.patch.object(self.job, "reveal_vin", side_effect=["WBA5U91010FK21968", None, "WDD15666600000000"]), \
+             mock.patch.object(self.job, "send_result", side_effect=[{"vin": True}, {"vin": False}]) as send:
+            self.assertEqual(self.job.fill_vins(self.items(3), self.session), (1, None))
+        self.assertEqual(send.call_args_list[0], mock.call(0, vin="WBA5U91010FK21968"))
+        self.assertTrue(base_scraper.recently_asked("vin", "1002"))
 
-        tried = {}
-
+    def test_a_block_stops_the_batch(self):
         def blocked(*a):
-            base_scraper._vin_reveals["blocked"] = True
-        with mock.patch.object(self.job, "reveal_vin", side_effect=blocked):
-            self.job.fill_vins(self.items(3), self.session, tried)
-        self.assertEqual(tried, {})
+            base_scraper._mark_blocked()
+        with mock.patch.object(self.job, "reveal_vin", side_effect=blocked) as reveal:
+            found, why = self.job.fill_vins(self.items(3), self.session)
+        self.assertEqual((found, reveal.call_count), (0, 1))
+        self.assertIn("HTTP 403", why)
 
     def test_plates_stop_at_the_per_run_limit(self):
         def reveal(sid, cookies):
@@ -1724,7 +1793,201 @@ class TestRevealJob(unittest.TestCase):
         with mock.patch.object(base_scraper, "VIN_REVEALS_PER_RUN", 3), \
              mock.patch.object(self.job, "reveal_plate", side_effect=reveal), \
              mock.patch.object(self.job, "send_result", return_value={"plate": True}) as send:
-            tried = {}
-            self.assertEqual(self.job.fill_plates(self.items(5), self.session, tried), 2)
-        self.assertEqual(send.call_count, 2)
-        self.assertEqual(list(tried), ["1001"])
+            found, why = self.job.fill_plates(self.items(5), self.session)
+        self.assertEqual((found, send.call_count), (2, 2))
+        self.assertIn("per run", why)
+
+    def test_no_request_at_all_while_blocked(self):
+        base_scraper._mark_blocked()
+        base_scraper.reset_reveals()    # a new process: only the state file knows
+        with mock.patch.object(self.job, "fetch_queue") as queue, \
+             mock.patch.object(self.job, "_Session") as session, \
+             mock.patch.object(sys, "argv", ["reveal_pending_vins.py"]):
+            self.job.main()
+        queue.assert_not_called()
+        session.assert_not_called()
+
+    def test_main_reveals_what_is_due_and_logs_one_line(self):
+        base_scraper.mark_none("vin", "1000")
+        with mock.patch.object(self.job, "fetch_queue", return_value={"vins": self.items(2), "plates": []}), \
+             mock.patch.object(self.job, "_Session", return_value=mock.Mock(cookies={}, get=lambda: {})), \
+             mock.patch.object(self.job, "check_session", return_value=True), \
+             mock.patch.object(self.job, "reveal_vin", return_value="WBA5U91010FK21968") as reveal, \
+             mock.patch.object(self.job, "send_result", return_value={"vin": True}), \
+             mock.patch.object(self.job, "_log_run") as log, \
+             mock.patch.object(sys, "argv", ["reveal_pending_vins.py"]):
+            self.job.main()
+        reveal.assert_called_once_with("1001", {})
+        self.assertEqual(log.call_args.args[0], "success")
+        self.assertIn("1 of 1 pending", log.call_args.args[1])
+
+
+class TestUseStored(unittest.TestCase):
+    """A listing we already store keeps its VIN and plate without asking otomoto again."""
+
+    def test_stored_vin_and_plate_fill_the_gaps(self):
+        detail = {"vin": None, "vin_confidence": "found_in_schema", "plate_behind_reveal": True}
+        self.assertTrue(base_scraper._use_stored(detail, {"vin": "WBS8M9C50J5K99001", "plate": "WX12345"}))
+        self.assertEqual((detail["vin"], detail["registration_plate"], detail["plate_behind_reveal"]),
+                         ("WBS8M9C50J5K99001", "WX12345", False))
+
+    def test_placeholder_or_implausible_vin_is_not_used(self):
+        for vin in ("UNVERIFIED-otomoto-123", "XXXXXXXXXXXXXXXXX", None):
+            detail = {"vin": None}
+            self.assertFalse(base_scraper._use_stored(detail, {"vin": vin, "plate": None}))
+            self.assertIsNone(detail["vin"])
+
+    def test_the_ad_page_wins_over_the_stored_values(self):
+        detail = {"vin": "WDD2040771F408260", "registration_plate": "KR1ABC"}
+        self.assertFalse(base_scraper._use_stored(detail, {"vin": "WBS8M9C50J5K99001", "plate": "WX12345"}))
+        self.assertEqual((detail["vin"], detail["registration_plate"]), ("WDD2040771F408260", "KR1ABC"))
+        self.assertFalse(base_scraper._use_stored(detail, None))
+
+
+class TestKnownListingsGiveStoredValues(ScrapingTestCase):
+    def test_vin_and_plate_are_returned(self):
+        self.add_active_listing("full", "WBS8M9C50J5K99001", "F80", plate="WX12345")
+        self.add_active_listing("noplate", "WBS8M9C50J5K99003", "F80", status="pending")
+        known = self.client.post("/api/known_listings", headers=TOKEN, json={"items": [
+            ["otomoto", "full"], ["otomoto", "noplate"]]}).get_json()["known"]
+        self.assertEqual((known["otomoto:full"]["vin"], known["otomoto:full"]["plate"]),
+                         ("WBS8M9C50J5K99001", "WX12345"))
+        self.assertEqual((known["otomoto:noplate"]["status"], known["otomoto:noplate"]["plate"]), ("pending", None))
+
+
+class TestScraperRevealsOnlyWhatIsMissing(RevealStateMixin, unittest.TestCase):
+    """The scrape reveals nothing for an approved listing and takes stored values over a reveal."""
+
+    CFG = base_scraper.ScraperConfig(make="BMW", model="M3", variant="F80", source="otomoto",
+                                     list_url="https://www.otomoto.pl/x?page={page}", detail_delay=0)
+
+    def run_scraper(self, known):
+        self.fresh_reveal_state()
+        api = mock.MagicMock()
+        api.post.side_effect = lambda url, **kw: FakeResp(200, {"known": known} if "known_listings" in url
+                                                          else {"tag": "pending", "marked": 0})
+        detail = lambda url, **kw: {"year": 2016, "vin": None, "vin_confidence": "found_in_schema",
+                                    "plate_behind_reveal": True}
+        with mock.patch.dict(base_scraper._DETAIL_CACHE, clear=True), \
+             mock.patch.object(base_scraper, "load_cookies", return_value={"c": "1"}), \
+             mock.patch.object(base_scraper, "refresh_session", side_effect=lambda c, **kw: c), \
+             mock.patch.object(base_scraper, "check_session", return_value=True), \
+             mock.patch.object(base_scraper.requests, "get", side_effect=lambda *a, **k: FakeResp(200)), \
+             mock.patch.object(base_scraper, "_parse_otomoto_cards", side_effect=[[_card(1), _card(2)], []]), \
+             mock.patch.object(base_scraper, "fetch_detail", side_effect=detail), \
+             mock.patch.object(base_scraper, "reveal_vin", return_value="WBS8M9C50J5K99002") as vin, \
+             mock.patch.object(base_scraper, "reveal_plate", return_value="WX99999") as plate, \
+             mock.patch.object(base_scraper, "_API_SESSION", api), \
+             mock.patch.object(base_scraper.time, "sleep"):
+            results = base_scraper.run(self.CFG)
+        return {r["source_listing_id"]: r for r in results}, vin, plate
+
+    def test_approved_listing_is_not_revealed_and_keeps_its_values(self):
+        results, vin, plate = self.run_scraper({"otomoto:id1": {
+            "status": "approved", "complete": False, "vin": "WBS8M9C50J5K99001", "plate": None}})
+        self.assertEqual([c.args[0] for c in vin.call_args_list], ["id2"])
+        self.assertEqual([c.args[0] for c in plate.call_args_list], ["id2"])
+        self.assertEqual(results["id1"]["vin"], "WBS8M9C50J5K99001")
+        self.assertEqual((results["id2"]["vin"], results["id2"]["registration_plate"]),
+                         ("WBS8M9C50J5K99002", "WX99999"))
+
+    def test_pending_listing_with_a_stored_vin_reveals_only_the_plate(self):
+        results, vin, plate = self.run_scraper({"otomoto:id1": {
+            "status": "pending", "complete": False, "vin": "WBS8M9C50J5K99001", "plate": None}})
+        self.assertEqual([c.args[0] for c in vin.call_args_list], ["id2"])
+        self.assertEqual([c.args[0] for c in plate.call_args_list], ["id1", "id2"])
+        self.assertEqual(results["id1"]["vin"], "WBS8M9C50J5K99001")
+
+
+class TestOutsideSearch(unittest.TestCase):
+    """Power and engine size must fit the model's searches (a GLA 200 is not a GLA45)."""
+
+    def test_power_outside_the_search_is_ruled_out(self):
+        from otomoto.mercedes_gla45_x156 import CONFIG
+        self.assertIn("156 HP", base_scraper._outside_search(CONFIG, {"power_hp": 156}))
+        self.assertIsNone(base_scraper._outside_search(CONFIG, {"power_hp": 381}))
+        self.assertIsNone(base_scraper._outside_search(CONFIG, {"power_hp": 340}))   # within 10 %
+        self.assertIsNone(base_scraper._outside_search(CONFIG, {}))                  # unknown fits
+        self.assertFalse(base_scraper._worth_revealing(CONFIG, {"power_hp": 156}))
+
+    def test_a_search_without_the_filter_borrows_the_otomoto_one(self):
+        from autoplac.bmw_135i_e82 import CONFIG
+        self.assertEqual(base_scraper._url_range(CONFIG.list_url, "cc"), (None, None))
+        self.assertIn("1995 cm3", base_scraper._outside_search(CONFIG, {"engine_cc": 1995}))
+        self.assertIsNone(base_scraper._outside_search(CONFIG, {"engine_cc": 2979, "power_hp": 306}))
+
+    def test_no_filter_anywhere_lets_everything_through(self):
+        cfg = base_scraper.ScraperConfig(make="X", model="Y", variant="Z", source="olx",
+                                         list_url="https://www.olx.pl/x/?page={page}")
+        self.assertIsNone(base_scraper._outside_search(cfg, {"power_hp": 50, "engine_cc": 900}))
+
+    def test_one_fitting_search_is_enough(self):
+        cfg = base_scraper.ScraperConfig(make="X", model="Y", variant="Z2", source="autoplac", list_url=[
+            "https://autoplac.pl/oferty/x?enginePowerFrom=300&enginePowerTo=350&p={page}",
+            "https://autoplac.pl/oferty/x?enginePowerFrom=450&p={page}"])
+        self.assertIsNone(base_scraper._outside_search(cfg, {"power_hp": 500}))
+        self.assertIsNotNone(base_scraper._outside_search(cfg, {"power_hp": 400}))
+
+    def test_filters_of_each_site_are_read(self):
+        from olx._common import olx_url
+        from autoplac._common import autoplac_url
+        self.assertEqual(base_scraper._url_range(olx_url("bmw", ["m3"], power_from=400, size_to=3100), "power"),
+                         (400, None))
+        self.assertEqual(base_scraper._url_range(olx_url("bmw", ["m3"], power_from=400, size_to=3100), "cc"),
+                         (None, 3100))
+        self.assertEqual(base_scraper._url_range(autoplac_url("bmw", "m-3", cc_from=2900, cc_to=3100), "cc"),
+                         (2900, 3100))
+        from otomoto.bmw_m340i_g20 import CONFIG
+        self.assertEqual(base_scraper._url_range(CONFIG.list_url, "power"), (350, 420))
+
+    def test_every_stored_scraper_keeps_its_own_cars(self):
+        # each config's own defaults (a typical car of the model) must pass its own searches
+        from scripts.maintenance.audit_listings import load_configs
+        for cfgs in load_configs().values():
+            for cfg in cfgs:
+                self.assertIsNone(base_scraper._outside_search(cfg, cfg.defaults), cfg)
+
+
+class TestBulkRejectKeepsVinsAwaitingReveal(ScrapingTestCase):
+    def test_only_listings_without_any_vin_are_rejected(self):
+        conn = db.get_db()
+        for sid, source, vin, vc in (("behind", "otomoto", None, "found_in_schema"),
+                                     ("none", "otomoto", None, "none"),
+                                     ("olx", "olx", None, "found_in_schema"),
+                                     ("has", "otomoto", "WBS8M9C50J5K99001", "found_in_schema")):
+            conn.execute("INSERT INTO pending_listings (source, source_listing_id, make, model, vin, vin_confidence)"
+                         " VALUES (?, ?, 'BMW', 'M3', ?, ?)", (sid and source, sid, vin, vc))
+        conn.commit()
+        self.client.post("/review/bulk_reject_novin")
+        status = {r["source_listing_id"]: r["status"] for r in
+                  conn.execute("SELECT source_listing_id, status FROM pending_listings").fetchall()}
+        conn.close()
+        self.assertEqual(status, {"behind": "pending", "none": "rejected", "olx": "rejected", "has": "pending"})
+
+
+class TestAuditListings(unittest.TestCase):
+    def setUp(self):
+        from scripts.maintenance import audit_listings
+        from otomoto.mercedes_gla45_x156 import CONFIG
+        self.audit = audit_listings.audit
+        self.configs = {("otomoto", CONFIG.model, CONFIG.variant): [CONFIG]}
+
+    def listing(self, **kw):
+        base = {"source": "otomoto", "found_by": "otomoto", "model": "GLA", "variant": "GLA45 AMG X156",
+                "raw_title": "Mercedes-Benz GLA 45 AMG", "year": 2017, "power_hp": 381, "engine_cc": 1991,
+                "vin": None, "vin_confidence": "none", "raw_description": "", "status": "pending"}
+        return {**base, **kw}
+
+    def test_a_pending_gla_200_is_to_be_rejected(self):
+        a = self.audit(self.listing(power_hp=156, engine_cc=1595), self.configs)
+        self.assertEqual(a["verdict"], "reject")
+        self.assertTrue(any("156 HP" in b for b in a["broken"]))
+
+    def test_rejected_only_for_a_vin_behind_reveal_can_be_restored(self):
+        a = self.audit(self.listing(status="rejected", vin_confidence="found_in_schema"), self.configs)
+        self.assertEqual((a["verdict"], a["vin"]), ("restore", "behind_reveal"))
+        a = self.audit(self.listing(status="rejected", raw_description="VIN WDD1569421J123456"), self.configs)
+        self.assertEqual((a["verdict"], a["vin"]), ("restore", "in_description"))
+
+    def test_rejected_without_any_vin_stays(self):
+        self.assertEqual(self.audit(self.listing(status="rejected"), self.configs)["verdict"], "ok")

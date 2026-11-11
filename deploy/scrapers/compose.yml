@@ -12,5 +12,5 @@ services:
       REVEAL_STATE_FILE: /app/state/reveal_state.json
     volumes:
       - /opt/sportscar-secrets/otomoto_cookies.json:/app/scrapers/otomoto_cookies.json:ro
-      # what the reveal job remembers between runs (ads answered without a VIN or plate)
+      # the reveal budget shared by all runs: counts, the pause after a 403, ads that had none
       - /opt/sportscar-state:/app/state
