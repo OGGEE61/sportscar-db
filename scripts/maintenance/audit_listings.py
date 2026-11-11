@@ -28,7 +28,6 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path[:0] = [ROOT, os.path.join(ROOT, "scrapers")]
-import base_scraper
 from base_scraper import VIN_RE, ScraperConfig, _outside_search, _url_year_range
 from validation import is_plausible_vin
 
