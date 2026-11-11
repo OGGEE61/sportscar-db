@@ -61,7 +61,7 @@ class TestFlash(FixesTestCase):
         res = self.client.post("/review/bulk_reject_novin")
         self.assertEqual(res.status_code, 302)
         page = self.client.get("/review").get_data(as_text=True)
-        self.assertIn("Automatically rejected 1 listings", page)
+        self.assertIn("Odrzucono 1 ogłoszeń", page)
 
 
 class TestAuth(FixesTestCase):

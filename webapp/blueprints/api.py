@@ -228,7 +228,8 @@ def api_known_listings():
     """Tell scrapers which listings they can skip the detail page for.
 
     Body: {"items": [[source, source_listing_id], ...]}
-    Returns {"known": {"<source>:<id>": {"status": ..., "complete": bool}}}.
+    Returns {"known": {"<source>:<id>": {"status": ..., "complete": bool, "vin": ..., "plate": ...}}}.
+    vin/plate are what is stored (or null): the scraper uses them instead of revealing them again.
     complete = rejected, or VIN + plate + first registration already stored,
     i.e. a detail fetch could not fill anything the duplicate path would use.
     autoplac never shows a first registration date, so VIN + plate is enough there.
@@ -255,7 +256,9 @@ def api_known_listings():
                 complete = r["status"] == "rejected" or bool(
                     r["vin"] and r["registration_plate"]
                     and (r["first_registration_date"] or source == "autoplac"))
-                known[f"{source}:{r['source_listing_id']}"] = {"status": r["status"], "complete": complete}
+                known[f"{source}:{r['source_listing_id']}"] = {
+                    "status": r["status"], "complete": complete,
+                    "vin": r["vin"] or None, "plate": r["registration_plate"] or None}
     conn.close()
     return jsonify({"known": known})
 

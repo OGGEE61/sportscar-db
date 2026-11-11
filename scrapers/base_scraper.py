@@ -183,6 +183,7 @@ class ScraperConfig:
     defaults: dict = field(default_factory=dict)
 
 
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _safe(text: str) -> str:
@@ -392,28 +393,126 @@ _VIN_QUERY = """
 """
 
 
-# Every VIN now costs one "Show VIN" request on the account. Dozens in a row got the account or
-# runner blocked (HTTP 403 bot page), so reveals are spaced out and capped per process; ads left
-# without a VIN stay incomplete and are tried again on later runs.
+# Reveals ("Show VIN", "Show plate") are the requests otomoto's bot protection (DataDome) watches.
+# Up to 2026-11-04 the scrapes revealed 10-25 VINs a day without trouble. From 2026-11-05 the plate
+# needs a reveal too, and by 2026-11-10 we sent about 170 VINs and 160 plates a day, most of them for
+# listings whose VIN we already had: the reveals got blocked (HTTP 403). So:
+#  - a listing already stored with a VIN or plate is never asked again: /api/known_listings
+#    returns them and the scraper uses those; approved listings are not revealed by the scrapes;
+#  - each process reveals at most VIN_REVEALS_PER_RUN VINs and as many plates, and all processes
+#    together (scrapes and the reveal job) at most REVEALS_PER_DAY of each;
+#  - an ad that answered without one is not asked again for VIN_RETRY_AFTER_S / PLATE_RETRY_AFTER_S;
+#  - an HTTP 403 stops every reveal, in every process, for BLOCK_PAUSE_S.
+# A masked VIN (ending in "XXX") is the seller's, not a limit: it counts as "no VIN".
+# The shared part lives in REVEAL_STATE_FILE, read and written on every use, so processes running
+# side by side (the Otomoto and OLX scrapes) see each other's counts and pauses.
 VIN_REVEAL_DELAY_S = (4.0, 8.0)
-VIN_REVEALS_PER_RUN = 20
-# Past a daily limit otomoto answers with a masked VIN (all X, or ending in "XXX") instead of a 403. One masked
-# VIN may be a seller's own, so this many in a row stop the reveals like a 403 does.
-VIN_MASKED_IN_A_ROW_STOP = 2
-# "count" = VIN reveals, "plates" = plate reveals. Both share the pace and the stop on a 403
-# ("blocked"); masked VINs ("vins_masked") stop only the VIN reveals.
-_vin_reveals = {"count": 0, "plates": 0, "blocked": False, "vins_masked": False, "masked_in_a_row": 0}
+VIN_REVEALS_PER_RUN = 10
+REVEALS_PER_DAY = 30
+VIN_RETRY_AFTER_S = 24 * 3600
+PLATE_RETRY_AFTER_S = 7 * 24 * 3600
+BLOCK_PAUSE_S = 24 * 3600
+# On the VPS a mounted directory (deploy/scrapers/compose.yml), so it outlives the container
+REVEAL_STATE_FILE = os.environ.get("REVEAL_STATE_FILE") or os.path.join(_ROOT, "logs", "reveal_state.json")
+# This process: "count" = VIN reveals, "plates" = plate reveals, "blocked" = got a 403
+_vin_reveals = {"count": 0, "plates": 0, "blocked": False}
 
 
-def vin_reveal_allowed() -> bool:
-    """False once this process hit the per-run cap or otomoto blocked a reveal."""
-    return (not _vin_reveals["blocked"] and not _vin_reveals["vins_masked"]
-            and _vin_reveals["count"] < VIN_REVEALS_PER_RUN)
+def reset_reveals():
+    """Forget this process's counts (tests, long processes). The shared state stays in its file."""
+    _vin_reveals.update(count=0, plates=0, blocked=False)
 
 
-def plate_reveal_allowed() -> bool:
-    """Like vin_reveal_allowed, for plates: their own per-run cap, the same stop on a block."""
-    return not _vin_reveals["blocked"] and _vin_reveals["plates"] < VIN_REVEALS_PER_RUN
+def _retry_after(kind: str) -> float:
+    return VIN_RETRY_AFTER_S if kind == "vin" else PLATE_RETRY_AFTER_S
+
+
+def _load_state() -> dict:
+    """{"vin": {ad_id: time}, "plate": {...}, "blocked_until": time, "day": "YYYY-MM-DD",
+    "vins_today": n, "plates_today": n}: expired entries dropped, counts of an earlier day zeroed."""
+    try:
+        with open(REVEAL_STATE_FILE) as f:
+            loaded = json.load(f)
+    except (OSError, ValueError):
+        loaded = {}
+    if not isinstance(loaded, dict):
+        loaded = {}
+    now, today = time.time(), time.strftime("%Y-%m-%d")
+
+    def number(value, kind=float):
+        try:
+            return kind(value or 0)
+        except (TypeError, ValueError):
+            return kind(0)
+
+    same_day = loaded.get("day") == today
+    state = {"blocked_until": number(loaded.get("blocked_until")), "day": today,
+             "vins_today": number(loaded.get("vins_today"), int) if same_day else 0,
+             "plates_today": number(loaded.get("plates_today"), int) if same_day else 0}
+    for kind in ("vin", "plate"):
+        asked = loaded.get(kind) if isinstance(loaded.get(kind), dict) else {}
+        state[kind] = {str(k): number(v) for k, v in asked.items()
+                       if now - number(v) < _retry_after(kind)}
+    return state
+
+
+def _update_state(change) -> dict:
+    """Apply change(state) to the shared state and write it back (atomically: never half a file)."""
+    state = _load_state()
+    change(state)
+    try:
+        os.makedirs(os.path.dirname(REVEAL_STATE_FILE), exist_ok=True)
+        tmp = f"{REVEAL_STATE_FILE}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f)
+        os.replace(tmp, REVEAL_STATE_FILE)
+    except OSError as e:
+        print(f"    [reveal] state not saved: {_safe(str(e))[:120]}")
+    return state
+
+
+def recently_asked(kind: str, ad_id) -> bool:
+    """True if ad_id answered without a VIN/plate ("vin"/"plate") within its retry time."""
+    return str(ad_id) in _load_state()[kind]
+
+
+def mark_none(kind: str, ad_id):
+    """Remember that ad_id gave no usable VIN/plate, so it is not asked again for a while."""
+    _update_state(lambda s: s[kind].__setitem__(str(ad_id), time.time()))
+
+
+def _mark_blocked():
+    _vin_reveals["blocked"] = True
+    _update_state(lambda s: s.__setitem__("blocked_until", time.time() + BLOCK_PAUSE_S))
+
+
+def _count_reveal(kind: str):
+    _vin_reveals["count" if kind == "vin" else "plates"] += 1
+    _update_state(lambda s: s.__setitem__(f"{kind}s_today", s[f"{kind}s_today"] + 1))
+
+
+def reveal_skip_reason(kind: str, ad_id=None) -> Optional[str]:
+    """Why a "vin" or "plate" reveal (for ad_id, if given) must not be sent now; None if it may."""
+    state, now = _load_state(), time.time()
+    if _vin_reveals["blocked"] or state["blocked_until"] > now:
+        until = time.strftime("%d.%m %H:%M", time.localtime(max(state["blocked_until"], now)))
+        return f"Otomoto blocked the reveals (HTTP 403), paused until {until}"
+    if _vin_reveals["count" if kind == "vin" else "plates"] >= VIN_REVEALS_PER_RUN:
+        return f"limit of {VIN_REVEALS_PER_RUN} per run reached"
+    if state[f"{kind}s_today"] >= REVEALS_PER_DAY:
+        return f"limit of {REVEALS_PER_DAY} per day reached"
+    if ad_id is not None and str(ad_id) in state[kind]:
+        at = time.strftime("%d.%m %H:%M", time.localtime(state[kind][str(ad_id)]))
+        return f"asked {at}, Otomoto had none"
+    return None
+
+
+def vin_reveal_allowed(ad_id=None) -> bool:
+    return reveal_skip_reason("vin", ad_id) is None
+
+
+def plate_reveal_allowed(ad_id=None) -> bool:
+    return reveal_skip_reason("plate", ad_id) is None
 
 
 def _pace_reveal():
@@ -429,7 +528,11 @@ def _worth_revealing(cfg, detail: dict) -> bool:
     judge a car before the VIN is known. The validator sees `before_reveal`, so one that needs the VIN
     to decide can let the car through for now.
     """
-    if cfg.reassign or not cfg.validator:
+    if cfg.reassign:
+        return True
+    if _outside_search(cfg, detail):
+        return False
+    if not cfg.validator:
         return True
     return bool(cfg.validator(dict(detail, before_reveal=True)))
 
@@ -438,14 +541,14 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
     """Fetch the VIN through otomoto's GraphQL API, as the ad page does for a logged-in user.
 
     Returns the 17-char VIN string or None. Why it failed (HTTP status, GraphQL error, AdVinError
-    code) is printed, so a change on otomoto's side shows up in the run log. Paced and capped: see
-    VIN_REVEAL_DELAY_S and VIN_REVEALS_PER_RUN; an HTTP 403, or VIN_MASKED_IN_A_ROW_STOP masked VINs
-    in a row, stop reveals for the rest of the run. A masked VIN gives None.
+    code) is printed, so a change on otomoto's side shows up in the run log. Paced and limited (see
+    the block above VIN_REVEAL_DELAY_S); a 403 pauses all reveals. An answer without a VIN, or with
+    a masked one, gives None and is remembered (mark_none).
     """
-    if not vin_reveal_allowed():
+    if not vin_reveal_allowed(ad_id):
         return None
     _pace_reveal()
-    _vin_reveals["count"] += 1
+    _count_reveal("vin")
     try:
         r = requests.post(
             "https://www.otomoto.pl/graphql",
@@ -459,24 +562,22 @@ def reveal_vin(ad_id: str, cookies: dict) -> Optional[str]:
         if r.status_code != 200:
             print(f"    [vin] HTTP {r.status_code}: {_safe(r.text[:120])}")
             if r.status_code == 403:
-                _vin_reveals["blocked"] = True
-                print("    [vin] blocked by otomoto: no more VIN reveals this run")
+                _mark_blocked()
+                print("    [vin] blocked by otomoto: all reveals paused")
             return None
         data   = r.json()
         result = ((data.get("data") or {}).get("viewer") or {}).get("adVin") or {}
         value  = ((result.get("vin") or {}).get("value") or "").strip().upper()
         if value and len(value) == 17 and VIN_RE.fullmatch(value):
             if value.endswith("XXX"):
-                _vin_reveals["masked_in_a_row"] += 1
-                print("    [vin] masked VIN from otomoto")
-                if _vin_reveals["masked_in_a_row"] >= VIN_MASKED_IN_A_ROW_STOP:
-                    _vin_reveals["vins_masked"] = True
-                    print("    [vin] otomoto is masking VINs: no more VIN reveals this run")
+                print("    [vin] masked VIN (hidden by the seller)")
+                mark_none("vin", ad_id)
                 return None
-            _vin_reveals["masked_in_a_row"] = 0
             return value
         why = result.get("code") or result.get("__typename") or (data.get("errors") or [{}])[0].get("message")
         print(f"    [vin] no VIN: {_safe(str(why))[:120]}")
+        if not data.get("errors"):
+            mark_none("vin", ad_id)
     except Exception as e:
         print(f"    [vin] request failed: {_safe(str(e))[:120]}")
     return None
@@ -495,13 +596,13 @@ def reveal_plate(ad_id: str, cookies: dict) -> Optional[str]:
 
     Returns the normalised plate; "" when otomoto answered but gave no valid plate (the ad has
     none, or a value that fails is_valid_registration_plate); None when the request failed or
-    was not sent. Shares the pace and the stop on HTTP 403 with reveal_vin, with its own per-run
-    cap (plate_reveal_allowed).
+    was not sent. Shares the pace, the limits and the pause on HTTP 403 with reveal_vin; an empty
+    answer is remembered (mark_none).
     """
-    if not plate_reveal_allowed():
+    if not plate_reveal_allowed(ad_id):
         return None
     _pace_reveal()
-    _vin_reveals["plates"] += 1
+    _count_reveal("plate")
     name, sha = _PLATE_QUERY
     try:
         r = requests.get(
@@ -519,8 +620,8 @@ def reveal_plate(ad_id: str, cookies: dict) -> Optional[str]:
         if r.status_code != 200:
             print(f"    [plate] HTTP {r.status_code}: {_safe(r.text[:120])}")
             if r.status_code == 403:
-                _vin_reveals["blocked"] = True
-                print("    [plate] blocked by otomoto: no more reveals this run")
+                _mark_blocked()
+                print("    [plate] blocked by otomoto: all reveals paused")
             return None
         data   = r.json()
         if data.get("errors"):
@@ -532,10 +633,29 @@ def reveal_plate(ad_id: str, cookies: dict) -> Optional[str]:
             return re.sub(r"\s+", " ", value).upper()
         why = result.get("code") or (value and "invalid plate") or result.get("__typename") or "empty answer"
         print(f"    [plate] no plate: {_safe(str(why))[:120]}")
+        mark_none("plate", ad_id)
         return ""
     except Exception as e:
         print(f"    [plate] request failed: {_safe(str(e))[:120]}")
     return None
+
+
+def _use_stored(detail: dict, known: Optional[dict]) -> bool:
+    """Fill detail's missing VIN and plate from what /api/known_listings says we already store.
+
+    Returns True if the VIN came from there. Nothing is revealed for those: the listing is already
+    ours, and asking otomoto again for its VIN is what got the reveals blocked.
+    """
+    if not known:
+        return False
+    if known.get("plate") and not detail.get("registration_plate"):
+        detail["registration_plate"] = known["plate"]
+        detail["plate_behind_reveal"] = False
+    if known.get("vin") and is_plausible_vin(known["vin"]) and not detail.get("vin"):
+        detail["vin"] = known["vin"]
+        detail["vin_confidence"] = "found_in_schema"
+        return True
+    return False
 
 
 def _use_revealed_vin(detail: dict, revealed: Optional[str]) -> bool:
@@ -1294,6 +1414,86 @@ def _url_year_range(url: str) -> tuple:
             year(r"(?:filter_float_year(?:%3A|:)to(?:%5D|\])=|[?&]yearTo=)(\d{4})"))
 
 
+# How far a listing's power / engine size may lie outside the searched range: the search filters on
+# what the seller typed, the ad page may round or list the other unit (kW vs HP, 2979 vs 3.0)
+SEARCH_POWER_TOLERANCE = 0.10
+SEARCH_CC_TOLERANCE = 0.05
+# The filter names of each site: otomoto, OLX, autoplac
+_SEARCH_FILTERS = {
+    "power": (r"filter_float_engine_power", r"filter_float_enginepower", "enginePower"),
+    "cc":    (r"filter_float_engine_capacity", r"filter_float_enginesize", "engineCapacity"),
+}
+
+
+def _url_range(url: str, what: str) -> tuple:
+    """(from, to) of a "power" (HP) or "cc" (cm3) filter in a list URL, None where it sets none."""
+    def find(end):
+        for name in _SEARCH_FILTERS[what][:2]:
+            m = re.search(rf"{name}(?:%3A|:){end}(?:%5D|\])=(\d+)", url)
+            if m:
+                return int(m.group(1))
+        m = re.search(rf"[?&]{_SEARCH_FILTERS[what][2]}{end.capitalize()}=(\d+)", url)
+        return int(m.group(1)) if m else None
+    return find("from"), find("to")
+
+
+_OTOMOTO_SEARCHES: Optional[dict] = None
+
+
+def _otomoto_searches() -> dict:
+    """(make, model, variant) -> list URLs of the model's otomoto scraper(s), loaded once.
+
+    The otomoto searches are the fullest (power and engine size), so _outside_search falls back to
+    them for an OLX or autoplac search of the same model that leaves a filter out.
+    """
+    global _OTOMOTO_SEARCHES
+    if _OTOMOTO_SEARCHES is None:
+        import contextlib, importlib, io, pkgutil
+        searches = {}
+        try:
+            package = importlib.import_module("otomoto")
+            for m in pkgutil.iter_modules(package.__path__):
+                if m.name.startswith("_"):
+                    continue
+                with contextlib.redirect_stdout(io.StringIO()):
+                    module = importlib.import_module(f"otomoto.{m.name}")
+                for name, c in vars(module).items():
+                    if name.startswith("CONFIG") and getattr(c, "source", None) == "otomoto":
+                        urls = [c.list_url] if isinstance(c.list_url, str) else list(c.list_url)
+                        searches.setdefault((c.make, c.model, c.variant), []).extend(urls)
+        except Exception as e:   # never let the check break a scrape
+            print(f"  [search check] otomoto searches not loaded: {_safe(str(e))[:120]}")
+        _OTOMOTO_SEARCHES = searches
+    return _OTOMOTO_SEARCHES
+
+
+def _outside_search(cfg: ScraperConfig, detail: dict) -> Optional[str]:
+    """Why a listing's power or engine size rules it out of the model, None if it fits.
+
+    The searches already filter on both, but sites mix in promoted ads and ads whose fields the
+    seller filled in differently (a 156 HP GLA 200 in the 350-400 HP GLA45 search). The range is
+    that of the config's own searches; where none of them filters on it, that of the model's
+    otomoto search. A listing fits if it fits one of the searches. Unknown values always fit.
+    """
+    own = [cfg.list_url] if isinstance(cfg.list_url, str) else list(cfg.list_url)
+    for what, key, tol, unit in (("power", "power_hp", SEARCH_POWER_TOLERANCE, "HP"),
+                                 ("cc", "engine_cc", SEARCH_CC_TOLERANCE, "cm3")):
+        value = detail.get(key)
+        if not isinstance(value, (int, float)) or value <= 0:
+            continue
+        ranges = [_url_range(u, what) for u in own]
+        if all(r == (None, None) for r in ranges):
+            ranges = [_url_range(u, what)
+                      for u in _otomoto_searches().get((cfg.make, cfg.model, cfg.variant), [])]
+        if not ranges or (None, None) in ranges:
+            continue    # a search without this filter: anything may come from it
+        if not any((lo is None or value >= lo * (1 - tol)) and (hi is None or value <= hi * (1 + tol))
+                   for lo, hi in ranges):
+            shown = ", ".join(f"{lo or ''}-{hi or ''}" for lo, hi in ranges)
+            return f"{value} {unit} is outside the searched {shown} {unit}"
+    return None
+
+
 def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
     # autoplac serves VINs in plain text; never send it the otomoto session
     cookies     = load_cookies() if cfg.source != "autoplac" else {}
@@ -1483,28 +1683,39 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             print(f"  [skip] Year {detail['year']} > max {max_year}")
                             continue
 
+                    # What we already store for this listing needs no reveal (see VIN_REVEAL_DELAY_S)
+                    stored_vin = _use_stored(detail, k)
+                    approved = bool(k) and k.get("status") == "approved"
+
                     vc = detail.get("vin_confidence", "none")
-                    if detail.get("vin") and vc == "found_in_description":
+                    if stored_vin:
+                        print(f"    VIN (stored): {detail['vin']}")
+                    elif detail.get("vin") and vc == "found_in_description":
                         print(f"    VIN (desc):   {detail['vin']}")
                     elif detail.get("vin"):
                         print(f"    VIN (schema): {detail['vin']}")
                     elif vc == "invalid_vin":
                         print(f"    VIN (niepoprawny/fejk): {detail.get('invalid_vin')} — odrzucony przez walidator")
-                    elif vc == "found_in_schema" and not _worth_revealing(cfg, detail):
+                    elif vc != "found_in_schema":
+                        print("    VIN: none in the ad")
+                    elif not _worth_revealing(cfg, detail):
                         print("    VIN: not revealed, the listing is rejected anyway")
-                    elif vc == "found_in_schema" and logged_in and vin_reveal_allowed():
+                    elif not logged_in:
+                        print("    VIN: not revealed (not logged in to Otomoto)")
+                    elif approved:
+                        print("    VIN: not revealed (listing already approved)")
+                    elif why := reveal_skip_reason("vin", listing_id):
+                        print(f"    VIN: not revealed ({why})")
+                    else:
                         revealed = reveal_vin(listing_id, cookies)
                         if _use_revealed_vin(detail, revealed):
                             print(f"    VIN (api):    {revealed}")
                         elif revealed:
                             print(f"    VIN (api, niepoprawny/fejk): {revealed} — odrzucony przez walidator")
+                        elif _vin_reveals["blocked"]:
+                            print("    VIN: not revealed (Otomoto blocked the reveals, HTTP 403)")
                         else:
-                            print("    VIN: brak poprawnego numeru w ogłoszeniu")
-                    elif vc == "found_in_schema" and logged_in:
-                        print("    VIN: not revealed (per-run limit reached or Otomoto blocked); "
-                              "the reveal job (reveal_pending_vins.py) will get it")
-                    elif vc == "found_in_schema":
-                        print("    VIN: not revealed (not logged in to Otomoto)")
+                            print("    VIN: Otomoto gave no usable VIN for this ad")
 
                     target = cfg.reassign(detail) if cfg.reassign and detail else None
                     if target:
@@ -1524,17 +1735,24 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                             print(f"  [skip] Year {detail['year']} > max {max_year}")
                             continue
 
+                    if why := _outside_search(car, detail):
+                        print(f"  [skip] Not a {car.variant or car.model}: {why}")
+                        continue
                     if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
 
-                    # Only for listings that are kept: each plate costs one request on the account.
-                    # detail is the cached dict, so a scraper sharing the search won't ask again.
-                    if detail.get("plate_behind_reveal") and logged_in and plate_reveal_allowed():
-                        plate = reveal_plate(listing_id, cookies)
-                        detail["plate_behind_reveal"] = False
-                        if plate:
-                            detail["registration_plate"] = plate
-                            print(f"    Plate (api):  {plate}")
+                    # Only for listings that are kept and not yet approved: the plates of approved
+                    # ones come from the reveal job, at the end of its queue. detail is the cached
+                    # dict, so a scraper sharing the search won't ask again.
+                    if detail.get("plate_behind_reveal") and logged_in and not approved:
+                        if why := reveal_skip_reason("plate", listing_id):
+                            print(f"    Plate: not revealed ({why})")
+                        else:
+                            plate = reveal_plate(listing_id, cookies)
+                            detail["plate_behind_reveal"] = False
+                            if plate:
+                                detail["registration_plate"] = plate
+                                print(f"    Plate (api):  {plate}")
     
                 photo         = detail.get("photo_url") or thumbnail
                 final_price   = detail.get("price_from_detail") or price_pln
