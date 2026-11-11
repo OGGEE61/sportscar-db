@@ -88,8 +88,8 @@ def create_app() -> Flask:
     app.jinja_env.globals["media_url"] = media_url
     app.jinja_env.globals["css_version"] = _static_version("style.css")
 
-    from webapp.blueprints import api, auth, cepik, dashboard, plates, review, vehicles
-    for module in (auth, dashboard, vehicles, review, plates, cepik, api):
+    from webapp.blueprints import api, auth, cepik, dashboard, deals, plates, review, vehicles
+    for module in (auth, dashboard, deals, vehicles, review, plates, cepik, api):
         app.register_blueprint(module.bp)
 
     return app
