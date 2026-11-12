@@ -13,7 +13,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from webapp.helpers import car_flags_sql, damaged_ad_sql
-from webapp.regions import REGION_NAME_TO_CODE, WIELKOPOLSKA_PLACES, km_from_poznan, place_name, resolve_region
+from webapp.regions import km_from_poznan, place_name, resolve_region
 
 COMPARE_DAYS = 180
 MIN_COMPARABLES = 5
@@ -54,18 +54,8 @@ def load_listings(conn) -> list:
 
 
 def listing_region(region, city):
-    """Voivodeship code of a listing: its region field, the region named after the comma in the
-    city ('Wijewo, Wielkopolskie'), or the region of a known city."""
-    code = resolve_region(region)
-    if code:
-        return code
-    parts = (city or "").split(",")
-    if len(parts) > 1:
-        code = REGION_NAME_TO_CODE.get(parts[-1].strip().lower())
-        if code:
-            return code
-    place = place_name(city)
-    return resolve_region(None, place) or ("PL-WP" if place in WIELKOPOLSKA_PLACES else None)
+    """Voivodeship code of a listing (webapp.regions.resolve_region)."""
+    return resolve_region(region, city)
 
 
 def _damaged(item) -> bool:

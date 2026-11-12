@@ -138,15 +138,17 @@ def _recent_filter(args):
             wheres.append("o.price_pln >= 750000")
         active_filter = {"type": "price", "val": filter_price, "label": f"Price: {filter_price}"}
     elif filter_region:
+        # The region field, 'City, Voivodeship' (autoplac, OLX), or a known city of the region
         cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == filter_region]
+        clauses = ["o.location_region = ?"]
+        params.append(filter_region)
+        if filter_region in REGION_NAMES:
+            clauses.append("o.location_city LIKE ?")
+            params.append(f"%, {REGION_NAMES[filter_region]}")
         if cities_in_region:
-            placeholders = ",".join("?" for _ in cities_in_region)
-            wheres.append(f"(o.location_region = ? OR o.location_city IN ({placeholders}))")
-            params.append(filter_region)
+            clauses.append(f"o.location_city IN ({','.join('?' for _ in cities_in_region)})")
             params.extend(cities_in_region)
-        else:
-            wheres.append("o.location_region = ?")
-            params.append(filter_region)
+        wheres.append("(" + " OR ".join(clauses) + ")")
         reg_name = REGION_NAMES.get(filter_region, filter_region)
         active_filter = {"type": "region", "val": filter_region, "label": f"Voivodeship: {reg_name} ({filter_region})"}
     return wheres, params, active_filter

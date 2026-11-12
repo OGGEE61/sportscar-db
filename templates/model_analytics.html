@@ -39,6 +39,7 @@
     transform: translateY(-2px);
   }
   /* Sortable table headers */
+  tr.row-link { cursor: pointer; }
   th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   th.sortable:hover { background-color: #e9ecef; }
   th.sortable::after { content: " \2195"; opacity: 0.25; }
@@ -48,6 +49,7 @@
 {% endblock %}
 
 {% from "_car_flags.html" import vin_block %}
+{% from "_location.html" import location_cell %}
 {% block content %}
 <!-- Page title & selector tabs -->
 <div class="mb-4">
@@ -240,67 +242,48 @@
     <table class="table table-hover align-middle mb-0">
       <thead class="table-light">
         <tr>
-          <th class="sortable" data-key="vehicle" data-type="text" tabindex="0" aria-sort="none">Vehicle</th>
-          <th class="sortable" data-key="year" data-type="num" tabindex="0" aria-sort="none">Year</th>
-          <th class="sortable" data-key="hp" data-type="num" tabindex="0" aria-sort="none" title="Sorts by power">Specs</th>
-          <th class="sortable" data-key="mileage" data-type="num" tabindex="0" aria-sort="none">Mileage</th>
-          <th class="sortable" data-key="price" data-type="num" tabindex="0" aria-sort="none">Current Price</th>
-          <th class="sortable" data-key="location" data-type="text" tabindex="0" aria-sort="none">Location</th>
-          <th class="sortable" data-key="observed" data-type="text" tabindex="0" aria-sort="descending">Observed</th>
-          <th></th>
+          <th class="sortable" data-key="vehicle" data-type="text" tabindex="0" aria-sort="none">Auto</th>
+          <th class="sortable" data-key="year" data-type="num" tabindex="0" aria-sort="none">Rok</th>
+          <th class="sortable text-end" data-key="mileage" data-type="num" tabindex="0" aria-sort="none">Przebieg</th>
+          <th class="sortable text-end" data-key="price" data-type="num" tabindex="0" aria-sort="none">Cena</th>
+          <th class="sortable" data-key="location" data-type="text" tabindex="0" aria-sort="none">Lokalizacja</th>
+          <th class="sortable" data-key="observed" data-type="text" tabindex="0" aria-sort="descending">Widziane</th>
         </tr>
       </thead>
       <tbody id="modelRows">
         {% for v in vehicles %}
-        <tr class="model-vehicle-row" data-region="{{ v.region }}" data-year="{{ v.year }}" data-price="{{ v.price_pln }}"
-            data-s-vehicle="{{ (v.title or (v.make ~ ' ' ~ v.model))|lower }}" data-s-year="{{ v.year or '' }}"
-            data-s-hp="{{ v.power_hp or '' }}" data-s-mileage="{{ v.mileage_km or '' }}" data-s-price="{{ v.price_pln or '' }}"
-            data-s-location="{{ (v.location_city or '')|lower }}" data-s-observed="{{ v.observed_at[:10] if v.observed_at else '' }}">
+        <tr class="model-vehicle-row row-link" data-href="/vehicle/{{ v.vin }}" data-region="{{ v.region }}" data-year="{{ v.year }}" data-price="{{ v.price_pln }}"
+            data-s-vehicle="{{ (v.make ~ ' ' ~ v.model ~ ' ' ~ (v.variant or ''))|lower }}" data-s-year="{{ v.year or '' }}"
+            data-s-mileage="{{ v.mileage_km or '' }}" data-s-price="{{ v.price_pln or '' }}"
+            data-s-location="{{ (location(v.location_city, v.location_region).place or '')|lower }}" data-s-observed="{{ v.observed_at[:10] if v.observed_at else '' }}">
           <td>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-3">
               {% if v.photo %}
-              <img src="{{ media_url(v.photo) }}" class="rounded" style="width: 48px; height: 32px; object-fit: cover; border: 1px solid #dee2e6;" loading="lazy">
+              <img src="{{ media_url(v.photo) }}" alt="" class="rounded flex-shrink-0" style="width: 72px; height: 48px; object-fit: cover; border: 1px solid #dee2e6;" loading="lazy" decoding="async">
               {% else %}
-              <div class="bg-light rounded d-flex align-items-center justify-content-center border" style="width: 48px; height: 32px; font-size: 11px; color: #adb5bd;">
+              <div class="bg-light rounded d-flex align-items-center justify-content-center border flex-shrink-0" style="width: 72px; height: 48px; color: #adb5bd;">
                 <i class="bi bi-car-front"></i>
               </div>
               {% endif %}
-              <div>
-                <a href="/vehicle/{{ v.vin }}" class="fw-semibold text-decoration-none text-dark d-block text-truncate" style="max-width: 220px;" title="{{ v.title or v.vin }}">
-                  {{ v.title or (v.make ~ ' ' ~ v.model) }}
-                </a>
+              <div class="min-w-0">
+                <a href="/vehicle/{{ v.vin }}" class="fw-semibold text-decoration-none text-dark">{{ v.make }} {{ v.model }}</a>
+                {% if v.variant %}<span class="text-muted small ms-1">{{ v.variant }}</span>{% endif %}
                 {{ vin_block(v, v.vin, link=False) }}
               </div>
             </div>
           </td>
-          <td>{{ v.year or '—' }}</td>
-          <td>
-            <div class="small">
-              <span class="badge bg-light text-dark border">{{ v.body_type or '—' }}</span>
-              {% if v.engine_cc %}<span class="badge bg-light text-dark border">{{ v.engine_cc }} cc</span>{% endif %}
-              {% if v.power_hp %}<span class="badge bg-light text-dark border">{{ v.power_hp }} HP</span>{% endif %}
-            </div>
+          <td class="text-nowrap">
+            <div class="fw-semibold">{{ v.year or '—' }}</div>
+            <div class="small text-muted">{{ v.power_hp ~ ' KM' if v.power_hp else '' }}{{ ' · ' if v.power_hp and v.body_type else '' }}{{ v.body_type or '' }}</div>
           </td>
-          <td>{{ "{:,} km".format(v.mileage_km) if v.mileage_km else '—' }}</td>
-          <td>
-            <span class="fw-bold text-success">
-              {{ "{:,.0f} PLN".format(v.price_pln) if v.price_pln else '—' }}
-            </span>
-          </td>
-          <td>
-            {{ v.location_city or '—' }}
-            {% if v.region %}
-            <br><span class="badge bg-light text-dark border" style="font-size: 9px;">{{ v.region_name or v.region }}</span>
-            {% endif %}
-          </td>
-          <td class="small text-muted">{{ v.observed_at[:10] if v.observed_at else '—' }}</td>
-          <td class="text-end">
-            <a href="/vehicle/{{ v.vin }}" class="btn btn-outline-primary btn-sm">Details →</a>
-          </td>
+          <td class="text-nowrap text-end">{{ "{:,} km".format(v.mileage_km).replace(",", " ") if v.mileage_km else '—' }}</td>
+          <td class="text-nowrap text-end fw-bold text-success">{{ "{:,.0f} zł".format(v.price_pln).replace(",", " ") if v.price_pln else '—' }}</td>
+          <td>{{ location_cell(v.location_city, v.location_region) }}</td>
+          <td class="small text-muted text-nowrap">{{ v.observed_at[:10] if v.observed_at else '—' }}</td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="8" class="text-center py-5 text-muted">
+          <td colspan="6" class="text-center py-5 text-muted">
             No approved vehicles in the database for {{ selected_model.name }} yet.
             <div class="mt-2">
               <a href="/review" class="btn btn-sm btn-outline-secondary">Check Review Queue</a>
@@ -309,7 +292,7 @@
         </tr>
         {% endfor %}
         <tr id="modelEmptyFilterRow" style="display: none;">
-          <td colspan="8" class="text-center py-4 text-muted">
+          <td colspan="6" class="text-center py-4 text-muted">
             No listings for this model match the selected filter.
             <div class="mt-2">
               <button class="btn btn-sm btn-outline-secondary" onclick="clearModelFilter()">Clear filter</button>
@@ -560,6 +543,11 @@ document.querySelectorAll('th.sortable').forEach(th => {
   const run = () => sortModelTable(th.dataset.key, th.dataset.type);
   th.addEventListener('click', run);
   th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); } });
+});
+
+document.getElementById('modelRows')?.addEventListener('click', (e) => {
+  const row = e.target.closest('tr.row-link');
+  if (row && !e.target.closest('a, button, input, select')) window.location.href = row.dataset.href;
 });
 
 function clearModelFilter() {

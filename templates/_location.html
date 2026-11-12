@@ -1,0 +1,7 @@
+{# A listing's location, the same on every page: the place, and under it its voivodeship.
+   Works for every stored format ('Tarnów', 'Tarnów, Małopolskie', with or without a region). #}
+{% macro location_cell(city, region=None) -%}
+{%- set loc = location(city, region) -%}
+<span class="loc-place">{{ loc.place or '—' }}</span>
+{%- if loc.region_name %}<br><span class="badge loc-region">{{ loc.region_name }}</span>{% endif -%}
+{%- endmacro %}
