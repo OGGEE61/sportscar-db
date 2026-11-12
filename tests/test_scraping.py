@@ -1323,6 +1323,23 @@ class TestNewModelRules(unittest.TestCase):
         self.assertFalse(F90.validator({"year": 2017}))
         self.assertFalse(F90.validator({"year": 2018, "vin": "WBSFV9C56ED000001"}))
 
+    def test_m8_listed_as_m5_is_not_an_m5(self):
+        # Five M8 Gran Coupés listed on autoplac as "BMW M 5 4.4" got in as M5 F90 (VIN WBSGV...)
+        from otomoto.bmw_m5_f90 import CONFIG as F90
+        from autoplac.bmw_m5_f90 import CONFIG as F90_AUTOPLAC
+        for vin in ("WBSGV01030CP94224", "WBSGV0C06MCF28124", "WBSAE0C08LBM00001", "WBSDZ0C08LBM00001"):
+            self.assertFalse(F90.validator({"year": 2022, "vin": vin}), vin)
+            self.assertFalse(F90_AUTOPLAC.validator({"year": 2022, "vin": vin}), vin)
+        # Real M5s, the M5 CS included
+        for vin in ("WBSJF0C55KB000001", "WBS83CH0X0CK00001", "WBS81CH000CF00001",
+                    "WBS71CH080CJ40158", "WBS73CH06NCK25713"):
+            self.assertTrue(F90.validator({"year": 2021, "vin": vin}), vin)
+        self.assertTrue(F90.validator({"year": 2017, "vin": "WBS73CH06NCK25713"}))
+        for title in ("BMW M 5 4.4 Gran Coupe 2021", "BMW M8 Competition"):
+            haystack = title.lower().replace(" ", "")
+            self.assertTrue(any(w.lower().replace(" ", "") in haystack for w in F90_AUTOPLAC.title_must_not_contain), title)
+        self.assertFalse(any(w.lower().replace(" ", "") in "bmwm54.4competition" for w in F90.title_must_not_contain))
+
     def test_m340i_skips_diesel_and_dealer_stock(self):
         from datetime import date
         from otomoto.bmw_m340i_g20 import CONFIG
