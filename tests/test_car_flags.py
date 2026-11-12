@@ -67,11 +67,18 @@ class TestSameFlagsEverywhere(unittest.TestCase):
                            "VIN niepewny", "Brak tablicy", "bez CEPiK", "Uszkodzony</span>"):
                 self.assertIn(marker, html, f"{marker} missing on {path}")
 
-    def test_plate_comes_right_under_the_vin(self):
+    def test_plate_on_the_vin_line_markers_under_it(self):
         html = self.flags_on("/vehicles")
         block = html[html.index(f'href="/vehicle/{CRASHED}" class="vin-code"'):]
-        self.assertLess(block.index("PO1234X"), block.index("VIN ✓"))
+        vin_line = block[:block.index("</div>")]
+        self.assertIn("PO1234X", vin_line)
+        self.assertNotIn("VIN ✓", vin_line)
+        self.assertEqual(block.count("PO1234X", 0, block.index("Cofnięty licznik")), 1)  # not repeated below
         self.assertLess(block.index("Cofnięty licznik"), block.index("po lakierniku"))
+        # Without a plate, "Brak tablicy" leads the markers under the VIN
+        plain = html[html.index(f'href="/vehicle/{PLAIN}" class="vin-code"'):]
+        self.assertNotIn("Brak tablicy", plain[:plain.index("</div>")])
+        self.assertLess(plain.index("Brak tablicy"), plain.index("VIN niepewny"))
 
     def test_vehicle_page(self):
         html = self.flags_on(f"/vehicle/{CRASHED}")

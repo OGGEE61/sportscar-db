@@ -1,12 +1,17 @@
 {# The markers shown with a car on every page, always the same set in the same order: plate,
    VIN status, origin, CEPiK, damage. `c` is a row that selected webapp.helpers.car_flags_sql().
-   vin_block() is how a page shows a car's identity: the VIN, and under it these markers. #}
+   vin_block() is how a page shows a car's identity: the VIN with its plate on one line, and
+   under it the other markers and tags (or "Brak tablicy" first when there is no plate). #}
+{% macro plate_badge(c) -%}
+<span class="car-flags"><span class="badge flag flag-plate" title="{{ 'Tablica odczytana ze zdjęcia' if c.flag_plate_from_photo else 'Tablica rejestracyjna' }}">
+  {%- if c.flag_plate_from_photo %}<i class="bi bi-camera me-1"></i>{% endif %}{{ c.flag_plate }}</span></span>
+{%- endmacro %}
+
 {% macro car_flags(c, with_plate=True) -%}
 <span class="car-flags">
   {%- if with_plate -%}
   {%- if c.flag_plate -%}
-  <span class="badge flag flag-plate" title="{{ 'Tablica odczytana ze zdjęcia' if c.flag_plate_from_photo else 'Tablica rejestracyjna' }}">
-    {%- if c.flag_plate_from_photo %}<i class="bi bi-camera me-1"></i>{% endif %}{{ c.flag_plate }}</span>
+  {{ plate_badge(c) }}
   {%- else -%}
   <span class="badge flag flag-warn" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
   {%- endif -%}
@@ -49,8 +54,11 @@
 
 {% macro vin_block(c, vin, link=True, full=True) -%}
 <div class="vin-block">
-  {%- if link %}<a href="/vehicle/{{ vin }}" class="vin-code">{{ vin if full else vin[:12] ~ '…' }}</a>
-  {%- else %}<code class="vin-code">{{ vin }}</code>{% endif %}
-  <div>{{ car_flags(c) }}</div>
+  <div class="vin-line">
+    {%- if link %}<a href="/vehicle/{{ vin }}" class="vin-code">{{ vin if full else vin[:12] ~ '…' }}</a>
+    {%- else %}<code class="vin-code">{{ vin }}</code>{% endif %}
+    {%- if c.flag_plate %}{{ plate_badge(c) }}{% endif %}
+  </div>
+  <div>{{ car_flags(c, with_plate=not c.flag_plate) }}</div>
 </div>
 {%- endmacro %}
