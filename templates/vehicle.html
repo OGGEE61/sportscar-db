@@ -30,6 +30,13 @@
       {% if sold_damaged %}
       <span class="badge bg-danger ms-1" title="Co najmniej jedno ogłoszenie tego auta jest oznaczone na portalu jako uszkodzone">Sprzedawany jako uszkodzony</span>
       {% endif %}
+      {% if damage_reports %}
+      {% set d0 = damage_reports[0] %}
+      <a href="#history" class="badge bg-danger text-decoration-none ms-1"
+         title="{{ d0.report_date }}{% if d0.country %}, {{ d0.country }}{% endif %}{% if d0.notes %}: {{ d0.notes }}{% endif %}">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody{% if d0.country %}: {{ d0.country }}{% endif %}
+      </a>
+      {% endif %}
       <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status" class="d-inline-block ms-2">
         <select name="vin_status" class="form-select form-select-sm d-inline-block w-auto fw-bold
             {% if vehicle.vin_status == 'verified' %}bg-success text-white
@@ -482,50 +489,98 @@
 </div>
 
 <!-- Condition reports -->
-<div class="card mb-4">
-  <div class="card-header">Condition reports</div>
+<div class="card mb-4" id="history">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Historia i szkody</span>
+    {% if damage_reports %}<span class="badge bg-danger">{{ damage_reports|length }} {{ "szkoda" if damage_reports|length == 1 else "szkody" }}</span>{% endif %}
+  </div>
   <div class="table-responsive">
-    <table class="table table-sm mb-0">
+    <table class="table table-sm mb-0 align-middle">
       <thead class="table-light"><tr>
-        <th>Date</th><th>Mileage</th><th>Accident free</th><th>Service</th><th>Score</th><th>By</th>
+        <th>Data</th><th>Bezwypadkowy</th><th>Kraj</th><th>Opis</th><th>Przebieg</th><th>Źródło</th><th>Zdjęcie</th><th></th>
       </tr></thead>
       <tbody>
         {% for c in conditions %}
-        <tr>
-          <td>{{ c.report_date }}</td>
-          <td>{{ "{:,}".format(c.mileage_km) if c.mileage_km else '—' }}</td>
+        <tr {% if c.accident_free == 0 %}class="table-danger"{% endif %}>
+          <td class="text-nowrap">{{ c.report_date }}</td>
           <td>
-            {% if c.accident_free == 1 %}Yes
-            {% elif c.accident_free == 0 %}No
+            {% if c.accident_free == 1 %}<span class="badge bg-success">tak</span>
+            {% elif c.accident_free == 0 %}<span class="badge bg-danger">nie</span>
             {% else %}—{% endif %}
           </td>
-          <td>{{ c.service_history or '—' }}</td>
-          <td>{{ c.condition_score or '—' }}</td>
+          <td>{{ c.country or '—' }}</td>
+          <td style="min-width: 220px;">
+            {{ c.notes or '—' }}
+            {% if c.service_history or c.condition_score %}
+            <div class="small text-muted">{% if c.service_history %}Serwis: {{ c.service_history }}{% endif %}{% if c.condition_score %} · Ocena {{ c.condition_score }}/10{% endif %}</div>
+            {% endif %}
+          </td>
+          <td class="text-nowrap">{{ "{:,}".format(c.mileage_km).replace(",", " ") ~ " km" if c.mileage_km else '—' }}</td>
           <td>{{ c.inspection_by or '—' }}</td>
+          <td>
+            {% if c.photo %}
+            <a href="{{ media_url(c.photo) }}" target="_blank" rel="noopener">
+              <img src="{{ media_url(c.photo) }}" loading="lazy" decoding="async" alt="Zdjęcie szkody"
+                   class="rounded border" style="width: 72px; height: 48px; object-fit: cover;">
+            </a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_condition/{{ c.id }}"
+                  onsubmit="return confirm('Usunąć ten wpis z historii auta?')">
+              <button class="btn btn-sm btn-outline-danger border-0" title="Usuń wpis"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-muted text-center py-2">No reports</td></tr>
+        <tr><td colspan="8" class="text-muted text-center py-2">Brak wpisów. Dodaj szkodę z raportu VIN, aukcji albo oględzin.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   <div class="card-footer">
-    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_condition" class="row g-2">
-      <div class="col-md-2"><input name="report_date" class="form-control" type="date"></div>
-      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Mileage"></div>
-      <div class="col-md-2">
-        <select name="accident_free" class="form-select">
-          <option value="">Accident free?</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_condition" enctype="multipart/form-data" class="row g-2" id="history-form">
+      <div class="col-6 col-md-2"><label class="form-label small mb-0">Data</label><input name="report_date" class="form-control form-control-sm" type="date"></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0">Bezwypadkowy?</label>
+        <select name="accident_free" class="form-select form-select-sm">
+          <option value="no" selected>nie (szkoda)</option>
+          <option value="yes">tak</option>
+          <option value="">nie wiadomo</option>
         </select>
       </div>
-      <div class="col-md-2"><input name="condition_score" class="form-control" type="number" min="1" max="10" placeholder="Score 1-10"></div>
-      <div class="col-md-2"><input name="inspection_by" class="form-control" placeholder="Inspected by"></div>
-      <div class="col-md-2"><button class="btn btn-outline-secondary w-100">Add report</button></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0">Kraj</label><input name="country" class="form-control form-control-sm" placeholder="np. Belgia" list="countries"></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0">Przebieg wtedy</label><input name="mileage_km" class="form-control form-control-sm" type="number" min="0" placeholder="km"></div>
+      <div class="col-md-4"><label class="form-label small mb-0">Źródło</label><input name="inspection_by" class="form-control form-control-sm" placeholder="np. raport VIN autoDNA, aukcja Autorola #…"></div>
+      <div class="col-md-6"><label class="form-label small mb-0">Opis</label><input name="notes" class="form-control form-control-sm" placeholder="np. uszkodzony tył, sprzedany na aukcji"></div>
+      <div class="col-md-4"><label class="form-label small mb-0">Zdjęcie szkody</label><input name="photo" type="file" accept="image/jpeg,image/png,image/webp" class="form-control form-control-sm"></div>
+      <div class="col-md-2 d-flex align-items-end"><button class="btn btn-sm btn-danger w-100">Dodaj wpis</button></div>
+      <datalist id="countries">
+        <option value="Polska"><option value="Niemcy"><option value="Belgia"><option value="Holandia"><option value="Francja">
+        <option value="Włochy"><option value="Szwajcaria"><option value="Austria"><option value="USA"><option value="Kanada">
+      </datalist>
     </form>
   </div>
 </div>
+<script>
+// Phone photos are several MB; shrink them in the browser so the upload stays under the 4 MB limit
+document.querySelector('#history-form input[name="photo"]')?.addEventListener('change', async (e) => {
+  const input = e.target, file = input.files && input.files[0];
+  if (!file || file.size < 1.5 * 1024 * 1024 || !window.DataTransfer) return;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) return;
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }));
+    input.files = dt.files;
+  } catch (err) { /* keep the original file; the server checks the size */ }
+});
+</script>
 
 <!-- Correction log -->
 {% if corrections %}

@@ -39,37 +39,43 @@ def save_photo(url: str, filename: str, max_width: int = 400, quality: int = 60)
         return None
 
     try:
-        from PIL import Image
         from curl_cffi import requests as cffi_requests
         resp = cffi_requests.get(url, timeout=12, impersonate="chrome")
         if resp.status_code != 200:
             return None
-        img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-        w, h = img.size
-        if w > max_width:
-            img = img.resize((max_width, int(h * max_width / w)), Image.LANCZOS)
-            
-        endpoint = os.environ.get("R2_ENDPOINT_URL")
-        bucket = os.environ.get("R2_BUCKET_NAME")
-        
-        if endpoint and bucket:
-            import boto3
-            buffer = io.BytesIO()
-            img.save(buffer, "JPEG", quality=quality, optimize=True)
-            buffer.seek(0)
-            s3 = boto3.client(
-                "s3",
-                endpoint_url=endpoint,
-                aws_access_key_id=os.environ.get("R2_ACCESS_KEY_ID"),
-                aws_secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY"),
-                region_name="auto"
-            )
-            s3.upload_fileobj(buffer, bucket, f"photos/{filename}", ExtraArgs={'ContentType': 'image/jpeg'})
-            return f"photos/{filename}"
-        else:
-            path = os.path.join(PHOTOS_DIR, filename)
-            img.save(path, "JPEG", quality=quality, optimize=True)
-            return f"photos/{filename}"
+        return store_photo(resp.content, filename, max_width, quality)
     except Exception as e:
         print(f"Error saving photo: {e}")
         return None
+
+
+def store_photo(data: bytes, filename: str, max_width: int = 400, quality: int = 60):
+    """Compress image bytes to JPEG (at most max_width wide) and save them as photos/<filename>
+    in Cloudflare R2, or on local disk without R2. Returns the stored key."""
+    from PIL import Image, ImageOps
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
+    w, h = img.size
+    if w > max_width:
+        img = img.resize((max_width, int(h * max_width / w)), Image.LANCZOS)
+    buffer = io.BytesIO()
+    img.save(buffer, "JPEG", quality=quality, optimize=True)
+    buffer.seek(0)
+    key = f"photos/{filename}"
+    endpoint = os.environ.get("R2_ENDPOINT_URL")
+    bucket = os.environ.get("R2_BUCKET_NAME")
+    if endpoint and bucket:
+        import boto3
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=os.environ.get("R2_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY"),
+            region_name="auto"
+        )
+        s3.upload_fileobj(buffer, bucket, key, ExtraArgs={'ContentType': 'image/jpeg'})
+    else:
+        path = os.path.join(PHOTOS_DIR, filename)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(buffer.getvalue())
+    return key
