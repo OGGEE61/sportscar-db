@@ -39,6 +39,9 @@ class TestSameFlagsEverywhere(unittest.TestCase):
                          "location_city, observed_at) VALUES (?, 'otomoto', ?, 'https://x', 300000, 'Poznań', datetime('now', '-1 days'))",
                          (vin, f"id-{vin}"))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'photo extracted')", (CRASHED,))
+        conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'CEPiK: Ważne OC i SKP')", (CRASHED,))
+        conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'po lakierniku')", (CRASHED,))
+        conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'missing plates')", (PLAIN,))
         conn.execute("INSERT INTO cepik_reports (vin, odometer_rollback, rollback_diff_km, last_odometer_km) VALUES (?, 1, 52000, 152000)", (CRASHED,))
         conn.execute("INSERT INTO condition_reports (vin, report_date, accident_free, country) VALUES (?, '2020-10-11', 0, 'Belgia')", (CRASHED,))
         conn.execute("INSERT INTO damaged_listings (source, source_listing_id) VALUES ('otomoto', ?)", (f"id-{PLAIN}",))
@@ -58,9 +61,17 @@ class TestSameFlagsEverywhere(unittest.TestCase):
     def test_list_pages(self):
         for path in PAGES:
             html = self.flags_on(path)
-            for marker in ("VIN ✓", "PO1234X", "bi-camera", "Kanada</span>", "Cofnięty licznik", "Historia szkody: Belgia",
+            self.assertNotIn("CEPiK: Ważne OC i SKP", html, path)  # a CEPiK tag is the CEPiK marker
+            self.assertNotIn("missing plates", html, path)        # "Brak tablicy" says it
+            for marker in ("VIN ✓", "PO1234X", "bi-camera", "Kanada</span>", "po lakierniku</span>", "Cofnięty licznik", "Historia szkody: Belgia",
                            "VIN niepewny", "Brak tablicy", "bez CEPiK", "Uszkodzony</span>"):
                 self.assertIn(marker, html, f"{marker} missing on {path}")
+
+    def test_plate_comes_right_under_the_vin(self):
+        html = self.flags_on("/vehicles")
+        block = html[html.index(f'href="/vehicle/{CRASHED}" class="vin-code"'):]
+        self.assertLess(block.index("PO1234X"), block.index("VIN ✓"))
+        self.assertLess(block.index("Cofnięty licznik"), block.index("po lakierniku"))
 
     def test_vehicle_page(self):
         html = self.flags_on(f"/vehicle/{CRASHED}")

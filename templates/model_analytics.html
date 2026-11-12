@@ -47,7 +47,7 @@
 </style>
 {% endblock %}
 
-{% from "_car_flags.html" import car_flags %}
+{% from "_car_flags.html" import vin_block %}
 {% block content %}
 <!-- Page title & selector tabs -->
 <div class="mb-4">
@@ -269,8 +269,7 @@
                 <a href="/vehicle/{{ v.vin }}" class="fw-semibold text-decoration-none text-dark d-block text-truncate" style="max-width: 220px;" title="{{ v.title or v.vin }}">
                   {{ v.title or (v.make ~ ' ' ~ v.model) }}
                 </a>
-                <code class="small text-muted">{{ v.vin }}</code>
-                <div class="mt-1">{{ car_flags(v) }}</div>
+                {{ vin_block(v, v.vin, link=False) }}
               </div>
             </div>
           </td>
