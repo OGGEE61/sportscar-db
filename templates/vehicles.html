@@ -136,6 +136,9 @@
         {% if v.sold_damaged %}
         <span class="badge bg-danger" style="font-size: 0.6em;" title="Sprzedawany jako uszkodzony">USZKODZONY</span>
         {% endif %}
+        {% if v.damage_history %}
+        <span class="badge bg-danger" style="font-size: 0.6em;" title="Historia auta: szkoda (raport VIN, aukcja lub oględziny)">HISTORIA SZKODY</span>
+        {% endif %}
 
         {% if v.vin_status == 'verified' %}
         <span class="badge bg-success" style="font-size: 0.6em;">VERIFIED</span>

@@ -1,9 +1,11 @@
 import json
+import time
 from datetime import datetime
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import NOW, car_visible_sql, damaged_ad_sql, safe_float, safe_int, script_json
+from webapp.helpers import NOW, car_visible_sql, damage_history_sql, damaged_ad_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
+from webapp.services.photos import store_photo
 from webapp.services.plates import normalize_plate
 
 bp = Blueprint("vehicles", __name__)
@@ -32,7 +34,8 @@ def vehicles_list():
     base = """
         SELECT v.*, o.obs_count, o.ad_count, o.min_price, o.max_price,
                o.last_observed, o.active_ads, o.sources, t.tags,
-               EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = v.vin AND """ + damaged_ad_sql("x") + """) AS sold_damaged
+               EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = v.vin AND """ + damaged_ad_sql("x") + """) AS sold_damaged,
+               """ + damage_history_sql("v") + """ AS damage_history
         FROM vehicles v
         LEFT JOIN (
             SELECT vin,
@@ -130,7 +133,8 @@ def vehicle_detail(vin):
             ungrouped.append(o)
 
     conditions = conn.execute(
-        "SELECT * FROM condition_reports WHERE vin=? ORDER BY report_date DESC", (vin,)).fetchall()
+        "SELECT * FROM condition_reports WHERE vin=? ORDER BY report_date DESC, id DESC", (vin,)).fetchall()
+    damage_reports = [c for c in conditions if c["accident_free"] == 0]
 
     tags = conn.execute("SELECT tag, source_method, created_at FROM tags WHERE vin=?", (vin,)).fetchall()
 
@@ -207,6 +211,7 @@ def vehicle_detail(vin):
     return render_template("vehicle.html",
         vehicle=vehicle,
         sold_damaged=sold_damaged,
+        damage_reports=damage_reports,
         ad_groups=ad_groups,
         ungrouped=ungrouped,
         observations=observations,
@@ -335,30 +340,65 @@ def add_observation(vin):
 # ADD CONDITION REPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
+DAMAGE_PHOTO_MAX_BYTES = 4 * 1024 * 1024  # Vercel refuses request bodies over 4.5 MB
+
+
 @bp.route("/vehicle/<path:vin>/add_condition", methods=["POST"])
 def add_condition(vin):
+    """A condition report: an inspection, or a damage found in the car's history (a VIN check,
+    an auction record), with the country and an optional photo of the damage."""
     data = request.form
     af = data.get("accident_free")
+    photo = None
+    upload = request.files.get("photo")
+    if upload and upload.filename:
+        raw = upload.read(DAMAGE_PHOTO_MAX_BYTES + 1)
+        if len(raw) > DAMAGE_PHOTO_MAX_BYTES:
+            flash("Zdjęcie jest za duże (maks. 4 MB). Wpis nie został dodany.", "danger")
+            return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+        try:
+            photo = store_photo(raw, f"damage/{_photo_slug(vin)}_{int(time.time())}.jpg", max_width=1600, quality=80)
+        except Exception:
+            flash("Nie udało się odczytać zdjęcia (obsługiwane: JPG, PNG, WebP). Wpis nie został dodany.", "danger")
+            return redirect(url_for("vehicles.vehicle_detail", vin=vin))
     conn = get_db()
     conn.execute("""
         INSERT INTO condition_reports
           (vin,report_date,mileage_km,accident_free,service_history,
-           condition_score,inspection_by,notes,source_method)
-        VALUES (?,?,?,?,?,?,?,?,?)
+           condition_score,inspection_by,notes,country,photo,source_method)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
     """, (
         vin,
-        data.get("report_date", datetime.today().strftime("%Y-%m-%d")),
+        data.get("report_date") or datetime.today().strftime("%Y-%m-%d"),
         safe_int(data.get("mileage_km")),
-        1 if af=="yes" else (0 if af=="no" else None),
-        data.get("service_history")  or None,
+        1 if af == "yes" else (0 if af == "no" else None),
+        (data.get("service_history") or "").strip() or None,
         safe_int(data.get("condition_score")),
-        data.get("inspection_by")    or None,
-        data.get("notes")            or None,
+        (data.get("inspection_by") or "").strip() or None,
+        (data.get("notes") or "").strip() or None,
+        (data.get("country") or "").strip() or None,
+        photo,
         "manual",
     ))
     conn.commit()
     conn.close()
-    return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+    flash("Dodano wpis do historii auta.", "success")
+    return redirect(url_for("vehicles.vehicle_detail", vin=vin) + "#history")
+
+
+@bp.route("/vehicle/<path:vin>/delete_condition/<int:report_id>", methods=["POST"])
+def delete_condition(vin, report_id):
+    """Removes one condition report (its photo stays in storage)."""
+    conn = get_db()
+    conn.execute("DELETE FROM condition_reports WHERE id = ? AND vin = ?", (report_id, vin))
+    conn.commit()
+    conn.close()
+    flash("Usunięto wpis z historii auta.", "success")
+    return redirect(url_for("vehicles.vehicle_detail", vin=vin) + "#history")
+
+
+def _photo_slug(vin):
+    return "".join(ch for ch in vin if ch.isalnum())[:40] or "car"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
