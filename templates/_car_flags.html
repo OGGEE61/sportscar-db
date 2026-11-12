@@ -1,0 +1,44 @@
+{# The markers shown next to a car on every page, always the same set in the same order.
+   `c` is a row that selected webapp.helpers.car_flags_sql(); with_plate=False leaves out the
+   plate where the page shows it in its own column. #}
+{% macro car_flags(c, with_plate=True) -%}
+<span class="car-flags">
+  {%- if c.flag_vin_status == 'verified' -%}
+  <span class="badge flag flag-ok" title="VIN zweryfikowany (np. tablica potwierdzona)">VIN ✓</span>
+  {%- elif c.flag_vin_status == 'placeholder' -%}
+  <span class="badge flag flag-warn" title="Tymczasowy VIN: prawdziwy numer jeszcze nieznany">VIN tymczasowy</span>
+  {%- else -%}
+  <span class="badge flag flag-muted" title="VIN niezweryfikowany">VIN niepewny</span>
+  {%- endif -%}
+
+  {%- if with_plate -%}
+  {%- if c.flag_plate -%}
+  <span class="badge flag flag-plate" title="{{ 'Tablica odczytana ze zdjęcia' if c.flag_plate_from_photo else 'Tablica rejestracyjna' }}">
+    {%- if c.flag_plate_from_photo %}<i class="bi bi-camera me-1"></i>{% endif %}{{ c.flag_plate }}</span>
+  {%- else -%}
+  <span class="badge flag flag-warn" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
+  {%- endif -%}
+  {%- endif -%}
+
+  {%- if c.flag_origin -%}
+  <span class="badge flag flag-info" title="Rynek pochodzenia">{{ c.flag_origin }}</span>
+  {%- endif -%}
+
+  {%- if c.flag_cepik == 'stolen' -%}
+  <span class="badge flag flag-bad" title="CEPiK: pojazd zgłoszony jako kradziony">Kradziony</span>
+  {%- elif c.flag_cepik == 'rollback' -%}
+  <span class="badge flag flag-bad" title="CEPiK: przebieg w ogłoszeniu niższy od odczytu na badaniu{% if c.flag_rollback_km %} o {{ '{:,}'.format(c.flag_rollback_km).replace(',', ' ') }} km{% endif %}">Cofnięty licznik</span>
+  {%- elif c.flag_cepik == 'ok' -%}
+  <span class="badge flag flag-ok" title="Raport CEPiK pobrany, bez zastrzeżeń">CEPiK ✓</span>
+  {%- else -%}
+  <span class="badge flag flag-muted" title="Brak raportu CEPiK">bez CEPiK</span>
+  {%- endif -%}
+
+  {%- if c.flag_sold_damaged -%}
+  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone">Uszkodzony</span>
+  {%- endif -%}
+  {%- if c.flag_damage_history -%}
+  <span class="badge flag flag-bad" title="Szkoda w historii auta (raport VIN, aukcja, oględziny)"><i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody{% if c.flag_damage_country %}: {{ c.flag_damage_country }}{% endif %}</span>
+  {%- endif -%}
+</span>
+{%- endmacro %}

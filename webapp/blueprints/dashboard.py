@@ -4,7 +4,7 @@ import time
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
-from webapp.helpers import car_visible_sql, damage_history_sql, damaged_ad_sql, script_json, trend_line
+from webapp.helpers import car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, script_json, trend_line
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -257,7 +257,7 @@ def dashboard_recent():
     sql = """
         SELECT v.vin, v.make, v.model, v.variant, v.year, v.power_hp, v.vin_status, v.photo, v.registration_plate,
                o.price_pln, o.mileage_km, o.location_city, o.location_region, o.source, o.source_method, o.observed_at, o.source_url,
-               (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) AS has_ai_plate
+               """ + car_flags_sql("v") + """
         FROM listing_observations o
         JOIN vehicles v ON o.vin = v.vin
     """
@@ -305,10 +305,10 @@ def model_analytics():
     # fall back to the catalog rule (so 981 and 718 Caymans stop overlapping).
     base_sql = """
         SELECT v.*, 
-               (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) as has_ai_plate,
                o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title,
                """ + damaged_ad_sql("o") + """ AS sold_damaged,
-               """ + damage_history_sql("v") + """ AS damage_history
+               """ + damage_history_sql("v") + """ AS damage_history,
+               """ + car_flags_sql("v") + """
         FROM vehicles v
         LEFT JOIN (
             SELECT vin, source, source_listing_id, price_pln, mileage_km, location_city, location_region,

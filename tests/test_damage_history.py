@@ -88,13 +88,13 @@ class TestAddAndShow(DamageHistoryTestCase):
         self.assertIn("/media/photos/damage/x.jpg", page)
 
         listing = self.client.get("/vehicles").get_data(as_text=True)
-        self.assertIn("HISTORIA SZKODY", listing)
+        self.assertIn("Historia szkody: Belgia", listing)
 
     def test_accident_free_report_is_no_damage(self):
         self.add(accident_free="yes", notes="Oględziny bez zastrzeżeń")
         page = self.client.get(f"/vehicle/{VIN}").get_data(as_text=True)
         self.assertNotIn("Historia szkody", page)
-        self.assertNotIn("HISTORIA SZKODY", self.client.get("/vehicles").get_data(as_text=True))
+        self.assertNotIn("Historia szkody", self.client.get("/vehicles").get_data(as_text=True))
 
     def test_empty_date_is_today(self):
         self.add(report_date="")

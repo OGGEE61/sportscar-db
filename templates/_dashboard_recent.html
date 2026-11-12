@@ -1,4 +1,5 @@
 {% from "_source.html" import source_badge %}
+{% from "_car_flags.html" import car_flags %}
         {% for r in recent %}
         <tr>
           <td style="width: 52px; text-align: center; padding: 4px;">
@@ -15,12 +16,7 @@
             {% endif %}
           </td>
           <td>
-            <a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a><br>
-            {% if not r.registration_plate %}
-            <span class="badge bg-warning text-dark" style="font-size: 0.65rem;" title="Registration plate is missing">Missing plates</span>
-            {% elif r.has_ai_plate %}
-            <a href="/?ai_plates=1" class="badge bg-light text-dark border text-decoration-none font-monospace" style="font-size: 0.65rem;" title="Kliknij, aby wyświetlić auta z tablicą odczytaną ze zdjęcia"><i class="bi bi-camera text-secondary me-1"></i>photo extracted</a>
-            {% endif %}
+            <a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a>
           </td>
           <td>{{ r.make }}</td>
           <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
@@ -36,16 +32,8 @@
           </td>
           <td>{{ source_badge(r.source) }}</td>
           <td class="text-nowrap small text-muted">{{ r.observed_at[:16] }}</td>
-          <td>
-            {% if r.vin_status == 'verified' %}
-            <span class="badge bg-success text-white">verified</span>
-            {% elif r.vin_status == 'placeholder' %}
-            <span class="badge bg-warning text-dark">placeholder</span>
-            {% else %}
-            <span class="badge bg-secondary text-white">unverified</span>
-            {% endif %}
-          </td>
+          <td>{{ car_flags(r) }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="12" class="text-center text-muted py-4">No matching observations found</td></tr>
+        <tr><td colspan="12" class="text-center text-muted py-4">Brak pasujących obserwacji</td></tr>
         {% endfor %}

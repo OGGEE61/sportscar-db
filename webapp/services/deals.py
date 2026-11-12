@@ -12,7 +12,7 @@ import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from webapp.helpers import damaged_ad_sql
+from webapp.helpers import car_flags_sql, damaged_ad_sql
 from webapp.regions import REGION_NAME_TO_CODE, WIELKOPOLSKA_PLACES, km_from_poznan, place_name, resolve_region
 
 COMPARE_DAYS = 180
@@ -41,7 +41,8 @@ WITH listing AS (
 )
 SELECT l.*, v.make, v.model, v.variant, v.year, v.power_hp, v.photo, v.vin_status,
        """ + damaged_ad_sql("l") + """ AS damaged,
-       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = l.vin AND cr.accident_free = 0) AS damage_history
+       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = l.vin AND cr.accident_free = 0) AS damage_history,
+       """ + car_flags_sql("v") + """
 FROM listing l JOIN vehicles v ON v.vin = l.vin
 WHERE l.rn = 1 AND l.price_pln > 0 AND l.observed_at >= datetime('now', ?)
 """

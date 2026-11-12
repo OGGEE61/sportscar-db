@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pager %}
 {% from "_source.html" import source_badge %}
+{% from "_car_flags.html" import car_flags %}
 {% block title %}Vehicles – SportsCar DB{% endblock %}
 
 {% block content %}
@@ -100,9 +101,6 @@
           {% if v.variant %}
           <span class="text-muted fw-normal ms-1">{{ v.variant }}</span>
           {% endif %}
-          {% if v.origin_market %}
-          <span class="badge border ms-1" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe !important; font-size: 0.72em;">{{ v.origin_market }}</span>
-          {% endif %}
         </a>
         <span class="fs-5 fw-bold text-nowrap ms-2" style="color: #1d4ed8;">
           {% if v.min_price and v.max_price and v.min_price != v.max_price %}
@@ -118,41 +116,25 @@
       <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
         {% for s in (v.sources or '').split(',') if s %}{{ source_badge(s) }}{% endfor %}
         <span>{{ v.year }}</span>
-        {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} HP</span>{% endif %}
-        {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cc</span>{% endif %}
-        <span class="border-start ps-2">{{ v.obs_count }} observations</span>
-        <span class="border-start ps-2">{{ v.ad_count }} ads</span>
+        {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} KM</span>{% endif %}
+        {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cm³</span>{% endif %}
+        <span class="border-start ps-2">{{ v.obs_count }} obserwacji</span>
+        <span class="border-start ps-2">{{ v.ad_count }} ogłoszeń</span>
       </div>
 
       <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
         <code class="small text-secondary font-monospace">{{ v.vin }}</code>
         
-        {% if v.registration_plate %}
-        <span class="badge bg-light text-dark border border-secondary fw-bold text-uppercase" style="letter-spacing: 1px;">{{ v.registration_plate }}</span>
-        {% else %}
-        <span class="badge bg-warning text-dark border border-warning ms-1" title="Registration plate is missing">No plates</span>
-        {% endif %}
-
-        {% if v.sold_damaged %}
-        <span class="badge bg-danger" style="font-size: 0.6em;" title="Sprzedawany jako uszkodzony">USZKODZONY</span>
-        {% endif %}
-        {% if v.damage_history %}
-        <span class="badge bg-danger" style="font-size: 0.6em;" title="Historia auta: szkoda (raport VIN, aukcja lub oględziny)">HISTORIA SZKODY</span>
-        {% endif %}
-
-        {% if v.vin_status == 'verified' %}
-        <span class="badge bg-success" style="font-size: 0.6em;">VERIFIED</span>
-        {% elif v.vin_status == 'placeholder' %}
-        <span class="badge bg-warning text-dark" style="font-size: 0.6em;">PLACEHOLDER</span>
-        {% endif %}
+        {{ car_flags(v) }}
 
         {% if v.tags %}
-          {% for tag in v.tags.split(',') %}
-          <span class="badge bg-light text-dark border ms-1">{{ tag }}</span>
+          {# Tags the markers already show (plate from a photo, CEPiK) are left out #}
+          {% for tag in v.tags.split(',') if tag not in ('photo extracted', 'AI extracted plate') and not tag.lower().startswith('cepik') %}
+          <span class="badge bg-light text-dark border">{{ tag }}</span>
           {% endfor %}
         {% endif %}
         <span class="ms-auto small">
-          <span class="text-muted">Seen: {{ v.last_observed[:10] if v.last_observed else '—' }}</span>
+          <span class="text-muted">Widziane: {{ v.last_observed[:10] if v.last_observed else '—' }}</span>
         </span>
       </div>
     </div>

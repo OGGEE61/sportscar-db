@@ -84,9 +84,9 @@
     <table class="table table-hover table-sm align-middle mb-0">
       <thead class="table-light">
         <tr>
-          <th style="width: 52px; text-align: center;">Photo</th>
-          <th>VIN</th><th>Make</th><th>Model</th><th>Year</th><th>HP</th>
-          <th>Price PLN</th><th>Mileage</th><th>Location</th><th>Source</th><th>Observed</th><th>Status</th>
+          <th style="width: 52px; text-align: center;">Zdjęcie</th>
+          <th>VIN</th><th>Marka</th><th>Model</th><th>Rok</th><th>KM</th>
+          <th>Cena</th><th>Przebieg</th><th>Lokalizacja</th><th>Źródło</th><th>Widziane</th><th>Oznaczenia</th>
         </tr>
       </thead>
       <tbody id="dash-recent" hx-get="/api/dashboard/recent{{ '?' + request.query_string.decode() if request.query_string else '' }}" hx-trigger="load" hx-swap="innerHTML">

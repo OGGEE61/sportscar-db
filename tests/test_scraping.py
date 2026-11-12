@@ -242,8 +242,8 @@ class TestModelId(ScrapingTestCase):
     def test_vehicle_pages_say_sold_as_damaged(self):
         self.add_vehicle("WBS8M9C50J5K99002", "BMW", "X3", "M40i", 2021, model_id="x3_m40i_g01")
         self._ad("WBS8M9C50J5K99002", "2", 91234, 60000, damaged=True)
-        self.assertIn(b"Sprzedawany jako uszkodzony", self.client.get("/vehicle/WBS8M9C50J5K99002").data)
-        self.assertIn(b"USZKODZONY", self.client.get("/vehicles").data)
+        self.assertIn("Uszkodzony</span>", self.client.get("/vehicle/WBS8M9C50J5K99002").get_data(as_text=True))
+        self.assertIn("Uszkodzony</span>", self.client.get("/vehicles").get_data(as_text=True))
 
     def test_ingest_records_a_damaged_ad(self):
         with mock.patch("webapp.blueprints.api.check_api_token", return_value=None):
