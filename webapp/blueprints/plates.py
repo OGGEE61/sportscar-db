@@ -67,7 +67,10 @@ def plates_review():
                p.source AS listing_source
         FROM plate_review_queue q
         LEFT JOIN vehicles v ON v.vin = q.vin
-        LEFT JOIN pending_listings p ON (p.id = q.listing_id OR (q.listing_id IS NULL AND p.vin = q.vin))
+        -- The queue entry's listing, else the newest listing of its VIN. An OR in the join made
+        -- SQLite scan every listing for every entry (hundreds of thousands of rows a page).
+        LEFT JOIN pending_listings p ON p.id = COALESCE(q.listing_id,
+            (SELECT p2.id FROM pending_listings p2 WHERE p2.vin = q.vin ORDER BY p2.id DESC LIMIT 1))
         WHERE q.status = ?
           AND q.vin IS NOT NULL 
           AND q.vin != '' 

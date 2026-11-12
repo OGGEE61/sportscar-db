@@ -64,6 +64,29 @@ def media_url(path):
     return r2.presigned_url(path) or f"/media/{path}"
 
 
+HEAVY_REQUEST_ROWS = 20000  # rows read by one request worth a line in the log
+
+
+def _count_rows_read(app):
+    """Every response says how many rows D1 read for it (X-D1-Rows-Read), and heavy requests are
+    logged with their path, so whatever eats the daily read limit (5M rows on the free plan)
+    can be found in the Vercel logs."""
+    from flask import request
+    from db import ROWS_READ
+
+    @app.before_request
+    def _reset_rows_read():
+        ROWS_READ.reset()
+
+    @app.after_request
+    def _report_rows_read(response):
+        n = ROWS_READ.count
+        response.headers["X-D1-Rows-Read"] = str(n)
+        if n >= HEAVY_REQUEST_ROWS:
+            print(f"[d1] {n} rows read: {request.method} {request.path}", flush=True)
+        return response
+
+
 def create_app() -> Flask:
     app = Flask(
         __name__,
@@ -95,5 +118,7 @@ def create_app() -> Flask:
     from webapp.blueprints import api, auth, cepik, dashboard, deals, plates, review, vehicles
     for module in (auth, dashboard, deals, vehicles, review, plates, cepik, api):
         app.register_blueprint(module.bp)
+
+    _count_rows_read(app)
 
     return app

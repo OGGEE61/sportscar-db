@@ -86,7 +86,7 @@ def logs():
     return render_template("logs.html", logs=logs_data, page=page, pages=pages, source=source)
 
 _CACHE = {}
-_CACHE_TTL = 60  # seconds; dashboard aggregates may lag the scrapers by up to a minute
+_CACHE_TTL = 300  # seconds; dashboard aggregates may lag the scrapers by up to 5 minutes (each miss reads ~100k rows)
 
 
 def _cached(key, fn, ttl=_CACHE_TTL):

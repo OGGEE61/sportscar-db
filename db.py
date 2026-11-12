@@ -91,6 +91,36 @@ class D1Cursor:
         return iter(self.fetchall())
 
 
+class D1ClientError(RuntimeError):
+    """D1 refused the query (4xx): a bad query or the daily read limit. Not retried."""
+
+
+class _RowsRead:
+    """Rows D1 read for the current request or script, from each query's meta.rows_read.
+
+    The free plan allows 5 million rows read a day; past it every read fails until midnight UTC.
+    The web app reports the count per request (X-D1-Rows-Read header, a log line for heavy
+    requests), so a page or API call that reads too much shows up before the limit does.
+    """
+
+    def __init__(self):
+        import threading
+        self._local = threading.local()
+
+    def reset(self):
+        self._local.n = 0
+
+    def add(self, n):
+        self._local.n = getattr(self._local, "n", 0) + int(n)
+
+    @property
+    def count(self):
+        return getattr(self._local, "n", 0)
+
+
+ROWS_READ = _RowsRead()
+
+
 class D1Backend:
     """
     Cloudflare D1 REST API backend.
@@ -145,7 +175,11 @@ class D1Backend:
                     timeout=30,
                 )
                 if not resp.ok:
-                    raise RuntimeError(f"D1 API returned {resp.status_code}: {resp.text}")
+                    err = RuntimeError(f"D1 API returned {resp.status_code}: {resp.text}")
+                    if 400 <= resp.status_code < 500 and resp.status_code != 429:
+                        # A bad query or the daily read limit: retrying only makes the page hang
+                        raise D1ClientError(str(err))
+                    raise err
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -158,6 +192,7 @@ class D1Backend:
 
                 results = stmt_result.get("results") or []
                 meta = stmt_result.get("meta", {})
+                ROWS_READ.add(meta.get("rows_read") or 0)
                 last_row_id = meta.get("last_row_id")
                 changes = meta.get("changes", -1)
                 if last_row_id:
@@ -165,6 +200,8 @@ class D1Backend:
 
                 return D1Cursor(results, lastrowid=last_row_id, rowcount=changes)
 
+            except D1ClientError:
+                raise
             except Exception as exc:
                 last_exc = exc
                 if attempt < 2:
@@ -630,6 +667,14 @@ def init_db():
         if col not in cr_cols:
             db.execute(f"ALTER TABLE condition_reports ADD COLUMN {col} TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(17,'condition_country_photo')")
+
+    # ── Migration 18: indexes against full scans (D1 free plan: 5M rows read a day) ──
+    # pending_listings by VIN (plates queue, CEPiK lists) and by model (mark_removed after each
+    # scraper run); unread logs for the navbar counter on every page.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pending_vin ON pending_listings(vin)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pending_variant ON pending_listings(source, make, model, variant)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_logs_unread ON scraper_logs(is_read) WHERE is_read = 0")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(18,'read_indexes')")
 
     db.commit()
     db.close()
