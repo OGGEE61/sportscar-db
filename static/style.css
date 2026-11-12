@@ -684,6 +684,14 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.5px;
 }
 
+.vin-block .vin-line {
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
 .vin-block .vin-code {
   display: inline-block;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -692,4 +700,5 @@ body {
   margin-bottom: 3px;
   text-decoration: none;
 }
+.vin-block .vin-line .vin-code { margin-bottom: 0; }
 .vin-block a.vin-code:hover { color: #1d4ed8; text-decoration: underline; }

@@ -15,7 +15,7 @@
             </div>
             {% endif %}
           </td>
-          <td style="min-width: 190px;">{{ vin_block(r, r.vin) }}</td>
+          <td style="min-width: 205px;">{{ vin_block(r, r.vin, full=False) }}</td>
           <td>{{ r.make }}</td>
           <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
           <td>{{ r.year or '—' }}</td>
