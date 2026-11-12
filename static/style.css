@@ -82,25 +82,71 @@ body {
   font-size: 1.35rem;
 }
 
+.app-navbar .navbar-nav {
+  gap: 2px;
+}
+
 .app-navbar .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
   color: #475569 !important;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 500;
-  padding: 0.55rem 1rem !important;
+  padding: 0.5rem 0.75rem !important;
   border-radius: 8px;
-  transition: all 0.15s ease-in-out;
+  transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+.app-navbar .nav-link i {
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 .app-navbar .nav-link:hover {
   color: #1d4ed8 !important;
   background-color: #eff6ff !important;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
 }
 
 .app-navbar .nav-link.active {
   color: #1d4ed8 !important;
   background-color: #dbeafe !important;
   font-weight: 600;
+}
+
+.app-navbar .nav-logout:hover {
+  color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+}
+
+/* Counters next to a label (or on the bell) */
+.app-navbar .nav-count {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.25em 0.5em;
+}
+
+/* Between lg and xl the bar is tight: smaller gaps and text, still one line */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .app-navbar .nav-link {
+    gap: 5px;
+    font-size: 0.9rem;
+    padding: 0.45rem 0.5rem !important;
+  }
+  .app-navbar .navbar-brand {
+    font-size: 1.1rem;
+  }
+}
+
+/* Collapsed menu (phones): full-width rows */
+@media (max-width: 991.98px) {
+  .app-navbar .navbar-collapse {
+    padding-top: 0.5rem;
+  }
+  .app-navbar .nav-link {
+    padding: 0.6rem 0.75rem !important;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

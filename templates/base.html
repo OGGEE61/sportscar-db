@@ -17,42 +17,47 @@
   {% block head %}{% endblock %}
 </head>
 <body>
-<nav class="navbar navbar-expand-md app-navbar mb-4">
+{%- macro nav_item(href, icon, label, active, extra="") -%}
+<li class="nav-item">
+  <a class="nav-link {% if active %}active{% endif %}" href="{{ href }}" title="{{ label }}"{% if active %} aria-current="page"{% endif %}>
+    <i class="bi {{ icon }}"></i><span class="nav-label">{{ label }}</span>{{ extra|safe }}
+  </a>
+</li>
+{%- endmacro %}
+<nav class="navbar navbar-expand-lg app-navbar mb-4">
   <div class="container">
     <a class="navbar-brand" href="/">
       <i class="bi bi-speedometer2"></i>
       <span>SportsCar<span class="text-primary fw-bold">DB</span></span>
     </a>
-    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#nav" aria-label="Menu">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="nav">
-      <ul class="navbar-nav me-auto ms-md-3 gap-1">
-        <li class="nav-item"><a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/models') %}active{% endif %}" href="/models">Model Analytics</a></li>
-        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/vehicles') %}active{% endif %}" href="/vehicles">Vehicles</a></li>
-        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/deals') %}active{% endif %}" href="/deals">Okazje Poznań</a></li>
-        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/review') %}active{% endif %}" href="/review">Review Queue</a></li>
+      <ul class="navbar-nav me-auto ms-lg-3">
+        {{ nav_item("/", "bi-grid-1x2", "Pulpit", request.path == "/") }}
+        {{ nav_item("/models", "bi-graph-up", "Modele", request.path.startswith("/models")) }}
+        {{ nav_item("/vehicles", "bi-car-front", "Auta", request.path.startswith("/vehicle")) }}
+        {{ nav_item("/deals", "bi-tag", "Okazje", request.path.startswith("/deals")) }}
+        {{ nav_item("/review", "bi-inbox", "Kolejka", request.path.startswith("/review")) }}
+        {{ nav_item("/plates", "bi-camera", "Tablice", request.path.startswith("/plates"),
+                    '<span id="badge-plates" class="badge rounded-pill bg-primary nav-count d-none"></span>') }}
+        {{ nav_item("/cepik", "bi-shield-check", "CEPiK", request.path.startswith("/cepik")) }}
+      </ul>
+      <ul class="navbar-nav ms-auto align-items-lg-center">
         <li class="nav-item">
-          <a class="nav-link position-relative {% if request.path.startswith('/plates') %}active{% endif %}" href="/plates">
-            Tablice (Foto)
-            <span id="badge-plates" class="badge rounded-pill bg-primary ms-1 d-none" style="font-size: 0.65rem;"></span>
+          <a class="nav-link position-relative {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs" title="Logi systemu">
+            <i class="bi bi-bell"></i><span class="nav-label d-lg-none">Logi systemu</span>
+            <span id="badge-logs" class="badge rounded-pill bg-danger nav-count d-none"></span>
           </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.path.startswith('/cepik') %}active{% endif %}" href="/cepik">CEPiK Info</a>
         </li>
         {% if session.get('logged_in') %}
-        <li class="nav-item"><a class="nav-link text-danger" href="/logout">Logout</a></li>
-        {% endif %}
-      </ul>
-      <ul class="navbar-nav ms-auto">
         <li class="nav-item">
-          <a class="nav-link position-relative text-muted" href="/logs" title="System Logs">
-            <i class="bi bi-bell fs-5"></i>
-            <span id="badge-logs" class="position-absolute top-25 start-75 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6rem;"></span>
+          <a class="nav-link nav-logout" href="/logout" title="Wyloguj">
+            <i class="bi bi-box-arrow-right"></i><span class="nav-label d-lg-none">Wyloguj</span>
           </a>
         </li>
+        {% endif %}
       </ul>
     </div>
   </div>
