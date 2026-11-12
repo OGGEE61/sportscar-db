@@ -23,7 +23,8 @@
              class="w-100 h-100 rounded-top" style="object-fit: cover;" onerror="this.remove()">
         {% endif %}
         {% if d.age_days == 0 %}<span class="badge bg-danger position-absolute top-0 start-0 m-2">Nowe</span>{% endif %}
-        {% if d.damaged %}<span class="badge bg-dark position-absolute top-0 end-0 m-2">Uszkodzony</span>{% endif %}
+        {% if d.damage_history %}<span class="badge bg-danger position-absolute top-0 end-0 m-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody</span>
+        {% elif d.damaged %}<span class="badge bg-dark position-absolute top-0 end-0 m-2">Uszkodzony</span>{% endif %}
       </a>
       <div class="card-body d-flex flex-column">
         <div class="fw-semibold">{{ d.make }} {{ d.model }}{% if d.variant %} <span class="text-muted fw-normal">{{ d.variant }}</span>{% endif %}</div>
@@ -47,6 +48,8 @@
         <div class="small text-muted mb-2">
           {% if d.cmp %}
           Mediana {{ "{:,.0f}".format(d.cmp.median).replace(",", " ") }} zł z {{ d.cmp.count }} aut ({{ d.cmp.basis }})
+          {% elif d.damage_history %}
+          Szkoda w historii auta: bez porównania z rynkiem
           {% elif d.damaged %}
           Uszkodzone auto: bez porównania z rynkiem
           {% else %}
@@ -81,6 +84,6 @@
 <p class="small text-muted mt-4 mb-0">
   Okazja to cena co najmniej {{ deal_below }}% poniżej mediany tego samego modelu i wersji z roczników
   ±1 (gdy jest ich mniej niż 5: ±2, potem ±3; dalej nie porównujemy). Mediana liczona z ogłoszeń z ostatnich
-  {{ compare_days }} dni, także sprzedanych, jedno ogłoszenie na auto. Uszkodzonych aut nie porównujemy.
+  {{ compare_days }} dni, także sprzedanych, jedno ogłoszenie na auto. Aut uszkodzonych lub ze szkodą w historii nie porównujemy.
   Odległość w linii prostej od centrum Poznania.
 </p>
