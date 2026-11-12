@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import NOW, car_visible_sql, damage_history_sql, damaged_ad_sql, safe_float, safe_int, script_json
+from webapp.helpers import NOW, car_flags_sql, car_visible_sql, damaged_ad_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services.photos import store_photo
 from webapp.services.plates import normalize_plate
@@ -34,8 +34,7 @@ def vehicles_list():
     base = """
         SELECT v.*, o.obs_count, o.ad_count, o.min_price, o.max_price,
                o.last_observed, o.active_ads, o.sources, t.tags,
-               EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = v.vin AND """ + damaged_ad_sql("x") + """) AS sold_damaged,
-               """ + damage_history_sql("v") + """ AS damage_history
+               """ + car_flags_sql("v") + """
         FROM vehicles v
         LEFT JOIN (
             SELECT vin,
@@ -109,7 +108,7 @@ def vehicles_list():
 @bp.route("/vehicle/<path:vin>")
 def vehicle_detail(vin):
     conn = get_db()
-    vehicle = conn.execute("SELECT * FROM vehicles WHERE vin=?", (vin,)).fetchone()
+    vehicle = conn.execute("SELECT v.*, " + car_flags_sql("v") + " FROM vehicles v WHERE v.vin=?", (vin,)).fetchone()
     if not vehicle:
         conn.close()
         return "VIN not found", 404

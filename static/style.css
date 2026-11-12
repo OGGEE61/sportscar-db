@@ -656,3 +656,56 @@ body {
   .vehicle-header code { word-break: break-all; }
   .vehicle-hero-img { width: 100% !important; height: auto !important; max-height: 200px; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Car markers (templates/_car_flags.html): the same set on every page
+   ───────────────────────────────────────────────────────────────────────────── */
+.car-flags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  vertical-align: middle;
+}
+.car-flags .flag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.3em 0.55em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.car-flags .flag-ok    { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.car-flags .flag-muted { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+.car-flags .flag-warn  { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.car-flags .flag-bad   { background: #dc2626; color: #fff; }
+.car-flags .flag-tag   { background: #f8fafc; color: #334155; border-color: #cbd5e1; font-weight: 500; }
+.car-flags .flag-info  { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.car-flags .flag-plate {
+  background: #fff; color: #0f172a; border-color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.5px;
+}
+
+.vin-block .vin-line {
+  display: flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.vin-block .vin-code {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: #475569;
+  margin-bottom: 3px;
+  text-decoration: none;
+}
+.vin-block .vin-line .vin-code { margin-bottom: 0; }
+.vin-block a.vin-code:hover { color: #1d4ed8; text-decoration: underline; }
+
+/* Location cell (templates/_location.html) */
+.loc-place { font-size: 0.875rem; }
+.loc-region {
+  background: #f8fafc; color: #334155; border: 1px solid #e2e8f0;
+  font-size: 0.65rem; font-weight: 500;
+}

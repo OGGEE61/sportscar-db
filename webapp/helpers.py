@@ -66,6 +66,34 @@ def damage_history_sql(alias="v"):
             f"AND cr.accident_free = 0)")
 
 
+PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
+
+
+def car_flags_sql(alias="v"):
+    """SELECT columns of the markers every list shows next to a car (templates/_car_flags.html):
+    flag_vin_status, flag_plate, flag_origin, flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
+    flag_damage_country,
+    flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km and
+    flag_tags (the car's other tags, '|'-separated; plate-from-photo, 'missing plates' and CEPiK tags are
+    markers already).
+    Every page that lists cars selects these, so a car is marked the same way everywhere."""
+    a = alias
+    tags = ", ".join(f"'{t}'" for t in PHOTO_PLATE_TAGS)
+    return f"""{a}.vin_status AS flag_vin_status,
+        {a}.registration_plate AS flag_plate,
+        {a}.origin_market AS flag_origin,
+        EXISTS (SELECT 1 FROM tags ft WHERE ft.vin = {a}.vin AND ft.tag IN ({tags})) AS flag_plate_from_photo,
+        EXISTS (SELECT 1 FROM listing_observations fx WHERE fx.vin = {a}.vin AND {damaged_ad_sql("fx")}) AS flag_sold_damaged,
+        {damage_history_sql(a)} AS flag_damage_history,
+        (SELECT cr.country FROM condition_reports cr WHERE cr.vin = {a}.vin AND cr.accident_free = 0
+           AND COALESCE(cr.country, '') <> '' ORDER BY cr.report_date DESC LIMIT 1) AS flag_damage_country,
+        (SELECT CASE WHEN fc.is_stolen = 1 THEN 'stolen' WHEN fc.odometer_rollback = 1 THEN 'rollback' ELSE 'ok' END
+           FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_cepik,
+        (SELECT fc.rollback_diff_km FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_rollback_km,
+        (SELECT GROUP_CONCAT(fg.tag, '|') FROM tags fg WHERE fg.vin = {a}.vin AND fg.tag NOT IN ({tags}, 'missing plates')
+           AND LOWER(fg.tag) NOT LIKE 'cepik%') AS flag_tags"""
+
+
 def car_visible_sql(alias="v"):
     """SQL condition: the car has a sighting that is not excluded, or has no sightings at all.
 
