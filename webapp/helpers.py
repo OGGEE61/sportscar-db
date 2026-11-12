@@ -73,7 +73,9 @@ def car_flags_sql(alias="v"):
     """SELECT columns of the markers every list shows next to a car (templates/_car_flags.html):
     flag_vin_status, flag_plate, flag_origin, flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
     flag_damage_country,
-    flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report) and flag_rollback_km.
+    flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km and
+    flag_tags (the car's other tags, '|'-separated; plate-from-photo, 'missing plates' and CEPiK tags are
+    markers already).
     Every page that lists cars selects these, so a car is marked the same way everywhere."""
     a = alias
     tags = ", ".join(f"'{t}'" for t in PHOTO_PLATE_TAGS)
@@ -87,7 +89,9 @@ def car_flags_sql(alias="v"):
            AND COALESCE(cr.country, '') <> '' ORDER BY cr.report_date DESC LIMIT 1) AS flag_damage_country,
         (SELECT CASE WHEN fc.is_stolen = 1 THEN 'stolen' WHEN fc.odometer_rollback = 1 THEN 'rollback' ELSE 'ok' END
            FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_cepik,
-        (SELECT fc.rollback_diff_km FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_rollback_km"""
+        (SELECT fc.rollback_diff_km FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_rollback_km,
+        (SELECT GROUP_CONCAT(fg.tag, '|') FROM tags fg WHERE fg.vin = {a}.vin AND fg.tag NOT IN ({tags}, 'missing plates')
+           AND LOWER(fg.tag) NOT LIKE 'cepik%') AS flag_tags"""
 
 
 def car_visible_sql(alias="v"):

@@ -1,5 +1,5 @@
 {% from "_source.html" import source_badge %}
-{% from "_car_flags.html" import car_flags %}
+{% from "_car_flags.html" import vin_block %}
         {% for r in recent %}
         <tr>
           <td style="width: 52px; text-align: center; padding: 4px;">
@@ -15,15 +15,13 @@
             </div>
             {% endif %}
           </td>
-          <td>
-            <a href="/vehicle/{{ r.vin }}" class="font-monospace small">{{ r.vin[:12] }}…</a>
-          </td>
+          <td style="min-width: 190px;">{{ vin_block(r, r.vin) }}</td>
           <td>{{ r.make }}</td>
           <td>{{ r.model }}{% if r.variant %} <small class="text-muted">{{ r.variant }}</small>{% endif %}</td>
           <td>{{ r.year or '—' }}</td>
           <td>{{ r.power_hp or '—' }}</td>
-          <td><span class="fw-semibold" style="color: #1d4ed8;">{{ "{:,.0f} zł".format(r.price_pln) if r.price_pln else '—' }}</span></td>
-          <td>{{ "{:,} km".format(r.mileage_km) if r.mileage_km else '—' }}</td>
+          <td class="text-nowrap"><span class="fw-semibold" style="color: #1d4ed8;">{{ "{:,.0f} zł".format(r.price_pln).replace(",", " ") if r.price_pln else '—' }}</span></td>
+          <td class="text-nowrap">{{ "{:,} km".format(r.mileage_km).replace(",", " ") if r.mileage_km else '—' }}</td>
           <td>
             <span class="small">{{ r.location_city or '—' }}</span>
             {% if r.region %}
@@ -32,8 +30,7 @@
           </td>
           <td>{{ source_badge(r.source) }}</td>
           <td class="text-nowrap small text-muted">{{ r.observed_at[:16] }}</td>
-          <td>{{ car_flags(r) }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="12" class="text-center text-muted py-4">Brak pasujących obserwacji</td></tr>
+        <tr><td colspan="11" class="text-center text-muted py-4">Brak pasujących obserwacji</td></tr>
         {% endfor %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_car_flags.html" import car_flags %}
+{% from "_car_flags.html" import vin_block %}
 {% from "_source.html" import source_badge %}
 {% block title %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
 {% block head %}
@@ -27,8 +27,10 @@
       <h2 class="mb-1">{{ vehicle.make }} {{ vehicle.model }}
         {% if vehicle.variant %}<small class="text-muted fs-5">{{ vehicle.variant }}</small>{% endif %}
       </h2>
-      <code class="fs-6">{{ vehicle.vin }}</code>
-      <div class="mt-1">{{ car_flags(vehicle) }}{% if damage_reports %} <a href="#history" class="small ms-1">szczegóły szkody</a>{% endif %}</div>
+      <div class="d-flex flex-wrap align-items-end gap-2">
+        {{ vin_block(vehicle, vehicle.vin, link=False) }}
+        {% if damage_reports %}<a href="#history" class="small mb-1">szczegóły szkody</a>{% endif %}
+      </div>
       <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status" class="d-inline-block ms-2">
         <select name="vin_status" class="form-select form-select-sm d-inline-block w-auto fw-bold
             {% if vehicle.vin_status == 'verified' %}bg-success text-white

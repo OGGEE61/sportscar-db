@@ -677,8 +677,19 @@ body {
 .car-flags .flag-muted { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
 .car-flags .flag-warn  { background: #fffbeb; color: #b45309; border-color: #fde68a; }
 .car-flags .flag-bad   { background: #dc2626; color: #fff; }
+.car-flags .flag-tag   { background: #f8fafc; color: #334155; border-color: #cbd5e1; font-weight: 500; }
 .car-flags .flag-info  { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
 .car-flags .flag-plate {
   background: #fff; color: #0f172a; border-color: #94a3b8;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.5px;
 }
+
+.vin-block .vin-code {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: #475569;
+  margin-bottom: 3px;
+  text-decoration: none;
+}
+.vin-block a.vin-code:hover { color: #1d4ed8; text-decoration: underline; }

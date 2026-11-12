@@ -1,16 +1,8 @@
-{# The markers shown next to a car on every page, always the same set in the same order.
-   `c` is a row that selected webapp.helpers.car_flags_sql(); with_plate=False leaves out the
-   plate where the page shows it in its own column. #}
+{# The markers shown with a car on every page, always the same set in the same order: plate,
+   VIN status, origin, CEPiK, damage. `c` is a row that selected webapp.helpers.car_flags_sql().
+   vin_block() is how a page shows a car's identity: the VIN, and under it these markers. #}
 {% macro car_flags(c, with_plate=True) -%}
 <span class="car-flags">
-  {%- if c.flag_vin_status == 'verified' -%}
-  <span class="badge flag flag-ok" title="VIN zweryfikowany (np. tablica potwierdzona)">VIN ✓</span>
-  {%- elif c.flag_vin_status == 'placeholder' -%}
-  <span class="badge flag flag-warn" title="Tymczasowy VIN: prawdziwy numer jeszcze nieznany">VIN tymczasowy</span>
-  {%- else -%}
-  <span class="badge flag flag-muted" title="VIN niezweryfikowany">VIN niepewny</span>
-  {%- endif -%}
-
   {%- if with_plate -%}
   {%- if c.flag_plate -%}
   <span class="badge flag flag-plate" title="{{ 'Tablica odczytana ze zdjęcia' if c.flag_plate_from_photo else 'Tablica rejestracyjna' }}">
@@ -18,6 +10,14 @@
   {%- else -%}
   <span class="badge flag flag-warn" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
   {%- endif -%}
+  {%- endif -%}
+
+  {%- if c.flag_vin_status == 'verified' -%}
+  <span class="badge flag flag-ok" title="VIN zweryfikowany (np. tablica potwierdzona)">VIN ✓</span>
+  {%- elif c.flag_vin_status == 'placeholder' -%}
+  <span class="badge flag flag-warn" title="Tymczasowy VIN: prawdziwy numer jeszcze nieznany">VIN tymczasowy</span>
+  {%- else -%}
+  <span class="badge flag flag-muted" title="VIN niezweryfikowany">VIN niepewny</span>
   {%- endif -%}
 
   {%- if c.flag_origin -%}
@@ -40,5 +40,17 @@
   {%- if c.flag_damage_history -%}
   <span class="badge flag flag-bad" title="Szkoda w historii auta (raport VIN, aukcja, oględziny)"><i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody{% if c.flag_damage_country %}: {{ c.flag_damage_country }}{% endif %}</span>
   {%- endif -%}
+  {%- for tag in (c.flag_tags or '').split('|') if tag -%}
+  <span class="badge flag flag-tag" title="Tag">{{ tag }}</span>
+  {%- endfor -%}
 </span>
+{%- endmacro %}
+
+
+{% macro vin_block(c, vin, link=True, full=True) -%}
+<div class="vin-block">
+  {%- if link %}<a href="/vehicle/{{ vin }}" class="vin-code">{{ vin if full else vin[:12] ~ '…' }}</a>
+  {%- else %}<code class="vin-code">{{ vin }}</code>{% endif %}
+  <div>{{ car_flags(c) }}</div>
+</div>
 {%- endmacro %}
