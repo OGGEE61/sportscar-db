@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_car_flags.html" import vin_block %}
+{% from "_location.html" import location_cell %}
 {% from "_source.html" import source_badge %}
 {% block title %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
 {% block head %}
@@ -408,7 +409,7 @@
               <td class="small">{{ o.observed_at[:16] }}</td>
               <td>{{ "{:,.0f}".format(o.price_pln) if o.price_pln else '—' }}</td>
               <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
-              <td>{{ o.location_city or '—' }}</td>
+              <td>{{ location_cell(o.location_city, o.location_region) }}</td>
               <td>{{ o.registration_plate or '—' }}</td>
               <td>{{ o.seller_type or '—' }}</td>
               <td>{{ o.removed_at[:10] if o.removed_at else '' }}</td>

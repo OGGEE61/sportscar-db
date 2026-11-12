@@ -8,6 +8,7 @@ from flask import Flask
 
 from db import get_db
 from webapp.services import r2
+from webapp.regions import location
 from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_plausible_vin, is_valid_registration_plate, plain_text
 
 
@@ -88,6 +89,7 @@ def create_app() -> Flask:
     app.jinja_env.tests["plausible_vin"] = is_plausible_vin
     app.jinja_env.tests["valid_plate"] = is_valid_registration_plate
     app.jinja_env.globals["media_url"] = media_url
+    app.jinja_env.globals["location"] = location
     app.jinja_env.globals["css_version"] = _static_version("style.css")
 
     from webapp.blueprints import api, auth, cepik, dashboard, deals, plates, review, vehicles

@@ -702,3 +702,10 @@ body {
 }
 .vin-block .vin-line .vin-code { margin-bottom: 0; }
 .vin-block a.vin-code:hover { color: #1d4ed8; text-decoration: underline; }
+
+/* Location cell (templates/_location.html) */
+.loc-place { font-size: 0.875rem; }
+.loc-region {
+  background: #f8fafc; color: #334155; border: 1px solid #e2e8f0;
+  font-size: 0.65rem; font-weight: 500;
+}

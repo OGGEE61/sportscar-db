@@ -130,8 +130,9 @@ REGION_NAME_TO_CODE = {
 def resolve_region(region, city=None):
     """Return a known voivodeship code (a key of REGION_NAMES) or None.
 
-    Accepts a code, a Polish region name, or falls back to the city. Anything
-    else (e.g. a stray 5-char string) is dropped so maps never get unknown keys.
+    Accepts a code or a Polish region name, else falls back to the city: the voivodeship named
+    after its comma (autoplac and OLX store 'Tarnów, Małopolskie'), then the region of a known
+    place. Anything else (e.g. a stray 5-char string) is dropped so maps never get unknown keys.
     """
     if region:
         region = region.strip()
@@ -140,8 +141,25 @@ def resolve_region(region, city=None):
         code = REGION_NAME_TO_CODE.get(region.lower())
         if code:
             return code
-    code = CITY_TO_REGION.get(city) if city else None
-    return code if code in REGION_NAMES else None
+    if not city:
+        return None
+    parts = city.split(",")
+    if len(parts) > 1:
+        code = REGION_NAME_TO_CODE.get(parts[-1].strip().lower())
+        if code:
+            return code
+    place = place_name(city)
+    code = CITY_TO_REGION.get(place)
+    if code in REGION_NAMES:
+        return code
+    return "PL-WP" if place in WIELKOPOLSKA_PLACES else None
+
+
+def location(city, region=None):
+    """{'place': 'Tarnów', 'region': 'PL-MA', 'region_name': 'Małopolskie'} for display: every page
+    shows a listing's location this way, whatever format its site stored it in."""
+    code = resolve_region(region, city)
+    return {"place": place_name(city) or None, "region": code, "region_name": REGION_NAMES.get(code, "")}
 
 
 # ── Distance from Poznań ────────────────────────────────────────────────────
