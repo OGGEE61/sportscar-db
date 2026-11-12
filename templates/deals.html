@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Okazje: Poznań – SportsCar DB{% endblock %}
+
+{% macro choice(label, key, value, current) -%}
+{%- set args = dict(request.args) -%}{%- set _ = args.update({key: value}) -%}
+<a href="/deals?{{ args|urlencode }}" class="btn btn-outline-secondary {% if value == current %}active{% endif %}">{{ label }}</a>
+{%- endmacro %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+  <div>
+    <h2 class="mb-1">Okazje: Poznań i okolice</h2>
+    <div class="text-muted small">Najnowsze aktywne ogłoszenia w pobliżu Poznania, z ceną porównaną z rynkiem tego samego modelu.</div>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-3 mb-4 align-items-center">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Zasięg">
+    {% for key in ranges %}{{ choice(("do " ~ key ~ " km") if key != "woj" else "całe wielkopolskie", "km", key, range_key) }}{% endfor %}
+  </div>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Okres">
+    {% for key in periods %}{{ choice("ostatnie " ~ key ~ " dni", "days", key, period_key) }}{% endfor %}
+  </div>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Sortowanie">
+    {{ choice("najnowsze", "sort", "new", sort) }}
+    {{ choice("największe okazje", "sort", "deal", sort) }}
+  </div>
+</div>
+
+<div id="deals-list" hx-get="/api/deals?km={{ range_key }}&days={{ period_key }}&sort={{ sort }}" hx-trigger="load" hx-swap="innerHTML">
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+    {% for _ in range(6) %}
+    <div class="col"><div class="card h-100 border-0 shadow-sm">
+      <div class="skeleton" style="height:180px"></div>
+      <div class="card-body"><div class="skeleton" style="height:16px;width:70%"></div><div class="skeleton mt-2" style="height:24px;width:40%"></div></div>
+    </div></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

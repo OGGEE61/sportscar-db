@@ -31,6 +31,7 @@
         <li class="nav-item"><a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">Dashboard</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/models') %}active{% endif %}" href="/models">Model Analytics</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/vehicles') %}active{% endif %}" href="/vehicles">Vehicles</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/deals') %}active{% endif %}" href="/deals">Okazje Poznań</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/review') %}active{% endif %}" href="/review">Review Queue</a></li>
         <li class="nav-item">
           <a class="nav-link position-relative {% if request.path.startswith('/plates') %}active{% endif %}" href="/plates">

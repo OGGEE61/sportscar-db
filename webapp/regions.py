@@ -1,3 +1,6 @@
+import math
+
+
 CITY_TO_REGION = {
     'Warszawa': 'PL-MZ', 'Kraków': 'PL-MA', 'Łódź': 'PL-LD', 'Wrocław': 'PL-DS',
     'Poznań': 'PL-WP', 'Gdańsk': 'PL-PM', 'Szczecin': 'PL-ZP', 'Bydgoszcz': 'PL-KP',
@@ -139,3 +142,63 @@ def resolve_region(region, city=None):
             return code
     code = CITY_TO_REGION.get(city) if city else None
     return code if code in REGION_NAMES else None
+
+
+# ── Distance from Poznań ────────────────────────────────────────────────────
+# Listings carry a place name only, so the deals page (/deals) measures distance with this table
+# of approximate coordinates (lat, lon) of places around Poznań and in the rest of Wielkopolska.
+# A place missing here has an unknown distance; it shows up only when the whole voivodeship is
+# chosen. Names that several villages share (Piotrowice, Kościelna Wieś, Lipka) are left out on
+# purpose: a wrong guess would put a car 150 km away into "near Poznań".
+POZNAN = (52.4064, 16.9252)
+
+PLACE_COORDS = {
+    # Poznań and the Poznań county
+    'Poznań': (52.4064, 16.9252), 'Luboń': (52.347, 16.879), 'Puszczykowo': (52.284, 16.855),
+    'Mosina': (52.245, 16.847), 'Swarzędz': (52.411, 17.073), 'Gruszczyn': (52.430, 17.060),
+    'Zalasewo': (52.392, 17.090), 'Kamionki': (52.317, 17.005), 'Borówiec': (52.316, 16.990),
+    'Kórnik': (52.247, 17.087), 'Tarnowo Podgórne': (52.466, 16.670), 'Przeźmierowo': (52.428, 16.790),
+    'Baranowo': (52.437, 16.775), 'Swadzim': (52.458, 16.745), 'Wysogotowo': (52.414, 16.792),
+    'Skórzewo': (52.397, 16.803), 'Dopiewo': (52.360, 16.700), 'Komorniki': (52.335, 16.810),
+    'Golęczewo': (52.522, 16.918), 'Suchy Las': (52.470, 16.880), 'Owińska': (52.513, 16.997),
+    'Czerwonak': (52.465, 16.985), 'Murowana Goślina': (52.574, 17.012), 'Rokietnica': (52.513, 16.746),
+    'Cerekwica': (52.535, 16.693), 'Kostrzyn': (52.398, 17.229), 'Pobiedziska': (52.477, 17.290),
+    'Kleszczewo': (52.338, 17.172), 'Stęszew': (52.283, 16.699), 'Buk': (52.355, 16.519),
+    # Neighbouring counties
+    'Grzebienisko': (52.452, 16.470), 'Szamotuły': (52.611, 16.580), 'Oborniki': (52.648, 16.810),
+    'Śrem': (52.089, 17.015), 'Środa Wielkopolska': (52.228, 17.278), 'Września': (52.325, 17.566),
+    'Gniezno': (52.535, 17.583), 'Skiereszewo': (52.560, 17.540), 'Grodzisk Wielkopolski': (52.227, 16.366),
+    'Opalenica': (52.309, 16.413), 'Nowy Tomyśl': (52.318, 16.128), 'Pniewy': (52.509, 16.255),
+    'Kościan': (52.087, 16.645), 'Krzywiń': (51.966, 16.817), 'Bielewo': (51.990, 16.790),
+    'Wolsztyn': (52.116, 16.115), 'Przemęt': (51.990, 16.300), 'Wągrowiec': (52.808, 17.199),
+    'Międzychód': (52.600, 15.890), 'Słupca': (52.287, 17.872), 'Pyzdry': (52.170, 17.690),
+    'Jarocin': (51.973, 17.502), 'Gostyń': (51.880, 17.012), 'Leszno': (51.840, 16.575),
+    'Czarnków': (52.902, 16.563), 'Chodzież': (52.995, 16.919),
+    # The rest of Wielkopolska and the nearest cities beyond it
+    'Krobia': (51.774, 16.983), 'Szamocin': (53.030, 17.130), 'Ujście': (53.053, 16.733),
+    'Piła': (53.151, 16.738), 'Trzcianka': (53.041, 16.455), 'Złotów': (53.363, 17.040),
+    'Konin': (52.223, 18.251), 'Koło': (52.200, 18.638), 'Turek': (52.015, 18.500),
+    'Pleszew': (51.896, 17.786), 'Krotoszyn': (51.697, 17.437), 'Ostrów Wielkopolski': (51.655, 17.807),
+    'Przygodzice': (51.600, 17.810), 'Kalisz': (51.762, 18.091), 'Kępno': (51.278, 17.989),
+    'Gorzów Wielkopolski': (52.731, 15.240), 'Zielona Góra': (51.935, 15.506),
+    'Bydgoszcz': (53.123, 18.008), 'Inowrocław': (52.798, 18.261), 'Wrocław': (51.108, 17.039),
+}
+WIELKOPOLSKA_PLACES = frozenset(PLACE_COORDS) - {
+    'Gorzów Wielkopolski', 'Zielona Góra', 'Bydgoszcz', 'Inowrocław', 'Wrocław'}
+
+
+def place_name(city):
+    """The bare place name of a listing's location: 'Poznań, Wielkopolskie' and
+    'Poznań - Grunwald' become 'Poznań'."""
+    return (city or "").split(",")[0].split(" - ")[0].strip()
+
+
+def km_from_poznan(city):
+    """Straight-line distance in km from the centre of Poznań, or None for an unknown place."""
+    coords = PLACE_COORDS.get(place_name(city))
+    if not coords:
+        return None
+    lat1, lon1 = map(math.radians, POZNAN)
+    lat2, lon2 = map(math.radians, coords)
+    a = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    return round(2 * 6371 * math.asin(math.sqrt(a)))
