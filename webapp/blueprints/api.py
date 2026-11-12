@@ -148,14 +148,16 @@ def api_mark_removed():
     conn = get_db()
 
     # 1. Fetch active observations of listings this scraper ingested
+    # Starts from this scraper's listings (idx_pending_variant), so it reads ~one model's rows
+    # instead of every observation of the site on each run.
     active_rows = conn.execute("""
-        SELECT DISTINCT o.source_listing_id
-        FROM listing_observations o
-        JOIN pending_listings pl
-          ON pl.source = o.source AND pl.source_listing_id = o.source_listing_id
-        WHERE o.source = ?
-          AND o.removed_at IS NULL
-          AND pl.make = ? AND pl.model = ? AND pl.variant = ?
+        SELECT pl.source_listing_id
+        FROM pending_listings pl
+        WHERE pl.source = ? AND pl.make = ? AND pl.model = ? AND pl.variant = ?
+          AND pl.source_listing_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM listing_observations o
+                      WHERE o.source = pl.source AND o.source_listing_id = pl.source_listing_id
+                        AND o.removed_at IS NULL)
     """, (source, make, model, variant)).fetchall()
     
     seen_set = set(seen_ids)

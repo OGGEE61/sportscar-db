@@ -41,11 +41,22 @@ WITH listing AS (
 )
 SELECT l.*, v.make, v.model, v.variant, v.year, v.power_hp, v.photo, v.vin_status,
        """ + damaged_ad_sql("l") + """ AS damaged,
-       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = l.vin AND cr.accident_free = 0) AS damage_history,
-       """ + car_flags_sql("v") + """
+       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = l.vin AND cr.accident_free = 0) AS damage_history
 FROM listing l JOIN vehicles v ON v.vin = l.vin
 WHERE l.rn = 1 AND l.price_pln > 0 AND l.observed_at >= datetime('now', ?)
 """
+
+
+def add_flags(conn, items: list) -> list:
+    """The cars' markers (webapp.helpers.car_flags_sql) for the listings shown, in one query: only
+    for these ~100 cars, not for every listing loaded as the market."""
+    vins = sorted({d["vin"] for d in items})
+    if not vins:
+        return items
+    rows = conn.execute("SELECT v.vin, " + car_flags_sql("v") + " FROM vehicles v WHERE v.vin IN ("
+                        + ",".join("?" * len(vins)) + ")", vins).fetchall()
+    flags = {r["vin"]: dict(r) for r in rows}
+    return [dict(d, **flags.get(d["vin"], {})) for d in items]
 
 
 def load_listings(conn) -> list:

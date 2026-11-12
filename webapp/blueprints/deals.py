@@ -49,6 +49,11 @@ def deals_page():
 def deals_list():
     range_key, period_key, sort = _choices(request.args)
     result = deals.poznan_deals(_listings(), range_key, period_key, sort)
+    conn = get_db()
+    try:
+        result["items"] = deals.add_flags(conn, result["items"])
+    finally:
+        conn.close()
     resp = make_response(render_template("_deals_list.html", **result, range_key=range_key,
                                          period_key=period_key, sort=sort,
                                          deal_below=round(-deals.DEAL_BELOW * 100),
