@@ -444,7 +444,7 @@ class TestModelTableSorting(ScrapingTestCase):
     def test_headers_are_sortable_and_rows_carry_sort_values(self):
         self.seed()
         html = self.client.get("/models?model=m3_f80").get_data(as_text=True)
-        for key in ("vehicle", "year", "mileage", "price", "location", "observed"):
+        for key in ("vehicle", "year", "hp", "mileage", "price", "location", "observed"):
             self.assertIn(f'data-key="{key}"', html)
             self.assertIn(f"data-s-{key}=", html)
         self.assertIn('aria-sort="descending">Widziane', html)
