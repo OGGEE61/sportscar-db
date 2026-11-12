@@ -1,0 +1,86 @@
+{% from "_source.html" import source_badge %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 small text-muted">
+  <span>
+    {% if total %}{{ total }} {{ "auto" if total == 1 else "aut" }}{% if total > items|length %}, pokazano {{ items|length }}{% endif %}{% else %}Brak aut{% endif %}
+    {%- if range_key != "woj" %} w promieniu {{ range_key }} km od Poznania{% else %} w województwie wielkopolskim{% endif %},
+    wystawionych w ostatnich {{ period_key }} dniach.
+  </span>
+  {% if range_key != "woj" and unknown_place %}
+  <a href="/deals?km=woj&days={{ period_key }}&sort={{ sort }}" class="text-muted">
+    {{ unknown_place }} z Wielkopolski bez znanej odległości: pokaż całe województwo
+  </a>
+  {% endif %}
+</div>
+
+{% if items %}
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+  {% for d in items %}
+  <div class="col">
+    <div class="card h-100 border-0 shadow-sm">
+      <a href="/vehicle/{{ d.vin }}" class="d-block position-relative" style="height: 180px; background: #e9ecef;">
+        {% if d.photo %}
+        <img src="{{ media_url(d.photo) }}" loading="lazy" decoding="async" alt="{{ d.make }} {{ d.model }}"
+             class="w-100 h-100 rounded-top" style="object-fit: cover;" onerror="this.remove()">
+        {% endif %}
+        {% if d.age_days == 0 %}<span class="badge bg-danger position-absolute top-0 start-0 m-2">Nowe</span>{% endif %}
+        {% if d.damaged %}<span class="badge bg-dark position-absolute top-0 end-0 m-2">Uszkodzony</span>{% endif %}
+      </a>
+      <div class="card-body d-flex flex-column">
+        <div class="fw-semibold">{{ d.make }} {{ d.model }}{% if d.variant %} <span class="text-muted fw-normal">{{ d.variant }}</span>{% endif %}</div>
+        <div class="small text-muted mb-2">
+          {{ d.year or '—' }}{% if d.power_hp %} · {{ d.power_hp }} KM{% endif %}{% if d.mileage_km %} · {{ "{:,}".format(d.mileage_km).replace(",", " ") }} km{% endif %}
+        </div>
+
+        <div class="d-flex align-items-baseline flex-wrap gap-2">
+          <span class="fs-4 fw-bold" style="color: #1d4ed8;">{{ "{:,.0f}".format(d.price_pln).replace(",", " ") }} zł</span>
+          {% if d.cmp %}
+            {% set pct = (d.cmp.diff * 100)|round|int %}
+            {% if d.verdict == 'deal' %}
+            <span class="badge bg-success">{{ pct }}% od mediany</span>
+            {% elif d.verdict == 'pricey' %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">+{{ pct }}% od mediany</span>
+            {% else %}
+            <span class="badge bg-light text-dark border">{{ "+" if pct > 0 else "" }}{{ pct }}% od mediany</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="small text-muted mb-2">
+          {% if d.cmp %}
+          Mediana {{ "{:,.0f}".format(d.cmp.median).replace(",", " ") }} zł z {{ d.cmp.count }} aut ({{ d.cmp.basis }})
+          {% elif d.damaged %}
+          Uszkodzone auto: bez porównania z rynkiem
+          {% else %}
+          Za mało podobnych aut do porównania
+          {% endif %}
+        </div>
+
+        <div class="mt-auto d-flex justify-content-between align-items-center small">
+          <span>
+            <i class="bi bi-geo-alt text-muted"></i> {{ d.place or '—' }}{% if d.km is not none and d.km > 0 %} <span class="text-muted">({{ d.km }} km)</span>{% endif %}
+            <span class="text-muted text-nowrap ms-1">·
+              {% if d.age_days == 0 %}dziś{% elif d.age_days == 1 %}wczoraj{% elif d.age_days is not none %}{{ d.age_days }} dni temu{% endif %}
+            </span>
+          </span>
+          <span class="text-nowrap">
+            {{ source_badge(d.source) }}
+            {% if d.source_url %}<a href="{{ d.source_url }}" target="_blank" rel="noopener" class="ms-1" title="Otwórz ogłoszenie"><i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-search fs-2 d-block mb-2"></i>
+  Brak aktywnych ogłoszeń w tym zasięgu i okresie. Spróbuj większego promienia albo dłuższego okresu.
+</div>
+{% endif %}
+
+<p class="small text-muted mt-4 mb-0">
+  Okazja to cena co najmniej {{ deal_below }}% poniżej mediany tego samego modelu i wersji z roczników
+  ±1 (gdy jest ich mniej niż 5: ±2, potem ±3; dalej nie porównujemy). Mediana liczona z ogłoszeń z ostatnich
+  {{ compare_days }} dni, także sprzedanych, jedno ogłoszenie na auto. Uszkodzonych aut nie porównujemy.
+  Odległość w linii prostej od centrum Poznania.
+</p>

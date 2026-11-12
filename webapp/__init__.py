@@ -7,6 +7,7 @@ import time
 from flask import Flask
 
 from db import get_db
+from webapp.services import r2
 from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_plausible_vin, is_valid_registration_plate, plain_text
 
 
@@ -51,14 +52,15 @@ def _inject_notifications():
 
 
 def media_url(path):
-    """URL for a stored photo. With R2_PUBLIC_URL set the browser loads it
-    straight from R2; otherwise it goes through the /media redirect route."""
+    """URL for a stored photo, loaded by the browser straight from R2: the public bucket URL
+    with R2_PUBLIC_URL, else a presigned link made here (webapp.services.r2, no network).
+    Only without R2 (local development) does it go through the /media route."""
     if not path:
         return ""
     public = os.environ.get("R2_PUBLIC_URL")
     if public:
         return f"{public.rstrip('/')}/{path}"
-    return f"/media/{path}"
+    return r2.presigned_url(path) or f"/media/{path}"
 
 
 def create_app() -> Flask:
@@ -88,8 +90,8 @@ def create_app() -> Flask:
     app.jinja_env.globals["media_url"] = media_url
     app.jinja_env.globals["css_version"] = _static_version("style.css")
 
-    from webapp.blueprints import api, auth, cepik, dashboard, plates, review, vehicles
-    for module in (auth, dashboard, vehicles, review, plates, cepik, api):
+    from webapp.blueprints import api, auth, cepik, dashboard, deals, plates, review, vehicles
+    for module in (auth, dashboard, deals, vehicles, review, plates, cepik, api):
         app.register_blueprint(module.bp)
 
     return app
