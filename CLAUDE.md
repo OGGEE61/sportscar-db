@@ -15,6 +15,13 @@ Hobby limits Functions Storage to 10 GB per rolling 30 days, and every deploymen
 
 - Migrations live in `init_db()` in [db.py](db.py). It does **not** run on Vercel: apply new ones to production by hand before (or right after) the deploy that needs them: `DB_BACKEND=d1 python -c "from db import init_db; init_db()"`. A deploy that queries a new column without this returns a 500.
 
+## D1 read budget (free plan)
+
+- D1 allows 5 million rows read per day. Past that, every read fails until midnight UTC (01:00 Polish time) and the app returns 500s. This happened on 2026-11-12.
+- Do audits, page checks, screenshots and exploratory SQL on a local copy, never on production: `DB_BACKEND=d1 python scripts/maintenance/export_d1.py` (about as many reads as the DB has rows), then work with `DB_BACKEND=sqlite` and `db.DB_PATH` pointing at `local_copy.db`.
+- Every response carries `X-D1-Rows-Read`, and requests reading 20k+ rows log `[d1] N rows read: METHOD /path` (Vercel logs). Check new pages and endpoints with it.
+- Avoid queries that scan big tables (`listing_observations`, `pending_listings`) per request or per scraper run: check `EXPLAIN QUERY PLAN` for `SCAN`, and an `OR` in a join condition (it stops index use).
+
 ## Performance notes
 
 - Production reads Cloudflare D1 over HTTP (each query is a round trip). D1 runs in EEUR, so the function is pinned to `fra1` in [vercel.json](vercel.json); keep them close together.
