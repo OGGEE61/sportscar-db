@@ -621,6 +621,16 @@ def init_db():
         """)
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(16,'plate_verifies_vin')")
 
+    # ── Migration 17: damage history ──────────────────────────────────────────
+    # A VIN check (autoDNA, carVertical, an auction record) can show a car was damaged, often
+    # abroad. A condition report with accident_free = 0 says so; it now also keeps the country
+    # and a photo of the damage (an R2 key, like vehicles.photo).
+    cr_cols = {r[1] for r in db.execute("PRAGMA table_info(condition_reports)").fetchall()}
+    for col in ("country", "photo"):
+        if col not in cr_cols:
+            db.execute(f"ALTER TABLE condition_reports ADD COLUMN {col} TEXT")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(17,'condition_country_photo')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

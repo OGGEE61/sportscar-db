@@ -59,6 +59,13 @@ def damaged_ad_sql(alias):
             f"AND d.source_listing_id = {alias}.source_listing_id)")
 
 
+def damage_history_sql(alias="v"):
+    """SQL condition: a condition report says the car is not accident free (e.g. a VIN check
+    found it damaged abroad), whatever its current ads say."""
+    return (f"EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = {alias}.vin "
+            f"AND cr.accident_free = 0)")
+
+
 def car_visible_sql(alias="v"):
     """SQL condition: the car has a sighting that is not excluded, or has no sightings at all.
 

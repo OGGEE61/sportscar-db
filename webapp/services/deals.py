@@ -5,7 +5,8 @@ listings, sold ones included, are the market: a listing's price is compared with
 of the same make, model and variant from model years close to it (YEAR_WINDOWS), and only when
 there are at least MIN_COMPARABLES other cars to compare with. A car
 counts once (its newest listing), so a car relisted on another site does not vote twice, and the
-listing never votes on itself. Damaged cars are neither compared nor part of the market.
+listing never votes on itself. Damaged cars (sold as damaged, or with a damage in their history)
+are neither compared nor part of the market.
 """
 import statistics
 from collections import defaultdict
@@ -39,7 +40,8 @@ WITH listing AS (
   WHERE o.excluded_reason IS NULL AND o.source_listing_id IS NOT NULL
 )
 SELECT l.*, v.make, v.model, v.variant, v.year, v.power_hp, v.photo, v.vin_status,
-       """ + damaged_ad_sql("l") + """ AS damaged
+       """ + damaged_ad_sql("l") + """ AS damaged,
+       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = l.vin AND cr.accident_free = 0) AS damage_history
 FROM listing l JOIN vehicles v ON v.vin = l.vin
 WHERE l.rn = 1 AND l.price_pln > 0 AND l.observed_at >= datetime('now', ?)
 """
@@ -65,11 +67,16 @@ def listing_region(region, city):
     return resolve_region(None, place) or ("PL-WP" if place in WIELKOPOLSKA_PLACES else None)
 
 
+def _damaged(item) -> bool:
+    """Sold as damaged, or damaged in its history (a condition report, e.g. from a VIN check)."""
+    return bool(item.get("damaged") or item.get("damage_history"))
+
+
 def market(listings: list) -> dict:
     """(make, model, variant) -> [(year, price, vin)], one entry per car (its newest listing)."""
     newest = {}
     for item in listings:
-        if item.get("damaged"):
+        if _damaged(item):
             continue
         held = newest.get(item["vin"])
         if not held or (item["observed_at"] or "") > (held["observed_at"] or ""):
@@ -83,7 +90,7 @@ def market(listings: list) -> dict:
 def compare(item: dict, groups: dict):
     """{"median", "diff" (fraction, negative = cheaper), "count", "basis"} or None when there are
     too few comparable cars (or the car is damaged)."""
-    if item.get("damaged"):
+    if _damaged(item):
         return None
     others = [(y, p) for y, p, vin in groups.get((item["make"], item["model"], item["variant"]), [])
               if vin != item["vin"]]

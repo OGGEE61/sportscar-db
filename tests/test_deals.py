@@ -94,6 +94,13 @@ class TestCompare(unittest.TestCase):
         self.assertIsNone(deals.compare(rows[-1], groups))  # only 4 undamaged others
         self.assertIsNone(deals.compare(rows[-2], groups))
 
+    def test_damage_history_is_like_damaged(self):
+        crashed = listing("H" * 17, 10_000, damage_history=1)
+        rows = market_of([100_000] * 4) + [crashed, listing("A" * 17, 90_000)]
+        groups = deals.market(rows)
+        self.assertIsNone(deals.compare(crashed, groups))
+        self.assertIsNone(deals.compare(rows[-1], groups))  # the crashed car is not one of the 5
+
     def test_other_variant_is_not_the_market(self):
         rows = market_of([100_000] * 5) + [listing("A" * 17, 90_000, variant="E92 M3")]
         self.assertIsNone(deals.compare(rows[-1], deals.market(rows)))
@@ -187,6 +194,17 @@ class TestDealsRoutes(unittest.TestCase):
         self.assertIn("-20% od mediany", html)
         self.assertIn("Mediana 300 000 zł z 6 aut (rocznik ±1)", html)
         self.assertIn("2 dni temu", html)
+
+    def test_damage_history_shown_on_the_card(self):
+        self.add("WBATS31020LF51925", 135_000, "Opalenica", "x3")
+        conn = db.get_db()
+        conn.execute("INSERT INTO condition_reports (vin, report_date, accident_free, notes) "
+                     "VALUES ('WBATS31020LF51925', '2020-10-11', 0, 'Belgia')")
+        conn.commit()
+        conn.close()
+        html = self.client.get("/api/deals?km=50").get_data(as_text=True)
+        self.assertIn("Historia szkody", html)
+        self.assertIn("Szkoda w historii auta: bez porównania z rynkiem", html)
 
     def test_bad_choices_fall_back_to_defaults(self):
         html = self.client.get("/api/deals?km=9999&days=x&sort=evil").get_data(as_text=True)

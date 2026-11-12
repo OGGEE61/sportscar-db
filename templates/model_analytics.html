@@ -269,7 +269,9 @@
                   {{ v.title or (v.make ~ ' ' ~ v.model) }}
                 </a>
                 <code class="small text-muted">{{ v.vin }}</code>
-                {% if v.sold_damaged %}
+                {% if v.damage_history %}
+                <span class="badge bg-danger ms-1" style="font-size: 0.65rem;" title="Szkoda w historii auta: cena nie liczy się do wykresów i średnich">Historia szkody</span>
+                {% elif v.sold_damaged %}
                 <span class="badge bg-danger ms-1" style="font-size: 0.65rem;" title="Ogłoszenie oznaczone na portalu jako uszkodzone: cena nie liczy się do wykresów i średnich">Uszkodzony</span>
                 {% endif %}
                 {% if not v.registration_plate %}

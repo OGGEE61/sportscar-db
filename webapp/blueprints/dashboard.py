@@ -4,7 +4,7 @@ import time
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
-from webapp.helpers import car_visible_sql, damaged_ad_sql, script_json, trend_line
+from webapp.helpers import car_visible_sql, damage_history_sql, damaged_ad_sql, script_json, trend_line
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -307,7 +307,8 @@ def model_analytics():
         SELECT v.*, 
                (SELECT 1 FROM tags t WHERE t.vin = v.vin AND t.tag IN ('photo extracted', 'AI extracted plate')) as has_ai_plate,
                o.price_pln, o.mileage_km, o.location_city, o.location_region, o.observed_at, o.source_url, o.title,
-               """ + damaged_ad_sql("o") + """ AS sold_damaged
+               """ + damaged_ad_sql("o") + """ AS sold_damaged,
+               """ + damage_history_sql("v") + """ AS damage_history
         FROM vehicles v
         LEFT JOIN (
             SELECT vin, source, source_listing_id, price_pln, mileage_km, location_city, location_region,
@@ -340,7 +341,10 @@ def model_analytics():
             v["region"] = ""
             v["region_name"] = ""
 
-    # Prices of damaged cars say little about the market: left out of the charts and averages
+    # Prices of damaged cars (sold as damaged, or with damage in their history) say little about
+    # the market: left out of the charts and averages
+    for v in vehicles:
+        v["sold_damaged"] = v.get("sold_damaged") or v.get("damage_history")
     prices = [v["price_pln"] for v in vehicles if v.get("price_pln") and not v.get("sold_damaged")]
     mileages = [v["mileage_km"] for v in vehicles if v.get("mileage_km")]
 
