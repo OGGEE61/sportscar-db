@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from jinja2.utils import htmlsafe_json_dumps
 
-from validation import is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate  # noqa: F401  (re-exported)
+from validation import OVERSEAS_ORIGINS, is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate  # noqa: F401  (re-exported)
 
 
 def script_json(obj):
@@ -66,12 +66,30 @@ def damage_history_sql(alias="v"):
             f"AND cr.accident_free = 0)")
 
 
+def overseas_damaged_listing_sql(alias):
+    """SQL condition on a pending_listings row: a damaged ad of a car from the USA or Canada,
+    i.e. a car not yet brought to Poland. No plate to look for."""
+    origins = ", ".join(f"'{o}'" for o in OVERSEAS_ORIGINS)
+    return (f"(COALESCE({alias}.origin_market, '') IN ({origins}) AND EXISTS (SELECT 1 FROM damaged_listings d "
+            f"WHERE d.source = {alias}.source AND d.source_listing_id = {alias}.source_listing_id))")
+
+
+def abroad_sql(alias="v"):
+    """SQL condition: the car is almost surely still abroad. It comes from the USA or Canada, an
+    ad of it is marked damaged and it has no Polish plate (a plate means it was imported)."""
+    origins = ", ".join(f"'{o}'" for o in OVERSEAS_ORIGINS)
+    return (f"(COALESCE({alias}.origin_market, '') IN ({origins}) AND COALESCE({alias}.registration_plate, '') = '' "
+            f"AND EXISTS (SELECT 1 FROM listing_observations fd WHERE fd.vin = {alias}.vin "
+            f"AND {damaged_ad_sql('fd')}))")
+
+
 PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
 
 
 def car_flags_sql(alias="v"):
     """SELECT columns of the markers every list shows next to a car (templates/_car_flags.html):
-    flag_vin_status, flag_plate, flag_origin, flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
+    flag_vin_status, flag_plate, flag_origin, flag_abroad (abroad_sql), flag_plate_from_photo,
+    flag_sold_damaged, flag_damage_history,
     flag_damage_country,
     flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km,
     flag_ad ('active' while an ad is up, else when the last one disappeared; NULL without ads) and
@@ -83,6 +101,7 @@ def car_flags_sql(alias="v"):
     return f"""{a}.vin_status AS flag_vin_status,
         {a}.registration_plate AS flag_plate,
         {a}.origin_market AS flag_origin,
+        {abroad_sql(a)} AS flag_abroad,
         EXISTS (SELECT 1 FROM tags ft WHERE ft.vin = {a}.vin AND ft.tag IN ({tags})) AS flag_plate_from_photo,
         EXISTS (SELECT 1 FROM listing_observations fx WHERE fx.vin = {a}.vin AND {damaged_ad_sql("fx")}) AS flag_sold_damaged,
         {damage_history_sql(a)} AS flag_damage_history,
