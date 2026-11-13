@@ -30,27 +30,6 @@ def vehicles_list():
     sort   = request.args.get("sort", "last_seen")
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
-    # Pre-aggregate per VIN (avoids the observations x tags row fan-out)
-    base = """
-        SELECT v.*, o.obs_count, o.ad_count, o.min_price, o.max_price,
-               o.last_observed, o.active_ads, o.sources, t.tags,
-               """ + car_flags_sql("v") + """
-        FROM vehicles v
-        LEFT JOIN (
-            SELECT vin,
-                   COUNT(*)                          AS obs_count,
-                   COUNT(DISTINCT source_listing_id) AS ad_count,
-                   MIN(price_pln)                    AS min_price,
-                   MAX(price_pln)                    AS max_price,
-                   MAX(observed_at)                  AS last_observed,
-                   SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
-                   GROUP_CONCAT(DISTINCT source)     AS sources
-            FROM listing_observations WHERE excluded_reason IS NULL GROUP BY vin
-        ) o ON o.vin = v.vin
-        LEFT JOIN (
-            SELECT vin, GROUP_CONCAT(tag) AS tags FROM tags GROUP BY vin
-        ) t ON t.vin = v.vin
-    """
     wheres, params = [car_visible_sql()], []
     if q:
         wheres.append("(v.make LIKE ? OR v.model LIKE ? OR v.vin LIKE ? OR v.variant LIKE ?)")
@@ -74,24 +53,51 @@ def vehicles_list():
 
     where_sql = (" WHERE " + " AND ".join(wheres)) if wheres else ""
 
+    # The page's 50 cars are picked first, with a sort key that costs a few index rows per car
+    # (idx_obs_vin_observed); their sighting summary, tags and markers are computed for those 50
+    # only. Summarising every car's sightings on each page view read ~75k rows.
+    usable = "x.vin = v.vin AND x.excluded_reason IS NULL"
     sort_map = {
-        "last_seen":  "o.last_observed DESC, v.updated_at DESC",
-        "updated_at": "v.updated_at DESC",
-        "year_desc":  "v.year DESC",
-        "year_asc":   "v.year ASC",
-        "power":      "v.power_hp DESC",
-        "obs":        "o.obs_count DESC",
-        "price":      "o.min_price ASC NULLS LAST",
+        # ORDER BY ... LIMIT 1, not MAX(): with the extra condition MAX() reads every sighting
+        "last_seen":  (f"(SELECT x.observed_at FROM listing_observations x WHERE {usable} "
+                       "ORDER BY x.observed_at DESC LIMIT 1)",
+                       "sort_key DESC, v.updated_at DESC"),
+        "updated_at": ("NULL", "v.updated_at DESC"),
+        "year_desc":  ("NULL", "v.year DESC"),
+        "year_asc":   ("NULL", "v.year ASC"),
+        "power":      ("NULL", "v.power_hp DESC"),
+        "obs":        (f"(SELECT COUNT(*) FROM listing_observations x WHERE {usable})", "sort_key DESC"),
+        "price":      (f"(SELECT MIN(x.price_pln) FROM listing_observations x WHERE {usable})", "sort_key ASC NULLS LAST"),
     }
-    order_sql = " ORDER BY " + sort_map.get(sort, sort_map["last_seen"])
+    sort_key, order_sql = sort_map.get(sort, sort_map["last_seen"])
 
     total = conn.execute(f"SELECT COUNT(*) FROM vehicles v{where_sql}", params).fetchone()[0]
     pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
     page = min(page, pages)
-    vehicles = conn.execute(
-        base + where_sql + order_sql + " LIMIT ? OFFSET ?",
-        [*params, PER_PAGE, (page - 1) * PER_PAGE],
-    ).fetchall()
+    vehicles = conn.execute(f"""
+        WITH page AS (
+            SELECT v.*, {sort_key} AS sort_key FROM vehicles v{where_sql}
+            ORDER BY {order_sql} LIMIT ? OFFSET ?
+        )
+        SELECT p.*, o.obs_count, o.ad_count, o.min_price, o.max_price, o.last_observed, o.active_ads, o.sources,
+               (SELECT GROUP_CONCAT(t.tag) FROM tags t WHERE t.vin = p.vin) AS tags,
+               {car_flags_sql("p")}
+        FROM page p
+        LEFT JOIN (
+            SELECT vin,
+                   COUNT(*)                          AS obs_count,
+                   COUNT(DISTINCT source_listing_id) AS ad_count,
+                   MIN(price_pln)                    AS min_price,
+                   MAX(price_pln)                    AS max_price,
+                   MAX(observed_at)                  AS last_observed,
+                   SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
+                   GROUP_CONCAT(DISTINCT source)     AS sources
+            FROM listing_observations
+            WHERE excluded_reason IS NULL AND vin IN (SELECT vin FROM page)
+            GROUP BY vin
+        ) o ON o.vin = p.vin
+        ORDER BY {order_sql.replace("v.", "p.")}
+    """, [*params, PER_PAGE, (page - 1) * PER_PAGE]).fetchall()
     makes    = conn.execute("SELECT DISTINCT make FROM vehicles ORDER BY make").fetchall()
     conn.close()
     return render_template("vehicles.html",

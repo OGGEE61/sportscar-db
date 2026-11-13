@@ -29,21 +29,25 @@ RANGES = {"25": 25, "50": 50, "100": 100, "woj": None}  # None: the whole Wielko
 PERIODS = {"7": 7, "30": 30, "90": 90}
 SORTS = ("new", "deal")
 
+# Each listing's newest usable sighting (and its first one, when it was listed), found through
+# idx_obs_listing_observed starting from the listings table: a few index rows per listing.
+# Numbering every sighting in the database to pick these read ~100k rows per load.
 LISTINGS_SQL = """
-WITH listing AS (
-  SELECT o.vin, o.source, o.source_listing_id, o.source_url, o.title, o.price_pln, o.mileage_km,
-         o.location_city, o.location_region, o.observed_at, o.removed_at,
-         MIN(o.observed_at) OVER (PARTITION BY o.source, o.source_listing_id) AS listed_at,
-         ROW_NUMBER() OVER (PARTITION BY o.source, o.source_listing_id
-                            ORDER BY o.observed_at DESC, o.id DESC) AS rn
-  FROM listing_observations o
-  WHERE o.excluded_reason IS NULL AND o.source_listing_id IS NOT NULL
-)
-SELECT l.*, v.make, v.model, v.variant, v.year, v.power_hp, v.photo, v.vin_status,
-       """ + damaged_ad_sql("l") + """ AS damaged,
-       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = l.vin AND cr.accident_free = 0) AS damage_history
-FROM listing l JOIN vehicles v ON v.vin = l.vin
-WHERE l.rn = 1 AND l.price_pln > 0 AND l.observed_at >= datetime('now', ?)
+SELECT o.vin, o.source, o.source_listing_id, o.source_url, o.title, o.price_pln, o.mileage_km,
+       o.location_city, o.location_region, o.observed_at, o.removed_at,
+       (SELECT f.observed_at FROM listing_observations f
+        WHERE f.source = p.source AND f.source_listing_id = p.source_listing_id AND f.excluded_reason IS NULL
+        ORDER BY f.observed_at LIMIT 1) AS listed_at,
+       v.make, v.model, v.variant, v.year, v.power_hp, v.photo, v.vin_status,
+       """ + damaged_ad_sql("o") + """ AS damaged,
+       EXISTS (SELECT 1 FROM condition_reports cr WHERE cr.vin = o.vin AND cr.accident_free = 0) AS damage_history
+FROM pending_listings p
+JOIN listing_observations o ON o.id = (
+    SELECT x.id FROM listing_observations x
+    WHERE x.source = p.source AND x.source_listing_id = p.source_listing_id AND x.excluded_reason IS NULL
+    ORDER BY x.observed_at DESC, x.id DESC LIMIT 1)
+JOIN vehicles v ON v.vin = o.vin
+WHERE p.source_listing_id IS NOT NULL AND o.price_pln > 0 AND o.observed_at >= datetime('now', ?)
 """
 
 

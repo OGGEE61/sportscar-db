@@ -170,6 +170,9 @@ class TestDealsRoutes(unittest.TestCase):
         conn = db.get_db()
         conn.execute("INSERT OR IGNORE INTO vehicles (vin, make, model, variant, year) VALUES (?, 'BMW', 'M3', 'F80 M3', 2016)",
                      (vin,))
+        # An approved listing (its row in pending_listings) with two sightings, as the scrapers leave it
+        conn.execute("INSERT OR IGNORE INTO pending_listings (source, source_listing_id, vin, status) "
+                     "VALUES ('otomoto', ?, ?, 'approved')", (listing_id, vin))
         for seen in (days_ago, 0):
             conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, source_url, price_pln, "
                          "location_city, observed_at) VALUES (?, 'otomoto', ?, 'https://x', ?, ?, datetime('now', ?))",

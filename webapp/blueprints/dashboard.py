@@ -4,6 +4,7 @@ import time
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
+from webapp.services.stored_cache import stored
 from webapp.helpers import car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, script_json, trend_line
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
@@ -163,16 +164,19 @@ def dashboard():
 
 def _load_summary():
     conn = get_db()
+    # One pass over the sightings for every figure (it was five), plus the cars with no sighting
     s = conn.execute("""
         SELECT
-            (SELECT COUNT(*) FROM vehicles v WHERE """ + car_visible_sql() + """)                           AS total_vins,
-            (SELECT COUNT(*) FROM listing_observations WHERE excluded_reason IS NULL)                  AS total_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND excluded_reason IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
-             WHERE excluded_reason IS NULL AND source_listing_id IS NOT NULL)                         AS unique_ads,
-            (SELECT AVG(price_pln) FROM listing_observations
-             WHERE removed_at IS NULL AND excluded_reason IS NULL AND price_pln > 0
-               AND NOT """ + damaged_ad_sql("listing_observations") + """)                              AS avg_price
+            SUM(o.excluded_reason IS NULL)                                                           AS total_obs,
+            COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL AND o.removed_at IS NULL
+                                THEN o.source_listing_id END)                                       AS active_obs,
+            COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL THEN o.source_listing_id END)        AS unique_ads,
+            AVG(CASE WHEN o.excluded_reason IS NULL AND o.removed_at IS NULL AND o.price_pln > 0
+                      AND NOT """ + damaged_ad_sql("o") + """ THEN o.price_pln END)                  AS avg_price,
+            COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL THEN o.vin END)
+              + (SELECT COUNT(*) FROM vehicles v
+                 WHERE NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = v.vin))       AS total_vins
+        FROM listing_observations o
     """).fetchone()
     stats = {
         "total_vins":       s["total_vins"],
@@ -190,12 +194,19 @@ def _load_summary():
         sess = None
     conn.close()
     otomoto_session = dict(sess) if sess and sess["session_status"] != "ok" else None
-    return stats, otomoto_session
+    return {"stats": stats, "otomoto_session": otomoto_session}
+
+
+# Aggregates kept in the database (webapp.services.stored_cache) for hours: a cold instance reads
+# one row instead of recomputing (~20k-60k rows read each time)
+SUMMARY_TTL_S = 3 * 3600
+CHARTS_TTL_S = 6 * 3600
 
 
 @bp.route("/api/dashboard/summary")
 def dashboard_summary():
-    stats, otomoto_session = _cached("summary", _load_summary)
+    data = _cached("summary", lambda: stored("dashboard_summary", SUMMARY_TTL_S, _load_summary))
+    stats, otomoto_session = data["stats"], data["otomoto_session"]
     resp = make_response(render_template("_dashboard_summary.html", stats=stats, otomoto_session=otomoto_session))
     return _private_cache(resp)
 
@@ -250,7 +261,7 @@ def _load_charts():
 
 @bp.route("/api/dashboard/charts")
 def dashboard_charts():
-    return _private_cache(jsonify(_cached("charts", _load_charts)))
+    return _private_cache(jsonify(_cached("charts", lambda: stored("dashboard_charts", CHARTS_TTL_S, _load_charts))))
 
 
 @bp.route("/api/dashboard/recent")
@@ -312,13 +323,12 @@ def model_analytics():
                """ + damage_history_sql("v") + """ AS damage_history,
                """ + car_flags_sql("v") + """
         FROM vehicles v
-        LEFT JOIN (
-            SELECT vin, source, source_listing_id, price_pln, mileage_km, location_city, location_region,
-                   observed_at, source_url, title,
-                   ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
-            FROM listing_observations
-            WHERE price_pln IS NOT NULL AND price_pln > 0 AND excluded_reason IS NULL
-        ) o ON v.vin = o.vin AND o.rn = 1
+        -- The car's newest priced sighting, found through idx_obs_vin_observed (a few index rows per
+        -- car). Numbering every sighting in the database to pick these read ~90k rows a page.
+        LEFT JOIN listing_observations o ON o.id = (
+            SELECT x.id FROM listing_observations x
+            WHERE x.vin = v.vin AND x.price_pln > 0 AND x.excluded_reason IS NULL
+            ORDER BY x.observed_at DESC, x.id DESC LIMIT 1)
         WHERE {condition} AND """ + car_visible_sql() + """
     """
     rule = current_model['where']

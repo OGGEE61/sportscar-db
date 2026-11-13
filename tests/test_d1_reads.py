@@ -161,3 +161,75 @@ class TestLocalCopy(LocalDbCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStoredCache(LocalDbCase):
+    def test_value_is_kept_until_its_ttl(self):
+        from webapp.services import stored_cache
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return {"n": len(calls)}
+        app.config["TESTING"] = False
+        try:
+            with app.app_context():
+                self.assertEqual(stored_cache.stored("k", 3600, compute), {"n": 1})
+                self.assertEqual(stored_cache.stored("k", 3600, compute), {"n": 1})   # one row read back
+                with mock.patch.object(stored_cache.time, "time", return_value=stored_cache.time.time() + 7200):
+                    self.assertEqual(stored_cache.stored("k", 3600, compute), {"n": 2})
+        finally:
+            app.config["TESTING"] = True
+        self.assertEqual(len(calls), 2)
+
+
+class TestPagesReadOnlyWhatTheyShow(LocalDbCase):
+    """The model, deals and vehicles pages reach sightings through indexes, never by reading all of them."""
+
+    def plans_of(self, path):
+        import re
+        plans = []
+        real = db.get_conn
+
+        def spying():
+            conn = real()
+
+            class Spy:
+                def execute(_, sql, params=()):
+                    if sql.strip().upper().startswith(("SELECT", "WITH")):
+                        plans.append(" | ".join(r[3] for r in conn.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()))
+                    return conn.execute(sql, params)
+
+                def __getattr__(_, name):
+                    return getattr(conn, name)
+            return Spy()
+        with mock.patch.object(db, "get_conn", spying):
+            self.assertEqual(self.client.get(path).status_code, 200)
+        return [p for p in plans if re.search(r"SCAN (listing_observations|o|x|f)\b", p)]
+
+    def test_no_full_scan_of_sightings(self):
+        for path in ("/models?model=m5_f90", "/api/deals?km=50&days=30", "/vehicles"):
+            self.assertEqual(self.plans_of(path), [], path)
+
+    def test_models_page_takes_each_cars_newest_sighting(self):
+        import re
+        seen = []
+        real = db.get_conn
+
+        def spying():
+            conn = real()
+
+            class Spy:
+                def execute(_, sql, params=()):
+                    if sql.strip().upper().startswith(("SELECT", "WITH")):
+                        seen.append(" | ".join(r[3] for r in conn.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()))
+                    return conn.execute(sql, params)
+
+                def __getattr__(_, name):
+                    return getattr(conn, name)
+            return Spy()
+        with mock.patch.object(db, "get_conn", spying):
+            self.client.get("/models?model=m5_f90")
+        main = next(p for p in seen if "idx_vehicles_model_id" in p)
+        self.assertIn("idx_obs_vin_observed", main)
+        self.assertFalse(re.search(r"idx_obs_price|MATERIALIZE", main), main)   # no numbering of every sighting

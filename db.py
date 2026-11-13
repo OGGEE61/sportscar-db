@@ -676,6 +676,20 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_logs_unread ON scraper_logs(is_read) WHERE is_read = 0")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(18,'read_indexes')")
 
+    # ── Migration 19: newest/oldest sighting lookups and stored page aggregates ──
+    # A car's or a listing's newest (or first) sighting through an index instead of numbering every
+    # sighting in the database (model analytics, /vehicles, deals); app_cache keeps dashboard
+    # aggregates for hours so a cold serverless instance reads one row, not ~200k.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_obs_vin_observed ON listing_observations(vin, observed_at)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_obs_listing_observed ON listing_observations(source, source_listing_id, observed_at)")
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS app_cache (
+        key          TEXT PRIMARY KEY,
+        value        TEXT NOT NULL,
+        computed_at  REAL NOT NULL
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(19,'sighting_indexes_app_cache')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
