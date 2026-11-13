@@ -100,9 +100,12 @@ def car_visible_sql(alias="v"):
     Dealer-stock M2 sightings (listing_observations.excluded_reason) stay in the database so
     their VINs remain known, but the dashboard, model analytics and /vehicles skip them. A car
     whose every sighting is excluded is hidden too.
+
+    Written so that it stops at the car's first usable sighting (one or two index rows) instead
+    of reading all its sightings: equivalent to "not (some excluded and none usable)".
     """
-    return (f"NOT (EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NOT NULL) "
-            f"AND NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NULL))")
+    return (f"(EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin AND x.excluded_reason IS NULL) "
+            f"OR NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = {alias}.vin))")
 
 
 def trend_line(points):

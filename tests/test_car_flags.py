@@ -38,6 +38,8 @@ class TestSameFlagsEverywhere(unittest.TestCase):
             conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, source_url, price_pln, "
                          "location_city, observed_at) VALUES (?, 'otomoto', ?, 'https://x', 300000, 'Poznań', datetime('now', '-1 days'))",
                          (vin, f"id-{vin}"))
+            conn.execute("INSERT INTO pending_listings (source, source_listing_id, vin, status) VALUES ('otomoto', ?, ?, 'approved')",
+                         (f"id-{vin}", vin))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'photo extracted')", (CRASHED,))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'CEPiK: Ważne OC i SKP')", (CRASHED,))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'po lakierniku')", (CRASHED,))

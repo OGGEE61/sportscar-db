@@ -1249,7 +1249,7 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         summary = self.client.get("/api/dashboard/summary").get_data(as_text=True)
         self.assertNotIn("400", summary)  # no crash; stats rendered
         import webapp.blueprints.dashboard as dash
-        stats, _ = dash._load_summary()
+        stats = dash._load_summary()["stats"]
         self.assertEqual(stats["total_vins"], 1)
         self.assertEqual(stats["total_obs"], 1)
         self.assertEqual(stats["avg_price"], 300000)
