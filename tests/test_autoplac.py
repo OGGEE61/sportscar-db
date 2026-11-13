@@ -182,6 +182,31 @@ class TestX3G01Reassign(unittest.TestCase):
         self.assertIsNone(self.classify("5UXTS3C57J0Z00282", engine_cc=1998, power_hp=252))  # 30i
         self.assertIsNone(self.classify("WAPXXXXXXXXXXXX12"))                                # Alpina XD3
 
+    def test_new_x3_g45_is_neither(self):
+        # X3 G45 M50 (2024-): regular-BMW VIN with the GP model code, 398 HP
+        self.assertIsNone(self.classify("WBA71GP0009Z07320", power_hp=398))
+        self.assertEqual(self.classify("WBA85DP060N307609", power_hp=360), "M40i")   # G01 LCI
+        self.assertEqual(self.classify("5UX83DP04R9X02854", power_hp=398), "M40i")   # G01, M50 typed in
+
+    def test_every_market_rejects_the_g45(self):
+        import importlib
+        for market in ("autoplac", "olx", "otomoto"):
+            with self.subTest(market=market):
+                for name in ("bmw_x3_m40i_g01", "bmw_x3_m_f97"):
+                    cfg = importlib.import_module(f"{market}.{name}").CONFIG
+                    self.assertIsNone(cfg.reassign({"vin": "WBA71GP0009Z07320", "engine_cc": 2998, "power_hp": 398}))
+                    self.assertFalse(cfg.validator({"vin": "WBA71GP0009Z07320", "engine_cc": 2998, "power_hp": 398,
+                                                    "fuel_type": "petrol", "title": "BMW X3"}))
+                    # No VIN yet: the M50 in the title gives it away
+                    self.assertFalse(cfg.validator({"power_hp": 398, "fuel_type": "petrol", "title": "BMW X3 xM50 mHEV"}))
+
+    def test_m40i_without_vin_is_not_taken_for_a_g45(self):
+        from x3_g01 import is_x3_g45
+        self.assertFalse(is_x3_g45({"title": "BMW X3 xM40i mHEV"}))
+        self.assertFalse(is_x3_g45({"title": "BMW X3 M40i 360KM"}))
+        self.assertTrue(is_x3_g45({"title": "BMW X3 M50 xDrive"}))
+        self.assertTrue(is_x3_g45({"title": "BMW X3 M 50 mHEV"}))
+
     def test_every_market_reassigns_to_its_own_sibling(self):
         import importlib
         from x3_g01 import reassign_x3_g01
