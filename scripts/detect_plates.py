@@ -511,7 +511,10 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
     else:
         scan_log_filter = "AND (id NOT IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log) OR id IN (SELECT CAST(listing_id AS INTEGER) FROM plate_scan_log WHERE plates_found = 0))"
 
-    # Approved listings with a real VIN and photos, and no plate (neither on the listing nor on the vehicle)
+    # Approved listings with a real VIN and photos, and no plate (neither on the listing nor on the
+    # vehicle). A damaged car from the USA or Canada is still abroad: no Polish plate to find.
+    from webapp.helpers import overseas_damaged_listing_sql
+    overseas = overseas_damaged_listing_sql("pending_listings")
     rows = conn.execute(f"""
         SELECT id, source_listing_id, vin, photos, source_url, make, model, year
         FROM pending_listings
@@ -526,6 +529,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
           AND photos IS NOT NULL 
           AND photos != ''
           AND photos != '[]'
+          AND NOT {overseas}
           {scan_log_filter}
         ORDER BY id DESC
         {limit_clause}

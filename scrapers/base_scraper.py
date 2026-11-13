@@ -36,7 +36,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from validation import VIN_RE, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
+from validation import OVERSEAS_ORIGINS, VIN_RE, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
 
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -1487,6 +1487,11 @@ def _otomoto_searches() -> dict:
     return _OTOMOTO_SEARCHES
 
 
+def _still_overseas(detail: dict) -> bool:
+    """A damaged car from the USA or Canada: sold before it is shipped, so no Polish plate yet."""
+    return bool(detail.get("damaged")) and detail.get("origin_market") in OVERSEAS_ORIGINS
+
+
 def _dealer_stock(detail: dict) -> bool:
     """True for a nearly new car (validation.is_dealer_new): skipped for every model."""
     return is_dealer_new(detail.get("year"), detail.get("mileage_km"), detail.get("first_registration_date"))
@@ -1772,7 +1777,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     # Only for listings that are kept and not yet approved: the plates of approved
                     # ones come from the reveal job, at the end of its queue. detail is the cached
                     # dict, so a scraper sharing the search won't ask again.
-                    if detail.get("plate_behind_reveal") and logged_in and not approved:
+                    if detail.get("plate_behind_reveal") and logged_in and not approved and not _still_overseas(detail):
                         if why := reveal_skip_reason("plate", listing_id):
                             print(f"    Plate: not revealed ({why})")
                         else:

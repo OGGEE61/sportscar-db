@@ -895,8 +895,8 @@ class TestNextScrapers(ScrapingTestCase):
         self.assertNotEqual(self.pick(count=1), first)
 
     def test_a_manual_run_counts_as_a_turn(self):
-        for key, date in (("a", "2026-11-05 10:00:00"), ("b", "2026-11-05 10:00:00"), ("c", "2026-11-05 10:00:00")):
-            self.log(key, date)
+        for key, when in (("a", "2026-11-05 10:00:00"), ("b", "2026-11-05 10:00:00"), ("c", "2026-11-05 10:00:00")):
+            self.log(key, when)
         self.assertEqual(self.pick(count=1), ["d"])
 
     def test_sources_are_separate(self):

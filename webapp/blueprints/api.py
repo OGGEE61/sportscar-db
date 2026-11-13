@@ -8,7 +8,7 @@ from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
 from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
-from webapp.helpers import is_valid_first_registration_date
+from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
 from webapp.regions import CITY_TO_REGION
 from webapp.services.photos import save_photo
 from webapp.services.plates import normalize_plate
@@ -288,10 +288,12 @@ def api_reveal_queue():
           AND vin_confidence = 'found_in_schema'
         ORDER BY id DESC
     """).fetchall()
+    # A damaged car from the USA or Canada is still abroad: it has no Polish plate to reveal
     plates = conn.execute("""
         SELECT id, source_listing_id, variant FROM pending_listings
         WHERE source = 'otomoto' AND status IN ('pending', 'approved')
           AND COALESCE(registration_plate, '') = '' AND scraped_at >= ?
+          AND NOT """ + overseas_damaged_listing_sql("pending_listings") + """
         ORDER BY status = 'pending' DESC, id DESC
     """, (since,)).fetchall()
     conn.close()

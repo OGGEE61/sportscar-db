@@ -102,6 +102,12 @@ def is_valid_first_registration_date(value, today=None) -> bool:
     return d.year >= MIN_FIRST_REGISTRATION_YEAR and d <= (today or date.today())
 
 
+# Origin markets whose damaged cars are sold from auctions there (Copart, IAAI): such a car is
+# offered in Poland before it is shipped, so it has no Polish plate and its price is not the
+# Polish market's.
+OVERSEAS_ORIGINS = ("USA", "USA/Kanada", "Kanada")
+
+
 # Nearly new cars are dealer stock ("salonówki"), not the used-car market this project
 # tracks. Applies to every model: scrapers skip them and the database hides their sightings.
 DEALER_MAX_AGE_DAYS = 365

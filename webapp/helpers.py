@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from jinja2.utils import htmlsafe_json_dumps
 
-from validation import is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate  # noqa: F401  (re-exported)
+from validation import OVERSEAS_ORIGINS, is_plausible_vin, is_valid_first_registration_date, is_valid_registration_plate  # noqa: F401  (re-exported)
 
 
 def script_json(obj):
@@ -66,6 +66,26 @@ def damage_history_sql(alias="v"):
             f"AND cr.accident_free = 0)")
 
 
+def overseas_damaged_listing_sql(alias):
+    """SQL condition on a pending_listings row: a damaged ad of a car from the USA or Canada,
+    i.e. a car not yet brought to Poland. No plate to look for."""
+    origins = ", ".join(f"'{o}'" for o in OVERSEAS_ORIGINS)
+    return (f"(COALESCE({alias}.origin_market, '') IN ({origins}) AND EXISTS (SELECT 1 FROM damaged_listings d "
+            f"WHERE d.source = {alias}.source AND d.source_listing_id = {alias}.source_listing_id))")
+
+
+def is_abroad(c) -> bool:
+    """The car is almost surely still abroad: it comes from the USA or Canada, an ad of it is
+    marked damaged and it has no Polish plate (a plate means it was imported). `c` is a row that
+    selected car_flags_sql(), so this costs no query."""
+    def flag(key):
+        try:
+            return c[key]
+        except (KeyError, IndexError):   # a row without the flags: not marked, as in the templates
+            return None
+    return bool((flag("flag_origin") or "") in OVERSEAS_ORIGINS and not flag("flag_plate") and flag("flag_sold_damaged"))
+
+
 PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
 
 
@@ -77,7 +97,8 @@ def car_flags_sql(alias="v"):
     flag_ad ('active' while an ad is up, else when the last one disappeared; NULL without ads) and
     flag_tags (the car's other tags, '|'-separated; plate-from-photo, 'missing plates' and CEPiK tags are
     markers already).
-    Every page that lists cars selects these, so a car is marked the same way everywhere."""
+    Every page that lists cars selects these, so a car is marked the same way everywhere.
+    is_abroad() reads the "still abroad" marker from them."""
     a = alias
     tags = ", ".join(f"'{t}'" for t in PHOTO_PLATE_TAGS)
     return f"""{a}.vin_status AS flag_vin_status,

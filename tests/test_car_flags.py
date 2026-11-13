@@ -15,6 +15,8 @@ from app import app
 CRASHED = "WBSJF0C55KB000001"   # verified, plate from a photo, CEPiK rollback, damage history
 PLAIN = "WBSJF0C55KB000002"     # unverified, no plate, no CEPiK report, ad marked damaged
 
+OVERSEAS = "WBSJF0C55KB000003"  # from the USA, ad marked damaged, no plate: still abroad
+
 PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/deals?km=50&days=30")
 
 
@@ -68,6 +70,52 @@ class TestSameFlagsEverywhere(unittest.TestCase):
             for marker in ("VIN ✓", "PO1234X", "bi-camera", "Kanada</span>", "po lakierniku</span>", "Cofnięty licznik", "Historia szkody: Belgia",
                            "VIN niepewny", "Brak tablicy", "bez CEPiK", "Uszkodzony</span>"):
                 self.assertIn(marker, html, f"{marker} missing on {path}")
+
+    def add_overseas(self, plate=None):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, registration_plate, model_id, origin_market) "
+                     "VALUES (?, 'BMW', 'M5', 'F90 M5', 2019, ?, 'm5_f90', 'USA')", (OVERSEAS, plate))
+        conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, source_url, price_pln, mileage_km, "
+                     "location_city, observed_at) VALUES (?, 'otomoto', 'id-us', 'https://x', 150000, 90000, 'Poznań', "
+                     "datetime('now', '-1 days'))", (OVERSEAS,))
+        conn.execute("INSERT INTO pending_listings (source, source_listing_id, vin, status, origin_market, scraped_at) "
+                     "VALUES ('otomoto', 'id-us', ?, 'approved', 'USA', datetime('now'))", (OVERSEAS,))
+        conn.execute("INSERT INTO damaged_listings (source, source_listing_id) VALUES ('otomoto', 'id-us')")
+        conn.commit()
+        conn.close()
+
+    def overseas_block(self, html):
+        block = html[html.index(OVERSEAS):]
+        return block[:block.index("</td>")] if "</td>" in block else block[:2000]
+
+    def test_damaged_car_from_usa_is_still_abroad(self):
+        self.add_overseas()
+        for path in PAGES:
+            html = self.flags_on(path)
+            if OVERSEAS not in html:
+                continue   # deals leave damaged cars out
+            block = self.overseas_block(html)
+            self.assertIn("W USA", block, path)
+            self.assertNotIn("Brak tablicy", block, path)   # no Polish plate expected
+            self.assertNotIn("bez CEPiK", block, path)      # nothing to look up
+        models = self.client.get("/models?model=m5_f90").get_data(as_text=True)
+        self.assertNotIn("90,000 km", models)               # its mileage is not in the averages
+
+    def test_a_plate_means_it_was_brought_in(self):
+        self.add_overseas(plate="WI12345")
+        block = self.overseas_block(self.flags_on("/vehicles"))
+        self.assertIn("WI12345", block)
+        self.assertNotIn("W USA", block)
+        self.assertIn("90,000 km", self.client.get("/models?model=m5_f90").get_data(as_text=True))
+
+    def test_no_plate_reveal_for_a_car_still_abroad(self):
+        self.add_overseas()
+        with mock.patch.dict(os.environ, {"API_TOKEN": "t"}):
+            out = self.client.post("/api/reveal_queue", json={"plates_since": "2000-01-01"},
+                                   headers={"Authorization": "Bearer t"}).get_json()
+        sids = [p["source_listing_id"] for p in out["plates"]]
+        self.assertNotIn("id-us", sids)
+        self.assertIn(f"id-{PLAIN}", sids)                  # damaged, but not from overseas
 
     def test_plate_on_the_vin_line_markers_under_it(self):
         html = self.flags_on("/vehicles")
