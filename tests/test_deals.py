@@ -180,6 +180,16 @@ class TestDealsRoutes(unittest.TestCase):
         conn.commit()
         conn.close()
 
+    def test_htmx_is_served_by_the_app(self):
+        # Data sections load through htmx; a CDN that does not answer leaves them empty
+        page = self.client.get("/deals").get_data(as_text=True)
+        self.assertIn('src="/static/vendor/htmx-1.9.12.min.js"', page)
+        self.assertNotIn("unpkg.com", page)
+        js = self.client.get("/static/vendor/htmx-1.9.12.min.js")
+        self.assertEqual(js.status_code, 200)
+        self.assertIn(b"htmx", js.data[:2000])
+        js.close()
+
     def test_page_and_list(self):
         for i in range(5):
             self.add(f"WBS8M9C50G5{i:06d}", 300_000, "Warszawa", f"w{i}", days_ago=60)
