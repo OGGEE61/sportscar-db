@@ -248,18 +248,20 @@ def get_db():
 # Schema init / migrations
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _dealer_m2_sql(o: str, v: str = "v") -> str:
-    """SQL twin of validation.is_dealer_new_m2 for observation `o` joined to vehicle `v`.
+def _dealer_sql(o: str, v: str = "v") -> str:
+    """SQL twin of validation.is_dealer_new for observation `o` joined to vehicle `v`.
 
-    Keep in step with the Python version; tests/test_validation.py checks they agree.
+    Keep in step with the Python version; tests/test_scraping.py checks they agree.
     """
     seen = f"date(COALESCE({o}.first_seen_at, {o}.observed_at))"
+    seen_year = f"CAST(strftime('%Y', {seen}) AS INTEGER)"
     reg = f"{v}.first_registration_date"
-    return f"""({v}.model = 'M2' AND {o}.mileage_km IS NOT NULL AND {o}.mileage_km < 20000 AND
-      CASE WHEN {reg} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date({reg}) IS NOT NULL
+    return f"""({o}.mileage_km IS NOT NULL AND {o}.mileage_km < 20000 AND
+      CASE WHEN {o}.mileage_km < 1000 AND {v}.year >= {seen_year} - 1 THEN 1
+           WHEN {reg} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date({reg}) IS NOT NULL
                 AND {reg} >= '1980' AND julianday({seen}) >= julianday({reg})
            THEN julianday({seen}) - julianday({reg}) < 365
-           ELSE {v}.year >= CAST(strftime('%Y', {seen}) AS INTEGER) END)"""
+           ELSE {v}.year >= {seen_year} END)"""
 
 
 def init_db():
@@ -590,24 +592,24 @@ def init_db():
         db.execute("ALTER TABLE scraper_logs ADD COLUMN session_status TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(12,'scraper_session_status')")
 
-    # Migration v14: listing_observations.excluded_reason marks dealer-stock M2 sightings
-    # (validation.is_dealer_new_m2). The rows and VINs stay, so the car is still known; the
-    # dashboard and model analytics skip them. A trigger flags new sightings on insert.
+    # Migration v14: listing_observations.excluded_reason marks sightings left out of the market
+    # data (dealer stock, a car filed under the wrong model). The rows and VINs stay, so the car is
+    # still known; the dashboard and model analytics skip them.
     have = {r[1] for r in db.execute("PRAGMA table_info(listing_observations)").fetchall()}
     if "excluded_reason" not in have:
         db.execute("ALTER TABLE listing_observations ADD COLUMN excluded_reason TEXT")
-        db.execute(
-            "UPDATE listing_observations SET excluded_reason = 'dealer_new_m2' WHERE id IN "
-            f"(SELECT o.id FROM listing_observations o JOIN vehicles v ON v.vin = o.vin WHERE {_dealer_m2_sql('o')})")
+    # Dealer stock (validation.is_dealer_new), any model: flagged on insert by this trigger.
+    # Migration v21 widened it from the M2 alone.
     db.execute("DROP TRIGGER IF EXISTS trg_obs_dealer_m2")
+    db.execute("DROP TRIGGER IF EXISTS trg_obs_dealer_new")
     db.execute(f"""
-    CREATE TRIGGER trg_obs_dealer_m2
+    CREATE TRIGGER trg_obs_dealer_new
     AFTER INSERT ON listing_observations
     BEGIN
-        UPDATE listing_observations SET excluded_reason = 'dealer_new_m2'
-        WHERE id = NEW.id AND EXISTS (
+        UPDATE listing_observations SET excluded_reason = 'dealer_new'
+        WHERE id = NEW.id AND excluded_reason IS NULL AND EXISTS (
             SELECT 1 FROM vehicles v JOIN listing_observations o ON o.id = NEW.id
-            WHERE v.vin = o.vin AND {_dealer_m2_sql('o')});
+            WHERE v.vin = o.vin AND {_dealer_sql('o')});
     END""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(14,'obs_excluded_reason')")
 
@@ -712,6 +714,17 @@ def init_db():
                                 AND o.removed_at IS NULL)
         """)
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(20,'listing_checked_at')")
+
+    # Migration v21: the dealer-stock rule covers every model, plus delivery mileage (a car from
+    # this or last model year under 1 000 km). Once: flag stored sightings it now matches.
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 21").fetchone():
+        db.execute(f"""
+            UPDATE listing_observations SET excluded_reason = 'dealer_new'
+            WHERE excluded_reason IS NULL AND id IN (
+                SELECT o.id FROM listing_observations o JOIN vehicles v ON v.vin = o.vin
+                WHERE o.excluded_reason IS NULL AND {_dealer_sql('o')})
+        """)
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(21,'dealer_new_all_models')")
 
     db.commit()
     db.close()

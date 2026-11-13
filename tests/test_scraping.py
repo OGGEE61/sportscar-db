@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import unittest
+from datetime import date
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1198,8 +1199,8 @@ class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
         self.assertEqual(self.scan(None)["queued_without_crop"], 0)
 
 
-class DealerM2ExclusionTest(ScrapingTestCase):
-    """Dealer-stock M2 sightings are flagged, kept (VIN stays known) and left out of the dashboard."""
+class DealerStockExclusionTest(ScrapingTestCase):
+    """Dealer-stock sightings (any model) are flagged, kept (VIN stays known) and left out of the dashboard."""
 
     def _car(self, conn, vin, model, year, first_reg=None):
         conn.execute("INSERT INTO vehicles(vin,make,model,variant,year,first_registration_date) VALUES(?,?,?,?,?,?)",
@@ -1213,30 +1214,62 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         return {r["source_listing_id"]: r["excluded_reason"]
                 for r in conn.execute("SELECT source_listing_id, excluded_reason FROM listing_observations")}
 
-    def test_trigger_matches_python_rule(self):
-        from validation import is_dealer_new_m2
-        from datetime import date
-        conn = db.get_db()
-        cases = [  # id, model, year, first_reg, km, seen
-            ("1", "M2", 2026, None,         3000,  "2026-09-01"),
-            ("2", "M2", 2025, None,         3000,  "2026-09-01"),
-            ("3", "M2", 2025, "2025-10-27", 3000,  "2026-10-26"),
-            ("4", "M2", 2025, "2025-10-25", 3000,  "2026-10-26"),
-            ("5", "M2", 2026, None,         20000, "2026-09-01"),
-            ("6", "M2", 2026, None,         None,  "2026-09-01"),
-            ("7", "M3", 2026, None,         100,   "2026-09-01"),
-            ("8", "M2", 2026, "2027-01-01", 100,   "2026-09-01"),   # future date: fall back to year
-        ]
-        for sid, model, year, reg, km, seen in cases:
+    CASES = [  # id, model, year, first_reg, km, seen
+        ("1", "M2", 2026, None,         3000,  "2026-09-01"),
+        ("2", "M2", 2025, None,         3000,  "2026-09-01"),
+        ("3", "M2", 2025, "2025-10-27", 3000,  "2026-10-26"),
+        ("4", "M2", 2025, "2025-10-25", 3000,  "2026-10-26"),
+        ("5", "M2", 2026, None,         20000, "2026-09-01"),
+        ("6", "M2", 2026, None,         None,  "2026-09-01"),
+        ("7", "M3", 2026, None,         100,   "2026-09-01"),   # any model
+        ("8", "M2", 2026, "2027-01-01", 3000,  "2026-09-01"),   # future date: fall back to year
+        ("9", "M2", 2025, None,         5,     "2026-11-11"),   # last model year, delivery km
+        ("10", "M2", 2025, "2025-01-10", 999,  "2026-11-11"),   # registered long ago, still delivery km
+        ("11", "M2", 2024, None,        5,     "2026-11-11"),   # two model years back: kept
+        ("12", "Z3", 2000, None,        800,   "2026-11-11"),   # garaged classic: kept
+        ("13", "M2", 2025, None,        1000,  "2026-11-11"),
+    ]
+
+    def _store(self, conn):
+        for sid, model, year, reg, km, seen in self.CASES:
             vin = f"VIN{sid}".ljust(17, "X")
             self._car(conn, vin, model, year, reg)
             self._obs(conn, vin, sid, km, seen)
         conn.commit()
+
+    def _want(self):
+        from validation import is_dealer_new
+        from datetime import date
+        return {sid: is_dealer_new(year, km, reg, on=date.fromisoformat(seen))
+                for sid, model, year, reg, km, seen in self.CASES}
+
+    def test_trigger_matches_python_rule(self):
+        conn = db.get_db()
+        self._store(conn)
         flags = self._flags(conn)
-        for sid, model, year, reg, km, seen in cases:
-            want = is_dealer_new_m2(model, year, km, reg, on=date.fromisoformat(seen))
-            self.assertEqual(flags[sid] is not None, want, sid)
         conn.close()
+        want = self._want()
+        self.assertEqual({sid: f is not None for sid, f in flags.items()}, want)
+        self.assertEqual([sid for sid, w in want.items() if w], ["1", "3", "7", "8", "9", "10"])
+
+    def test_migration_21_matches_python_rule(self):
+        conn = db.get_db()
+        conn.execute("DROP TRIGGER trg_obs_dealer_new")
+        self._store(conn)
+        conn.execute("DELETE FROM schema_migrations WHERE version = 21")
+        conn.execute("UPDATE listing_observations SET excluded_reason = 'not_m2' WHERE source_listing_id = '13'")
+        conn.commit()
+        self.assertTrue(all(f is None for sid, f in self._flags(conn).items() if sid != "13"))
+        conn.close()
+        db.init_db()
+        conn = db.get_db()
+        flags = self._flags(conn)
+        conn.close()
+        want = self._want()
+        for sid, w in want.items():
+            if sid != "13":
+                self.assertEqual(flags[sid] == "dealer_new", w, sid)
+        self.assertEqual(flags["13"], "not_m2")   # another reason is left as it is
 
     def test_dashboard_skips_excluded_but_vin_stays_known(self):
         conn = db.get_db()
@@ -1257,7 +1290,7 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin = ?", ("A" * 17,)).fetchone()[0], 1)
         conn.close()
 
-    def test_vehicles_list_skips_dealer_m2_but_keeps_resold_car(self):
+    def test_vehicles_list_skips_dealer_stock_but_keeps_resold_car(self):
         conn = db.get_db()
         self._car(conn, "A" * 17, "M2", 2026)
         self._obs(conn, "A" * 17, "1", 5, "2026-09-01")           # dealer only: hidden
@@ -1343,18 +1376,20 @@ class TestNewModelRules(unittest.TestCase):
             self.assertTrue(any(w.lower().replace(" ", "") in haystack for w in F90_AUTOPLAC.title_must_not_contain), title)
         self.assertFalse(any(w.lower().replace(" ", "") in "bmwm54.4competition" for w in F90.title_must_not_contain))
 
-    def test_m340i_skips_diesel_and_dealer_stock(self):
-        from datetime import date
+    def test_m340i_skips_diesel(self):
         from otomoto.bmw_m340i_g20 import CONFIG
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "petrol"}))
         self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "diesel"}))
-        self.assertFalse(CONFIG.validator({"year": date.today().year, "mileage_km": 50, "fuel_type": "petrol"}))
 
-    def test_rsq3_f3_skips_dealer_stock(self):
-        from datetime import date
-        from otomoto.audi_rsq3_f3 import CONFIG
+    def test_dealer_stock_is_skipped_for_every_model(self):
         year = date.today().year
-        self.assertFalse(CONFIG.validator({"year": year, "mileage_km": 50}))
+        self.assertTrue(base_scraper._dealer_stock({"year": year, "mileage_km": 50}))
+        self.assertTrue(base_scraper._dealer_stock({"year": year - 1, "mileage_km": 5}))
+        self.assertFalse(base_scraper._dealer_stock({"year": 2021, "mileage_km": 50}))
+        self.assertFalse(base_scraper._dealer_stock({"year": year, "mileage_km": None}))
+
+    def test_rsq3_f3_skips_8u_vin(self):
+        from otomoto.audi_rsq3_f3 import CONFIG
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
         self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
 
@@ -1682,6 +1717,24 @@ class TestWorthRevealing(unittest.TestCase):
         from otomoto.bmw_m5_f90 import CONFIG
         self.assertTrue(base_scraper._worth_revealing(CONFIG, {"year": 2017}))
         self.assertFalse(CONFIG.validator({"year": 2017}))
+
+    def test_no_reveal_for_dealer_stock_of_any_model(self):
+        from otomoto.bmw_x3_m_f97 import CONFIG as X3M          # picks its model by VIN
+        from otomoto.toyota_gr_yaris import CONFIG as YARIS     # no validator
+        year = date.today().year
+        for cfg in (X3M, YARIS):
+            self.assertFalse(base_scraper._worth_revealing(cfg, {"year": year, "mileage_km": 15}))
+            self.assertTrue(base_scraper._worth_revealing(cfg, {"year": year - 3, "mileage_km": 45000}))
+
+    def test_m2_g87_needs_an_m_vin(self):
+        from otomoto.bmw_m2_g87 import CONFIG
+        from olx.bmw_m2_g87 import CONFIG as OLX
+        from autoplac.bmw_m2_g87 import CONFIG as AUTOPLAC
+        for cfg in (CONFIG, OLX, AUTOPLAC):
+            self.assertTrue(cfg.validator({"vin": "WBS21DM0608G23935"}))
+            self.assertTrue(cfg.validator({"vin": "3MF23DM02S8E99894"}))
+            self.assertFalse(cfg.validator({"vin": "WBA13AL02P7M17423"}))   # 2 Series sold as an M2
+            self.assertTrue(cfg.validator({"vin": None, "before_reveal": True}))
 
     def test_scrapers_that_pick_the_model_by_vin_always_reveal(self):
         from otomoto.bmw_x3_m_f97 import CONFIG

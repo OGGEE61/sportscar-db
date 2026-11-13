@@ -113,16 +113,6 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestDealerNew(unittest.TestCase):
-    TODAY = date(2026, 10, 26)
-
-    def test_applies_to_any_model(self):
-        from validation import is_dealer_new
-        self.assertTrue(is_dealer_new(2026, 5000, on=self.TODAY))
-        self.assertFalse(is_dealer_new(2025, 5000, on=self.TODAY))
-        self.assertFalse(is_dealer_new(2026, 20000, on=self.TODAY))
-
-
 class TestOtherMercedesChassis(unittest.TestCase):
     def check(self, vin, chassis):
         from validation import is_other_mercedes_chassis
@@ -145,27 +135,32 @@ class TestOtherMercedesChassis(unittest.TestCase):
         self.assertFalse(self.check("", "212"))
 
 
-class TestDealerNewM2(unittest.TestCase):
+class TestDealerNewRule(unittest.TestCase):
     TODAY = date(2026, 10, 26)
 
     def check(self, *a, **kw):
-        from validation import is_dealer_new_m2
-        return is_dealer_new_m2(*a, on=self.TODAY, **kw)
+        from validation import is_dealer_new
+        return is_dealer_new(*a, on=self.TODAY, **kw)
 
-    def test_new_low_km_m2_is_dealer_stock(self):
-        self.assertTrue(self.check("M2", 2026, 5000))
-        self.assertTrue(self.check("M2", 2025, 19999, "2026-03-01"))
+    def test_new_low_km_car_is_dealer_stock(self):
+        self.assertTrue(self.check(2026, 5000))
+        self.assertTrue(self.check(2025, 19999, "2026-03-01"))
 
     def test_registration_date_beats_model_year(self):
-        self.assertFalse(self.check("M2", 2026, 5000, "2025-10-25"))   # 366 days
-        self.assertTrue(self.check("M2", 2025, 5000, "2025-10-27"))    # 364 days
+        self.assertFalse(self.check(2026, 5000, "2025-10-25"))   # 366 days
+        self.assertTrue(self.check(2025, 5000, "2025-10-27"))    # 364 days
 
     def test_year_only_older_than_current_is_kept(self):
-        self.assertFalse(self.check("M2", 2025, 5000))
+        self.assertFalse(self.check(2025, 5000))
+
+    def test_delivery_mileage_from_last_model_year_is_dealer_stock(self):
+        self.assertTrue(self.check(2025, 5))
+        self.assertTrue(self.check(2025, 999, "2025-01-10"))
+        self.assertFalse(self.check(2025, 1000))
+        self.assertFalse(self.check(2024, 5))      # older: a garaged car, not stock
+        self.assertFalse(self.check(2000, 800))
 
     def test_high_mileage_or_unknown_is_kept(self):
-        self.assertFalse(self.check("M2", 2026, 20000))
-        self.assertFalse(self.check("M2", 2026, None))
-
-    def test_other_models_are_never_dealer_stock(self):
-        self.assertFalse(self.check("M3", 2026, 100))
+        self.assertFalse(self.check(2026, 20000))
+        self.assertFalse(self.check(2026, None))
+        self.assertFalse(self.check(None, 5))

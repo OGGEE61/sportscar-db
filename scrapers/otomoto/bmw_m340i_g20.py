@@ -1,21 +1,16 @@
 """BMW M340i G20 / G21 (2019–) — run directly to scrape.
 
 3.0L B58 twin-power turbo, 374-387 HP, xDrive, 8-speed automatic, sedan or Touring. Engine size,
-petrol and 350-420 HP leave out the M340d, the 330i and the Alpina B3. Still sold new, so dealer
-stock is left out the same way as for the M2 G87.
+petrol and 350-420 HP leave out the M340d, the 330i and the Alpina B3.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(__file__))
 from base_scraper import ScraperConfig, run
-from validation import is_dealer_new
 
 
-def used_m340i(detail: dict) -> bool:
-    if "diesel" in (detail.get("fuel_type") or "").lower():
-        return False
-    return not is_dealer_new(detail.get("year"), detail.get("mileage_km"),
-                             detail.get("first_registration_date"))
+def is_m340i(detail: dict) -> bool:
+    return "diesel" not in (detail.get("fuel_type") or "").lower()
 
 
 CONFIG = ScraperConfig(
@@ -35,7 +30,7 @@ CONFIG = ScraperConfig(
         "&page={page}"
     ),
     min_year = 2019,
-    validator = used_m340i,
+    validator = is_m340i,
     defaults = {
         "power_hp":     374,
         "engine_cc":    2998,
