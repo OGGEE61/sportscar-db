@@ -369,6 +369,7 @@ function submitBulkAction(actionUrl, actionName) {
       return res.json();
     })
     .then(data => {
+      if (data.skipped) { window.location.reload(); return; }   // kept listings stay listed; the page says why
       selected.forEach(c => {
         const row = c.closest('.list-group-item');
         if (row) row.remove();
@@ -436,6 +437,7 @@ if (rejectAllBtn) {
       return res.json();
     })
     .then(data => {
+      if (data.skipped) { window.location.reload(); return; }   // kept listings stay listed; the page says why
       document.querySelectorAll('.list-group-item').forEach(row => row.remove());
       showToast('Bulk Reject All Complete', 'All pending listings rejected.', 'success');
       updateBar();
@@ -513,6 +515,7 @@ if (clearRejectedBtn) {
       return res.json();
     })
     .then(data => {
+      if (data.skipped) { window.location.reload(); return; }   // kept listings stay listed; the page says why
       document.querySelectorAll('.list-group-item').forEach(row => row.remove());
       showToast('Clear Rejected Complete', 'All rejected listings deleted.', 'success');
     })

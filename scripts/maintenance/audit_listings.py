@@ -102,7 +102,9 @@ def vin_state(listing: dict) -> str:
     desc = re.sub(r"<[^>]+>", " ", listing.get("raw_description") or "")
     if any(not re.fullmatch(r"[0-9A-F]{17}", c) and is_plausible_vin(c) for c in VIN_RE.findall(desc)):
         return "in_description"
-    if listing.get("source") == "otomoto" and listing.get("vin_confidence") == "found_in_schema":
+    # Behind "Show VIN" only while nothing came back: a stored masked VIN (WDB...XXX) is the seller hiding it
+    if (listing.get("source") == "otomoto" and listing.get("vin_confidence") == "found_in_schema"
+            and not (listing.get("vin") or "").strip()):
         return "behind_reveal"
     return "none"
 
