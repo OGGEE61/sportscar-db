@@ -164,10 +164,13 @@
         {% endif %}
 
         <span class="ms-auto small">
+          {% set seen = (l.checked_at or l.scraped_at or '')[:10] %}
           {% if l.is_listing_active %}
-          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle me-1">active</span>
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle me-1"
+                title="Ogłoszenie było widoczne na portalu {{ seen }}">aktywne · {{ seen[8:10] }}.{{ seen[5:7] }}</span>
           {% else %}
-          <span class="badge bg-secondary-subtle text-secondary-emphasis border me-1">removed</span>
+          <span class="badge bg-secondary-subtle text-secondary-emphasis border me-1"
+                title="Ogłoszenia nie ma już na portalu (stwierdzone {{ seen }})">zniknęło · {{ seen[8:10] }}.{{ seen[5:7] }}</span>
           {% endif %}
           <span class="text-muted">{{ l.scraped_at[:10] }}</span>
         </span>
