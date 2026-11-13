@@ -1984,6 +1984,39 @@ class TestBulkRejectKeepsVinsAwaitingReveal(ScrapingTestCase):
         conn.close()
         self.assertEqual(status, {"behind": "pending", "none": "rejected", "olx": "rejected", "has": "pending"})
 
+    def seed(self):
+        conn = db.get_db()
+        for sid, vin, vc in (("behind", None, "found_in_schema"), ("masked", "WDB4632481X165XXX", "found_in_schema"),
+                             ("none", None, "none")):
+            conn.execute("INSERT INTO pending_listings (source, source_listing_id, make, model, vin, vin_confidence)"
+                         " VALUES ('otomoto', ?, 'BMW', 'M3', ?, ?)", (sid, vin, vc))
+        conn.commit()
+        ids = {r["source_listing_id"]: r["id"] for r in conn.execute("SELECT id, source_listing_id FROM pending_listings")}
+        conn.close()
+        return ids
+
+    def statuses(self):
+        conn = db.get_db()
+        out = {r["source_listing_id"]: r["status"] for r in
+               conn.execute("SELECT source_listing_id, status FROM pending_listings").fetchall()}
+        conn.close()
+        return out
+
+    def test_reject_all_keeps_vins_awaiting_reveal(self):
+        # On 2026-11-11 "reject all" took 47 listings whose VIN was still behind "Show VIN"
+        self.seed()
+        res = self.client.post("/review/reject_all_pending?ajax=1")
+        self.assertEqual(res.get_json(), {"status": "success", "skipped": 1})
+        self.assertEqual(self.statuses(), {"behind": "pending", "masked": "rejected", "none": "rejected"})
+
+    def test_reject_selected_keeps_vins_awaiting_reveal(self):
+        ids = self.seed()
+        res = self.client.post("/review/bulk_reject?ajax=1", data={"ids": [ids["behind"], ids["none"]]})
+        self.assertEqual(res.get_json()["skipped"], 1)
+        self.assertEqual(self.statuses(), {"behind": "pending", "masked": "pending", "none": "rejected"})
+        page = self.client.get("/review").get_data(as_text=True)
+        self.assertIn("Pominięto 1: VIN jest w ogłoszeniu za „Pokaż VIN”", page)
+
 
 class TestAuditListings(unittest.TestCase):
     def setUp(self):
@@ -2008,6 +2041,9 @@ class TestAuditListings(unittest.TestCase):
         self.assertEqual((a["verdict"], a["vin"]), ("restore", "behind_reveal"))
         a = self.audit(self.listing(status="rejected", raw_description="VIN WDD1569421J123456"), self.configs)
         self.assertEqual((a["verdict"], a["vin"]), ("restore", "in_description"))
+        # The seller masked it: nothing to reveal, the rejection stands
+        a = self.audit(self.listing(status="rejected", vin_confidence="found_in_schema", vin="WDB4632481X165XXX"), self.configs)
+        self.assertEqual((a["verdict"], a["vin"]), ("ok", "none"))
 
     def test_rejected_without_any_vin_stays(self):
         self.assertEqual(self.audit(self.listing(status="rejected"), self.configs)["verdict"], "ok")

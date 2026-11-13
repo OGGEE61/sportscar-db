@@ -104,14 +104,19 @@ def review_approve(pid):
 def review_reject_all_pending():
     src_sql, src_params = _source_scope()
     conn = get_db()
+    # Listings whose VIN waits behind "Show VIN" stay: rejecting them would lose the car for good
     conn.execute(
-        f"UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') WHERE status='pending'{src_sql}",
+        f"UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') WHERE status='pending'{src_sql} "
+        f"AND NOT ({AWAITS_REVEAL_SQL})",
         src_params,
     )
+    skipped = conn.execute(f"SELECT COUNT(*) FROM pending_listings WHERE status='pending'{src_sql} AND {AWAITS_REVEAL_SQL}",
+                           src_params).fetchone()[0]
     conn.commit()
     conn.close()
+    _flash_skipped(skipped)
     if request.args.get("ajax") == "1":
-        return {"status": "success"}
+        return {"status": "success", "skipped": skipped}
     return redirect(url_for("review.review_queue"))
 
 @bp.route("/review/clear_rejected", methods=["POST"])
@@ -175,6 +180,17 @@ def vin_awaits_reveal(listing) -> bool:
             and not (listing["vin"] or "").strip())
 
 
+# SQL twin of vin_awaits_reveal(): an Otomoto listing whose VIN is behind "Show VIN" and not revealed yet
+AWAITS_REVEAL_SQL = ("source = 'otomoto' AND vin_confidence = 'found_in_schema' "
+                     "AND COALESCE(TRIM(vin), '') = ''")
+
+
+def _flash_skipped(skipped):
+    if skipped:
+        flash(f"Pominięto {skipped}: VIN jest w ogłoszeniu za „Pokaż VIN” i czeka na odsłonięcie. "
+              "Te ogłoszenia zostają w Kolejce.", "warning")
+
+
 @bp.route("/review/bulk_reject_novin", methods=["POST"])
 def review_bulk_reject_novin():
     src_sql, src_params = _source_scope()
@@ -224,17 +240,22 @@ def review_bulk_reject_approved_novin():
 @bp.route("/review/bulk_reject", methods=["POST"])
 def review_bulk_reject():
     ids = request.form.getlist("ids")
+    skipped = 0
     if ids:
         conn = get_db()
+        marks = ",".join("?" * len(ids))
+        skipped = conn.execute(f"SELECT COUNT(*) FROM pending_listings WHERE id IN ({marks}) AND {AWAITS_REVEAL_SQL}",
+                               ids).fetchone()[0]
         conn.execute(
             f"UPDATE pending_listings SET status='rejected', reviewed_at=datetime('now') "
-            f"WHERE id IN ({','.join('?' * len(ids))})",
+            f"WHERE id IN ({marks}) AND NOT ({AWAITS_REVEAL_SQL})",
             ids,
         )
         conn.commit()
         conn.close()
+    _flash_skipped(skipped)
     if request.args.get("ajax") == "1":
-        return {"status": "success"}
+        return {"status": "success", "skipped": skipped}
     return redirect(url_for("review.review_queue"))
 
 

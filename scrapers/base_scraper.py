@@ -408,7 +408,7 @@ _VIN_QUERY = """
 # side by side (the Otomoto and OLX scrapes) see each other's counts and pauses.
 VIN_REVEAL_DELAY_S = (4.0, 8.0)
 VIN_REVEALS_PER_RUN = 10
-REVEALS_PER_DAY = 30
+REVEALS_PER_DAY = 45     # 30 until 2026-11-13: two days at 30 without a single 403
 VIN_RETRY_AFTER_S = 24 * 3600
 PLATE_RETRY_AFTER_S = 7 * 24 * 3600
 BLOCK_PAUSE_S = 24 * 3600
