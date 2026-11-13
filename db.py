@@ -690,6 +690,29 @@ def init_db():
     )""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(19,'sighting_indexes_app_cache')")
 
+    # ── Migration 20: whether a listing is still up ──────────────────────────
+    # pending_listings.is_listing_active was never kept up to date (every row said 1). Now the
+    # scrapers set it (seen in a search: 1; gone from it, mark_removed: 0) and
+    # scripts/maintenance/recheck_rejected.py sets it from the listing page; checked_at says when.
+    # Once: listings whose every sighting was marked removed are gone since the last such stamp.
+    p_cols = {r[1] for r in db.execute("PRAGMA table_info(pending_listings)").fetchall()}
+    if "checked_at" not in p_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN checked_at TEXT")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 20").fetchone():
+        db.execute("""
+            UPDATE pending_listings SET is_listing_active = 0,
+                   checked_at = (SELECT MAX(o.removed_at) FROM listing_observations o
+                                 WHERE o.source = pending_listings.source
+                                   AND o.source_listing_id = pending_listings.source_listing_id)
+            WHERE source_listing_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM listing_observations o WHERE o.source = pending_listings.source
+                            AND o.source_listing_id = pending_listings.source_listing_id)
+              AND NOT EXISTS (SELECT 1 FROM listing_observations o WHERE o.source = pending_listings.source
+                                AND o.source_listing_id = pending_listings.source_listing_id
+                                AND o.removed_at IS NULL)
+        """)
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(20,'listing_checked_at')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

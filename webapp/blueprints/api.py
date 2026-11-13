@@ -176,6 +176,8 @@ def api_mark_removed():
                   AND source_listing_id IN ({placeholders})
             """, [source] + chunk)
             marked += cur.rowcount
+            conn.execute(f"UPDATE pending_listings SET is_listing_active = 0, checked_at = datetime('now') "
+                         f"WHERE source = ? AND source_listing_id IN ({placeholders})", [source] + chunk)
 
     conn.commit()
     conn.close()
@@ -459,6 +461,10 @@ def api_ingest_pending():
                 "SELECT * FROM pending_listings WHERE source=? AND source_listing_id=?",
                 (source, sid)
             ).fetchone()
+            if existing:
+                # A scraper sends what its search shows: the listing is up right now
+                conn.execute("UPDATE pending_listings SET is_listing_active = 1, checked_at = datetime('now') "
+                             "WHERE id = ?", (existing["id"],))
             
             if existing:
                 # Update missing fields in pending_listings

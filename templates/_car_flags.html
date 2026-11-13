@@ -39,6 +39,12 @@
   <span class="badge flag flag-muted" title="Brak raportu CEPiK">bez CEPiK</span>
   {%- endif -%}
 
+  {%- if c.flag_ad == 'active' -%}
+  <span class="badge flag flag-ok" title="Co najmniej jedno ogłoszenie tego auta jest aktualnie wystawione">Ogłoszenie aktywne</span>
+  {%- elif c.flag_ad -%}
+  <span class="badge flag flag-muted" title="Ostatnie ogłoszenie zniknęło z portalu (sprzedane albo zdjęte)">Zniknęło {{ c.flag_ad[8:10] }}.{{ c.flag_ad[5:7] }}</span>
+  {%- endif -%}
+
   {%- if c.flag_sold_damaged -%}
   <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone">Uszkodzony</span>
   {%- endif -%}

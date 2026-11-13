@@ -976,22 +976,40 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
 
     Data lives in __NEXT_DATA__ (Otomoto), __PRERENDERED_STATE__ (OLX) or ng-state (autoplac).
     """
+    return fetch_listing(url, cookies)[1]
+
+
+# A listing taken down answers 410 Gone (otomoto, OLX) or 404 (autoplac)
+GONE_STATUSES = (404, 410)
+
+
+def fetch_listing(url: str, cookies: dict = None) -> tuple:
+    """(state, detail) of a listing page: ("active", parse_detail(...)), ("gone", {}) when the
+    site says the listing was taken down, or ("error", {}) when it cannot tell (network error,
+    403, 5xx)."""
     try:
         r = requests.get(
             url, headers=HEADERS, cookies=cookies or {},
             timeout=15, impersonate="chrome"
         )
+    except Exception as e:
+        print(f"    [detail error] {_safe(str(e))}")
+        return "error", {}
+    if r.status_code != 200:
+        print(f"    [detail] HTTP {r.status_code}")
+        return ("gone" if r.status_code in GONE_STATUSES else "error"), {}
+    return "active", parse_detail(r.text, url)
 
-        if r.status_code != 200:
-            print(f"    [detail] HTTP {r.status_code}")
-            return {}
 
+def parse_detail(html: str, url: str) -> dict:
+    """Structured data from a listing page's HTML (the site is told by the URL)."""
+    try:
         if "olx.pl" in url:
-            return _fetch_olx_detail(r.text, url)
+            return _fetch_olx_detail(html, url)
         if "autoplac.pl" in url:
-            return _fetch_autoplac_detail(r.text, url)
+            return _fetch_autoplac_detail(html, url)
 
-        nd_m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
+        nd_m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
         if not nd_m:
             return {}
 
