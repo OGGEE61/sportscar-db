@@ -7,7 +7,7 @@
   {%- if c.flag_plate -%}
   <span class="badge flag flag-plate" title="{{ 'Tablica odczytana ze zdjęcia' if c.flag_plate_from_photo else 'Tablica rejestracyjna' }}">
     {%- if c.flag_plate_from_photo %}<i class="bi bi-camera me-1"></i>{% endif %}{{ c.flag_plate }}</span>
-  {%- elif c.flag_abroad -%}
+  {%- elif is_abroad(c) -%}
   <span class="badge flag flag-info" title="Uszkodzone auto z {{ c.flag_origin }}: najpewniej jeszcze nie sprowadzone do Polski, więc bez tablicy i poza statystykami cen"><i class="bi bi-airplane me-1"></i>W {{ 'Kanadzie' if c.flag_origin == 'Kanada' else 'USA' }}</span>
   {%- else -%}
   <span class="badge flag flag-warn" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
@@ -37,7 +37,7 @@
   <span class="badge flag flag-bad" title="CEPiK: przebieg w ogłoszeniu niższy od odczytu na badaniu{% if c.flag_rollback_km %} o {{ '{:,}'.format(c.flag_rollback_km).replace(',', ' ') }} km{% endif %}">Cofnięty licznik</span>
   {%- elif c.flag_cepik == 'ok' -%}
   <span class="badge flag flag-ok" title="Raport CEPiK pobrany, bez zastrzeżeń">CEPiK ✓</span>
-  {%- elif not c.flag_abroad -%}
+  {%- elif not is_abroad(c) -%}
   <span class="badge flag flag-muted" title="Brak raportu CEPiK">bez CEPiK</span>
   {%- endif -%}
 

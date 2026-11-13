@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, jsonify, make_response, redirect, rend
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
 from webapp.services.stored_cache import stored
-from webapp.helpers import car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, script_json, trend_line
+from webapp.helpers import car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, is_abroad, script_json, trend_line
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -346,7 +346,7 @@ def model_analytics():
     for v in vehicles:
         reg = resolve_region(v.get("location_region"), v.get("location_city"))
         if reg:
-            if not v.get("flag_abroad"):
+            if not is_abroad(v):
                 region_counts[reg] = region_counts.get(reg, 0) + 1
             v["region"] = reg
             v["region_name"] = REGION_NAMES.get(reg, reg)
@@ -356,10 +356,10 @@ def model_analytics():
 
     # Prices of damaged cars (sold as damaged, or with damage in their history) say little about
     # the market: left out of the charts and averages. A damaged car from the USA or Canada is not
-    # in Poland yet (flag_abroad): left out of every statistic, it stays in the table.
+    # in Poland yet (is_abroad): left out of every statistic, it stays in the table.
     for v in vehicles:
         v["sold_damaged"] = v.get("sold_damaged") or v.get("damage_history")
-    in_poland = [v for v in vehicles if not v.get("flag_abroad")]
+    in_poland = [v for v in vehicles if not is_abroad(v)]
     prices = [v["price_pln"] for v in in_poland if v.get("price_pln") and not v.get("sold_damaged")]
     mileages = [v["mileage_km"] for v in in_poland if v.get("mileage_km")]
 
