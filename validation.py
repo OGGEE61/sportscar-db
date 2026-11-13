@@ -102,32 +102,30 @@ def is_valid_first_registration_date(value, today=None) -> bool:
     return d.year >= MIN_FIRST_REGISTRATION_YEAR and d <= (today or date.today())
 
 
-# Listings that are nearly new with a delivery mileage are dealer stock, not the
-# used-car market this project tracks
-DEALER_M2_MAX_AGE_DAYS = 365
-DEALER_M2_MAX_KM = 20_000
-
-
-def is_dealer_new_m2(model, year, mileage_km, first_registration_date=None, on=None) -> bool:
-    """is_dealer_new for an M2; any other model is never dealer stock here."""
-    if (model or "").strip().upper() != "M2":
-        return False
-    return is_dealer_new(year, mileage_km, first_registration_date, on)
+# Nearly new cars are dealer stock ("salonówki"), not the used-car market this project
+# tracks. Applies to every model: scrapers skip them and the database hides their sightings.
+DEALER_MAX_AGE_DAYS = 365
+DEALER_MAX_KM = 20_000
+# A car from this or last model year with delivery mileage is unsold stock, registered or not
+DELIVERY_MAX_KM = 1_000
 
 
 def is_dealer_new(year, mileage_km, first_registration_date=None, on=None) -> bool:
-    """True for a car less than a year old with under 20 000 km (dealer stock).
+    """True for dealer stock: a car under a year old with under 20 000 km, or a car from
+    this or last model year with under 1 000 km.
 
     Age comes from the first registration date when it is a valid date, else from the
     model year (same calendar year as `on` counts as under a year; older never does).
     Unknown mileage or age is never treated as dealer stock. `on` is the date the ad
     was seen (default today).
     """
-    if mileage_km is None or mileage_km >= DEALER_M2_MAX_KM:
+    if mileage_km is None or mileage_km >= DEALER_MAX_KM:
         return False
     on = on or date.today()
+    if mileage_km < DELIVERY_MAX_KM and year and year >= on.year - 1:
+        return True
     if is_valid_first_registration_date(first_registration_date, today=on):
-        return (on - date.fromisoformat(first_registration_date.strip())).days < DEALER_M2_MAX_AGE_DAYS
+        return (on - date.fromisoformat(first_registration_date.strip())).days < DEALER_MAX_AGE_DAYS
     return bool(year) and year >= on.year
 
 

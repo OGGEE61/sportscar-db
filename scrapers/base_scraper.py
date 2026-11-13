@@ -36,7 +36,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from validation import VIN_RE, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
+from validation import VIN_RE, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
 
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -528,6 +528,8 @@ def _worth_revealing(cfg, detail: dict) -> bool:
     judge a car before the VIN is known. The validator sees `before_reveal`, so one that needs the VIN
     to decide can let the car through for now.
     """
+    if _dealer_stock(detail):
+        return False
     if cfg.reassign:
         return True
     if _outside_search(cfg, detail):
@@ -1485,6 +1487,11 @@ def _otomoto_searches() -> dict:
     return _OTOMOTO_SEARCHES
 
 
+def _dealer_stock(detail: dict) -> bool:
+    """True for a nearly new car (validation.is_dealer_new): skipped for every model."""
+    return is_dealer_new(detail.get("year"), detail.get("mileage_km"), detail.get("first_registration_date"))
+
+
 def _outside_search(cfg: ScraperConfig, detail: dict) -> Optional[str]:
     """Why a listing's power or engine size rules it out of the model, None if it fits.
 
@@ -1755,6 +1762,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
 
                     if why := _outside_search(car, detail):
                         print(f"  [skip] Not a {car.variant or car.model}: {why}")
+                        continue
+                    if _dealer_stock(detail):
+                        print(f"  [skip] Dealer stock: {detail.get('year')}, {detail.get('mileage_km')} km")
                         continue
                     if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
