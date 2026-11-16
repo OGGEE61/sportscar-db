@@ -394,6 +394,71 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
     return True
 
 
+def ensure_sync_log(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_sync_log (
+            vin TEXT PRIMARY KEY,
+            status TEXT,
+            message TEXT,
+            attempted_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
+
+def cars_to_check(conn, limit: int, retry_failed: bool = False):
+    """Cars with a VIN, plate and first registration date and no CEPiK report yet (rows of vin,
+    registration_plate, first_registration_date, make, model). Cars CEPiK did not know
+    ('not_found') are left out unless retry_failed; cars whose lookup failed are included, after
+    the ones never tried and oldest attempt first, so a car that keeps failing does not block the rest."""
+    log_filter = "" if retry_failed else "AND (l.vin IS NULL OR l.status != 'not_found')"
+    # Cars with complete data that have not been checked yet
+    rows = conn.execute(f"""
+        SELECT DISTINCT 
+            v.vin, 
+            v.registration_plate, 
+            COALESCE(v.first_registration_date, p.first_registration_date) as first_registration_date, 
+            v.make, 
+            v.model
+        FROM vehicles v
+        LEFT JOIN pending_listings p ON p.vin = v.vin
+        LEFT JOIN cepik_reports c ON c.vin = v.vin
+        LEFT JOIN cepik_sync_log l ON l.vin = v.vin
+        WHERE v.vin IS NOT NULL
+          AND v.vin != ''
+          AND v.vin NOT LIKE 'PLH%'
+          AND v.registration_plate IS NOT NULL
+          AND v.registration_plate != ''
+          AND COALESCE(v.first_registration_date, p.first_registration_date) IS NOT NULL
+          AND COALESCE(v.first_registration_date, p.first_registration_date) != ''
+          AND c.vin IS NULL
+          {log_filter}
+        ORDER BY l.attempted_at IS NOT NULL, l.attempted_at, v.vin
+        LIMIT ?
+    """, (limit,)).fetchall()
+
+    # If none in vehicles, also check pending_listings
+    if not rows:
+        rows = conn.execute(f"""
+            SELECT DISTINCT p.vin, p.registration_plate, p.first_registration_date, p.make, p.model
+            FROM pending_listings p
+            LEFT JOIN cepik_reports c ON c.vin = p.vin
+            LEFT JOIN cepik_sync_log l ON l.vin = p.vin
+            WHERE p.vin IS NOT NULL
+              AND p.vin != ''
+              AND p.vin NOT LIKE 'PLH%'
+              AND p.registration_plate IS NOT NULL
+              AND p.registration_plate != ''
+              AND p.first_registration_date IS NOT NULL
+              AND p.first_registration_date != ''
+              AND c.vin IS NULL
+              {log_filter}
+            ORDER BY p.id DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+    return rows
+
+
 def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_failed: bool = False,
                    model_id: Optional[str] = None, refresh: bool = False):
     """Main CEPiK report sync.
@@ -404,15 +469,7 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
     conn = db.get_db()
     client = CepikClient()
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS cepik_sync_log (
-            vin TEXT PRIMARY KEY,
-            status TEXT,
-            message TEXT,
-            attempted_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    conn.commit()
+    ensure_sync_log(conn)
 
     if single_vin:
         rows = conn.execute("""
@@ -462,51 +519,7 @@ def run_cepik_sync(limit: int = 50, single_vin: Optional[str] = None, retry_fail
             LIMIT ?
         """, (limit,)).fetchall()
     else:
-        log_filter = "" if retry_failed else "AND (l.vin IS NULL OR l.status != 'not_found')"
-        # Cars with complete data that have not been checked yet
-        rows = conn.execute(f"""
-            SELECT DISTINCT 
-                v.vin, 
-                v.registration_plate, 
-                COALESCE(v.first_registration_date, p.first_registration_date) as first_registration_date, 
-                v.make, 
-                v.model
-            FROM vehicles v
-            LEFT JOIN pending_listings p ON p.vin = v.vin
-            LEFT JOIN cepik_reports c ON c.vin = v.vin
-            LEFT JOIN cepik_sync_log l ON l.vin = v.vin
-            WHERE v.vin IS NOT NULL
-              AND v.vin != ''
-              AND v.vin NOT LIKE 'PLH%'
-              AND v.registration_plate IS NOT NULL
-              AND v.registration_plate != ''
-              AND COALESCE(v.first_registration_date, p.first_registration_date) IS NOT NULL
-              AND COALESCE(v.first_registration_date, p.first_registration_date) != ''
-              AND c.vin IS NULL
-              {log_filter}
-            ORDER BY v.vin
-            LIMIT ?
-        """, (limit,)).fetchall()
-
-        # If none in vehicles, also check pending_listings
-        if not rows:
-            rows = conn.execute(f"""
-                SELECT DISTINCT p.vin, p.registration_plate, p.first_registration_date, p.make, p.model
-                FROM pending_listings p
-                LEFT JOIN cepik_reports c ON c.vin = p.vin
-                LEFT JOIN cepik_sync_log l ON l.vin = p.vin
-                WHERE p.vin IS NOT NULL
-                  AND p.vin != ''
-                  AND p.vin NOT LIKE 'PLH%'
-                  AND p.registration_plate IS NOT NULL
-                  AND p.registration_plate != ''
-                  AND p.first_registration_date IS NOT NULL
-                  AND p.first_registration_date != ''
-                  AND c.vin IS NULL
-                  {log_filter}
-                ORDER BY p.id DESC
-                LIMIT ?
-            """, (limit,)).fetchall()
+        rows = cars_to_check(conn, limit, retry_failed)
 
     print(f"\n=== CEPiK Sync: Znaleziono {len(rows)} aut do weryfikacji w rejestrze państwowym ===")
 

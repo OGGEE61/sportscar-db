@@ -13,6 +13,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 45 1-23/4 * * * root  /opt/sportscar/deploy/scrapers/run.sh olx scrapers/run_olx.py next_4
 # Autoplac: all models, once a day
 30 5 * * *      root  /opt/sportscar/deploy/scrapers/run.sh autoplac scrapers/run_autoplac.py all
+# CEPiK reports for cars that have a plate and a first registration date but no report yet,
+# every night. Stops by itself when moj.gov.pl does not answer; the next night continues.
+20 2 * * *      root  /opt/sportscar/deploy/scrapers/run.sh cepik scripts/maintenance/cepik_remote.py
 
 # Follow master: pull and rebuild the image when it changed
 5 * * * *       root  /opt/sportscar/deploy/scrapers/update.sh

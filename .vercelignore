@@ -11,9 +11,7 @@ scrapers/
 *.log
 advert_dump.json
 test.html
-todo.md
 scripts/vercel_prune.sh
-run_full_scrape.sh
 requirements-cv.txt
 .pytest_cache/
 .ruff_cache/
