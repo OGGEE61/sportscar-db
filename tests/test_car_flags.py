@@ -134,12 +134,47 @@ class TestSameFlagsEverywhere(unittest.TestCase):
         self.assertEqual(self.client.post("/review/bulk_reject").status_code, 302)      # and every action
         self.assertIn("Podaj PIN", self.client.get("/login").get_data(as_text=True))
         wrong = self.client.post("/login", data={"password": "0000"})
-        self.assertIn("Nieprawidłowy PIN", wrong.get_data(as_text=True))
+        self.assertIn("Nieprawidłowy PIN. Pozostało prób: 9", wrong.get_data(as_text=True))
         self.assertEqual(self.client.get("/vehicles").status_code, 302)
         right = self.client.post("/login", data={"password": "48151623"})
         self.assertEqual(right.status_code, 302)
         self.assertIn("Expires=", right.headers["Set-Cookie"])       # stays logged in after the browser closes
         self.assertEqual(self.client.get("/vehicles").status_code, 200)
+
+    def test_ten_wrong_pins_lock_the_login_and_mail_the_owner(self):
+        os.environ.update(ADMIN_PASSWORD="48151623", ALERT_EMAIL="owner@example.com", SMTP_PASSWORD="app-pw")
+        with mock.patch("webapp.blueprints.auth.smtplib.SMTP_SSL") as smtp:
+            for n in range(9):
+                page = self.client.post("/login", data={"password": "0000"})
+                self.assertIn(f"Pozostało prób: {9 - n}", page.get_data(as_text=True))
+            smtp.assert_not_called()
+            tenth = self.client.post("/login", data={"password": "0000"})
+            self.assertEqual(tenth.status_code, 429)
+            sent = smtp.return_value.__enter__.return_value.send_message.call_args[0][0]
+            self.assertEqual(sent["To"], "owner@example.com")
+            # Locked: the right PIN does not get in, and no second mail goes out
+            self.assertEqual(self.client.post("/login", data={"password": "48151623"}).status_code, 429)
+            self.assertEqual(self.client.get("/vehicles").status_code, 302)
+            self.assertEqual(smtp.call_count, 1)
+
+        conn = db.get_db()      # the hour passed
+        conn.execute("UPDATE login_guard SET locked_until = '2020-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.client.post("/login", data={"password": "48151623"}).status_code, 302)
+        self.assertEqual(self.client.get("/vehicles").status_code, 200)
+
+    def test_right_pin_resets_the_count_and_a_failed_mail_does_not_break_the_login(self):
+        os.environ.update(ADMIN_PASSWORD="48151623", ALERT_EMAIL="owner@example.com", SMTP_PASSWORD="app-pw")
+        for _ in range(9):
+            self.client.post("/login", data={"password": "0000"})
+        self.client.post("/login", data={"password": "48151623"})
+        self.client.post("/logout")
+        self.assertIn("Pozostało prób: 9", self.client.post("/login", data={"password": "0000"}).get_data(as_text=True))
+        with mock.patch("webapp.blueprints.auth.smtplib.SMTP_SSL", side_effect=OSError("no route")):
+            for _ in range(9):
+                last = self.client.post("/login", data={"password": "0000"})
+        self.assertEqual(last.status_code, 429)
 
     def test_plate_on_the_vin_line_markers_under_it(self):
         html = self.flags_on("/vehicles")

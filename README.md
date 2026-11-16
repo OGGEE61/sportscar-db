@@ -100,7 +100,9 @@ Copy `.env.example` to `.env` for local development. On Vercel set these under
 | Variable | Needed for | Notes |
 |---|---|---|
 | `SECRET_KEY` | Vercel | Signs login sessions. The app refuses to start in production without it. |
-| `ADMIN_PASSWORD` | Vercel | PIN for the web UI (use 8+ digits: there is no lockout). Unset = no login, the app is open to everyone. |
+| `ADMIN_PASSWORD` | Vercel | PIN for the web UI (8+ digits). 10 wrong PINs in a row lock the login for an hour. Unset = no login, the app is open to everyone. |
+| `ALERT_EMAIL` | Vercel | Gmail address that gets a mail when the login locks (sent from and to it). Optional. |
+| `SMTP_PASSWORD` | Vercel | Gmail app password for `ALERT_EMAIL`. Optional: without it the lock works, no mail is sent. |
 | `API_TOKEN` | Vercel + scrapers | Bearer token for the scraper endpoints. Missing in production = they return 503. |
 | `BASE_URL` | Scrapers | Where scrapers send data. Defaults to `http://127.0.0.1:5555`. |
 | `DB_BACKEND` | Vercel | `d1` in production, `sqlite` locally. |
