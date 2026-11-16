@@ -86,6 +86,13 @@ def is_abroad(c) -> bool:
     return bool((flag("flag_origin") or "") in OVERSEAS_ORIGINS and not flag("flag_plate") and flag("flag_sold_damaged"))
 
 
+# A car filed under a model it is not (an M8 sold as an M5, a 2 Series as an M2), hidden from the
+# car's page: its sightings get this excluded_reason and its listings are rejected with a note
+# that starts with WRONG_MODEL_NOTE. The VIN stays known, so a new ad of it is rejected on arrival.
+WRONG_MODEL = "wrong_model"
+WRONG_MODEL_NOTE = "Nie ten model: "
+
+
 PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
 
 
