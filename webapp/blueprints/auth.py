@@ -1,8 +1,6 @@
 import hmac
 import os
-import smtplib
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 
@@ -34,29 +32,6 @@ def require_login():
 # already logged in keeps working during a lock.
 MAX_FAILURES = 10
 LOCK_FOR = timedelta(hours=1)
-
-
-def _send_lock_alert(until: datetime):
-    """Mail the owner that the login locked. From and to ALERT_EMAIL, through Gmail with
-    SMTP_PASSWORD (an app password); without both nothing is sent. Never raises, and never
-    prints the address (the repo and the logs are not private)."""
-    address, password = os.environ.get("ALERT_EMAIL"), os.environ.get("SMTP_PASSWORD")
-    if not (address and password):
-        return
-    msg = EmailMessage()
-    msg["Subject"] = "SportsCar DB: logowanie zablokowane"
-    msg["From"] = msg["To"] = address
-    msg.set_content(
-        f"Ktoś wpisał błędny PIN {MAX_FAILURES} razy z rzędu.\n"
-        f"Logowanie jest zablokowane do {until:%H:%M} UTC ({until:%d.%m.%Y}).\n"
-        f"Ostatnia próba z adresu: {request.headers.get('X-Forwarded-For', request.remote_addr)}\n\n"
-        "Urządzenia, które są już zalogowane, działają dalej.")
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
-            smtp.login(address, password)
-            smtp.send_message(msg)
-    except Exception as e:
-        print(f"[login] lock alert not sent: {type(e).__name__}", flush=True)
 
 
 def _locked_minutes(conn) -> int:
@@ -92,8 +67,11 @@ def login():
             return render_template("login.html", error=f"Nieprawidłowy PIN. Pozostało prób: {left}.")
         until = datetime.now(timezone.utc) + LOCK_FOR
         conn.execute("UPDATE login_guard SET failures = 0, locked_until = ? WHERE id = 1", (until.isoformat(),))
+        # Kept for the owner to see on /logs. The address stays in the database, out of the logs.
+        conn.execute("INSERT INTO login_locks (address) VALUES (?)",
+                     (request.headers.get("X-Forwarded-For", request.remote_addr),))
         conn.commit()
-        _send_lock_alert(until)
+        print(f"[login] locked after {MAX_FAILURES} wrong PINs", flush=True)
         minutes = int(LOCK_FOR.total_seconds() // 60)
         return render_template("login.html", error=f"Za dużo błędnych prób. Logowanie zablokowane na {minutes} min."), 429
     finally:
