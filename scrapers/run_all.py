@@ -79,6 +79,7 @@ from honda_s2000          import CONFIG    as S2000
 from mercedes_e63_w211    import CONFIG    as E63_W211
 from mercedes_e63_w212    import CONFIG    as E63_W212
 from mercedes_s_w140      import CONFIG    as S_W140
+from mercedes_e_w124      import CONFIG    as E_W124
 from mercedes_g_w463      import CONFIG    as G_W463
 from audi_rsq3_8u         import CONFIG    as RSQ3_8U
 from audi_rsq3_f3         import CONFIG    as RSQ3_F3
@@ -96,7 +97,7 @@ ALL_FLEET = [
     A45, GLA45, G55, S55, SL55, CL55,
     CAYMAN_987, CAYMAN_981, CAYMAN_718, MACAN_G1,
     S2000,
-    M5_F10, M5_F90, M340I, E63_W211, E63_W212, S_W140, G_W463, RSQ3_8U, RSQ3_F3,
+    M5_F10, M5_F90, M340I, E63_W211, E63_W212, S_W140, E_W124, G_W463, RSQ3_8U, RSQ3_F3,
 ]
 
 # Dynamically distribute 3 runs per week for every scraper across the 7 days
@@ -151,6 +152,7 @@ SCRAPER_MAP = {
     "e63_w211": [E63_W211],
     "e63_w212": [E63_W212],
     "w140": [S_W140],
+    "w124": [E_W124],
     "g_w463": [G_W463],
     "rsq3": [RSQ3_8U, RSQ3_F3],
     "rsq3_8u": [RSQ3_8U],

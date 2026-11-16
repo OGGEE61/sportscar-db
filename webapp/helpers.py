@@ -54,9 +54,10 @@ except OSError:
 
 
 def damaged_ad_sql(alias):
-    """SQL condition: this observation's ad is marked as damaged on its site."""
+    """SQL condition: this observation's ad is damaged: marked so on its site, or offered as
+    damaged in its text (validation.damage_in_text), and not dismissed on the car's page."""
     return (f"EXISTS (SELECT 1 FROM damaged_listings d WHERE d.source = {alias}.source "
-            f"AND d.source_listing_id = {alias}.source_listing_id)")
+            f"AND d.source_listing_id = {alias}.source_listing_id AND d.dismissed = 0)")
 
 
 def damage_history_sql(alias="v"):
@@ -71,7 +72,7 @@ def overseas_damaged_listing_sql(alias):
     i.e. a car not yet brought to Poland. No plate to look for."""
     origins = ", ".join(f"'{o}'" for o in OVERSEAS_ORIGINS)
     return (f"(COALESCE({alias}.origin_market, '') IN ({origins}) AND EXISTS (SELECT 1 FROM damaged_listings d "
-            f"WHERE d.source = {alias}.source AND d.source_listing_id = {alias}.source_listing_id))")
+            f"WHERE d.source = {alias}.source AND d.source_listing_id = {alias}.source_listing_id AND d.dismissed = 0))")
 
 
 def is_abroad(c) -> bool:

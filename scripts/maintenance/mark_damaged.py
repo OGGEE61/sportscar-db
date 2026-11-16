@@ -55,7 +55,7 @@ def main():
             damaged.append(ad)
             print(f"  [damaged] {ad['source']} {ad['vin']} {_safe(ad['title'] or '')} {ad['url']}")
             if "--yes" in sys.argv:
-                conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id) VALUES (?, ?)",
+                conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id, reason) VALUES (?, ?, 'portal')",
                              (ad["source"], ad["source_listing_id"]))
                 conn.commit()
         if i % 50 == 0:

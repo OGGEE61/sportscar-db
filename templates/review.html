@@ -155,7 +155,14 @@
         {% if l.vin and not l.vin.startswith('UNVERIFIED') %}
         <code class="small text-secondary text-decoration-line-through">{{ l.vin }}</code>
         {% endif %}
+        {% if l.status == 'pending' and l.source == 'otomoto' and l.vin_confidence == 'found_in_schema' and not (l.vin or '').strip() %}
+        {# webapp.blueprints.review.vin_awaits_reveal: the reject buttons skip these #}
+        <span class="badge bg-warning text-dark" style="font-size: 0.6em;"
+              title="Ogłoszenie ma VIN ukryty za „Pokaż VIN”. Czeka na odsłonięcie, więc przyciski odrzucania go pomijają.">
+          <i class="bi bi-hourglass-split me-1"></i>VIN za „Pokaż VIN”</span>
+        {% else %}
         <span class="badge bg-danger" style="font-size: 0.6em;">NO VIN</span>
+        {% endif %}
         {% endif %}
 
         {% if l.registration_plate %}

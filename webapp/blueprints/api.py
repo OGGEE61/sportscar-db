@@ -6,6 +6,7 @@ import re
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
+from validation import damage_in_text
 from webapp.helpers import IS_PRODUCTION, NOW, WRONG_MODEL_NOTE, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
 from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
@@ -308,11 +309,12 @@ def api_reveal_queue():
 def api_reveal_result():
     """Store a revealed VIN and/or plate on a pending listing (see /api/reveal_queue).
 
-    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both).
+    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both), or
+    {"id", "no_vin": true} when Otomoto answered that the ad has no VIN to show.
     Only fills what is empty: a VIN only on a pending listing and only if is_plausible_vin;
     a plate only if is_valid_registration_plate and not one the reviewer rejected for this VIN.
     An approved listing's car gets the plate too, if it has none.
-    Returns {"vin": bool, "plate": bool}: whether each was stored.
+    Returns {"vin": bool, "plate": bool}: whether each was stored (plus "no_vin": bool when sent).
     """
     if err := check_api_token(): return err
     p = request.get_json(force=True, silent=True) or {}
@@ -334,6 +336,13 @@ def api_reveal_result():
         conn.execute("UPDATE pending_listings SET vin = ? WHERE id = ? AND COALESCE(vin, '') = ''",
                      (vin, listing_id))
         stored["vin"] = True
+    # Otomoto answered that this ad has no VIN to show (none, or one the seller masked): the
+    # listing no longer waits for a reveal, so the job stops asking and the review queue's
+    # "reject without VIN" takes it like any other listing without a VIN.
+    if p.get("no_vin") and not vin:
+        cur = conn.execute("UPDATE pending_listings SET vin_confidence = 'none' WHERE id = ? AND status = 'pending' "
+                           "AND vin_confidence = 'found_in_schema' AND COALESCE(TRIM(vin), '') = ''", (listing_id,))
+        stored["no_vin"] = cur.rowcount > 0
     car_vin = row["vin"] or (vin if stored["vin"] else "")
     if plate and car_vin and conn.execute(
             "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
@@ -416,8 +425,12 @@ def api_ingest_pending():
     p["registration_plate"] = reg_plate = normalize_plate(reg_plate) or None
 
     conn = get_db()
-    if p.get("damaged") and sid:
-        conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id) VALUES (?, ?)", (source, sid))
+    # Damaged: the portal's own mark, or the ad's text offering the car as damaged. OR IGNORE keeps
+    # a mark the user dismissed on the car's page.
+    damage = "portal" if p.get("damaged") else damage_in_text(p.get("raw_title"), p.get("raw_description"))
+    if damage and sid:
+        conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id, reason) VALUES (?, ?, ?)",
+                     (source, sid, damage if damage == "portal" else "text: " + damage[:200]))
     # A plate the reviewer marked as wrong must not come back from the listing text
     if reg_plate and vin and conn.execute(
             "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
