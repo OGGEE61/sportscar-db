@@ -64,6 +64,7 @@ from olx.bmw_m340i_g20 import CONFIG as M340I_OLX
 from olx.mercedes_e63_w211 import CONFIG as E63_W211_OLX
 from olx.mercedes_e63_w212 import CONFIG as E63_W212_OLX
 from olx.mercedes_s_w140 import CONFIG as S_W140_OLX
+from olx.mercedes_e_w124 import CONFIG as E_W124_OLX
 from olx.mercedes_g_w463 import CONFIG as G_W463_OLX
 from olx.audi_rsq3_8u import CONFIG as RSQ3_8U_OLX
 from olx.audi_rsq3_f3 import CONFIG as RSQ3_F3_OLX
@@ -110,6 +111,7 @@ ALL_OLX_FLEET = [
     E63_W211_OLX,
     E63_W212_OLX,
     S_W140_OLX,
+    E_W124_OLX,
     G_W463_OLX,
     RSQ3_8U_OLX,
     RSQ3_F3_OLX,
@@ -171,6 +173,7 @@ SCRAPER_MAP = {
     "e63_w211": [E63_W211_OLX],
     "e63_w212": [E63_W212_OLX],
     "w140": [S_W140_OLX],
+    "w124": [E_W124_OLX],
     "g_w463": [G_W463_OLX],
     "rsq3": [RSQ3_8U_OLX, RSQ3_F3_OLX],
     "rsq3_8u": [RSQ3_8U_OLX],

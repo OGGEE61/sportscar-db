@@ -51,6 +51,7 @@ from autoplac.mercedes_cl55_c215 import CONFIG as CL55_C215_AUTOPLAC
 from autoplac.mercedes_e63_w211 import CONFIG as E63_W211_AUTOPLAC
 from autoplac.mercedes_e63_w212 import CONFIG as E63_W212_AUTOPLAC
 from autoplac.mercedes_s_w140 import CONFIG as S_W140_AUTOPLAC
+from autoplac.mercedes_e_w124 import CONFIG as E_W124_AUTOPLAC
 from autoplac.mercedes_g_w463 import CONFIG as G_W463_AUTOPLAC
 
 from autoplac.audi_rs3_8v import CONFIG as RS3_8V_AUTOPLAC
@@ -103,6 +104,7 @@ MERCEDES_FLEET = [
     E63_W211_AUTOPLAC,
     E63_W212_AUTOPLAC,
     S_W140_AUTOPLAC,
+    E_W124_AUTOPLAC,
     G_W463_AUTOPLAC,
 ]
 
@@ -166,6 +168,7 @@ SCRAPER_MAP = {
     "e63_w211": [E63_W211_AUTOPLAC],
     "e63_w212": [E63_W212_AUTOPLAC],
     "w140":     [S_W140_AUTOPLAC],
+    "w124":     [E_W124_AUTOPLAC],
     "g_w463":   [G_W463_AUTOPLAC],
     "mercedes": MERCEDES_FLEET,
     "rs3":      [RS3_8V_AUTOPLAC],

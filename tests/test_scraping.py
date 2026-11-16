@@ -1335,6 +1335,7 @@ class TestNewModelRules(unittest.TestCase):
                 ("D", "Mercedes-Benz", "Klasa G", "W460 / W461 / W463", 544, 5461, "g_w463"),
                 ("E", "Mercedes-Benz", "Klasa G", "G55 AMG W463", 507, 5439, "g55_w463"),
                 ("F", "Mercedes-Benz", "Klasa S", "W140", 394, 5987, "s_w140"),
+                ("I", "Mercedes-Benz", "Klasa E", "W124", 220, 3199, "e_w124"),
                 ("G", "Audi", "RS Q3", "RS Q3 8U", 340, 2480, "rsq3_8u"),
                 ("H", "Audi", "RS Q3", "RS Q3 F3", 400, 2480, "rsq3_f3")]
         conn.executemany("INSERT INTO vehicles VALUES (?,?,?,?,?,?,NULL,NULL,NULL)", [c[:6] for c in cars])
@@ -1392,6 +1393,31 @@ class TestNewModelRules(unittest.TestCase):
         from otomoto.audi_rsq3_f3 import CONFIG
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
         self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
+
+    def test_w124_keeps_3_litre_diesels_and_six_and_eight_cylinder_petrols(self):
+        from otomoto.mercedes_e_w124 import CONFIG
+        from olx.mercedes_e_w124 import CONFIG as OLX
+        from autoplac.mercedes_e_w124 import CONFIG as AUTOPLAC
+        ok = lambda cfg, **d: cfg.validator({"year": 1992, **d})
+        for cfg in (CONFIG, OLX, AUTOPLAC):
+            self.assertEqual((cfg.model, cfg.variant, cfg.model_id), ("Klasa E", "W124", "e_w124"))
+            self.assertTrue(ok(cfg, fuel_type="diesel", engine_cc=2996))          # 300D
+            self.assertFalse(ok(cfg, fuel_type="diesel", engine_cc=2497))         # 250D
+            self.assertFalse(ok(cfg, fuel_type="diesel", engine_cc=1997))         # 200D
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=2597))          # 260E, the smallest six
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199))          # E320
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=4973))          # 500E
+            self.assertTrue(ok(cfg, fuel_type="petrol+lpg", engine_cc=2960))      # 300E on LPG
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2298))         # 230E
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=1998))         # E200
+            self.assertTrue(ok(cfg, fuel_type="petrol"))                           # engine size unknown
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=2960, vin="WDB1240301A123456"))
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB2100551A123456"))   # a W210
+        self.assertFalse(OLX.validator({"fuel_type": "petrol", "engine_cc": 2960}))   # no year: not a car ad
+        self.assertEqual(len(CONFIG.list_url), 4)                                  # 2 ways it is filed x diesel, petrol
+        for url in CONFIG.list_url:
+            self.assertIn("{page}", url)
+            self.assertEqual(url.count("?"), 1)
 
     def test_g_class_title_filter_skips_g55_but_not_g550(self):
         from otomoto.mercedes_g_w463 import CONFIG
