@@ -26,3 +26,9 @@ Hobby limits Functions Storage to 10 GB per rolling 30 days, and every deploymen
 
 - Production reads Cloudflare D1 over HTTP (each query is a round trip). D1 runs in EEUR, so the function is pinned to `fra1` in [vercel.json](vercel.json); keep them close together.
 - Keep pages as a fast shell and load data sections via `/api/...` endpoints (see the dashboard), and avoid sequential queries in a route.
+
+## Pull requests
+
+- Titles, descriptions and commit messages are in English (the app's UI stays Polish).
+- One PR per batch of work, with a commit per item; add follow-ups to the open PR.
+- A PR that adds a migration says so under "Deploy". Run the migration right after the merge, whoever merges: until then the pages that use it return 500.
