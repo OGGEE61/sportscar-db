@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import NOW, car_flags_sql, car_visible_sql, damaged_ad_sql, safe_float, safe_int, script_json
+from webapp.helpers import NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, car_visible_sql, damaged_ad_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services.photos import store_photo
 from webapp.services.plates import normalize_plate
@@ -156,6 +156,12 @@ def vehicle_detail(vin):
         SELECT * FROM listing_observations
         WHERE vin=? ORDER BY observed_at DESC
     """, (vin,)).fetchall()
+    # Hidden as a wrong model (the button at the bottom of the page): why, for the banner
+    wrong_model = None
+    if any(o["excluded_reason"] == WRONG_MODEL for o in observations):
+        note = conn.execute("SELECT review_notes FROM pending_listings WHERE vin = ? AND status = 'rejected' "
+                            "AND review_notes LIKE ? LIMIT 1", (vin, WRONG_MODEL_NOTE + "%")).fetchone()
+        wrong_model = (note["review_notes"][len(WRONG_MODEL_NOTE):] if note else "") or "bez opisu"
     sold_damaged = conn.execute(
         "SELECT 1 FROM listing_observations x WHERE x.vin = ? AND " + damaged_ad_sql("x") + " LIMIT 1", (vin,)).fetchone() is not None
 
@@ -248,6 +254,7 @@ def vehicle_detail(vin):
     conn.close()
     return render_template("vehicle.html",
         vehicle=vehicle,
+        wrong_model=wrong_model,
         sold_damaged=sold_damaged,
         damage_reports=damage_reports,
         ad_groups=ad_groups,
@@ -533,6 +540,43 @@ def delete_tag(vin):
         conn.execute("DELETE FROM tags WHERE vin=? AND tag=?", (vin, tag))
         conn.commit()
         conn.close()
+    return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WRONG MODEL — hide a car that is not the model it was filed under
+# ─────────────────────────────────────────────────────────────────────────────
+
+@bp.route("/vehicle/<path:vin>/wrong_model", methods=["POST"])
+def mark_wrong_model(vin):
+    """Hide the car from lists and statistics: its listings are rejected with the reason and its
+    sightings excluded. Nothing is deleted, so the VIN stays known and "Przywróć" undoes it."""
+    reason = " ".join(request.form.get("reason", "").split())[:200]
+    if not reason:
+        flash("Podaj, czym to auto jest naprawdę (np. „M8 Gran Coupé, nie M5”).", "error")
+        return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+    conn = get_db()
+    conn.execute("UPDATE pending_listings SET status = 'rejected', reviewed_at = datetime('now'), review_notes = ? "
+                 "WHERE vin = ? AND status IN ('approved', 'pending')", (WRONG_MODEL_NOTE + reason, vin))
+    conn.execute("UPDATE listing_observations SET excluded_reason = ? WHERE vin = ? AND excluded_reason IS NULL",
+                 (WRONG_MODEL, vin))
+    conn.commit()
+    conn.close()
+    flash("Auto ukryte: nie pojawi się na listach ani w statystykach. Nowe ogłoszenia z tym VIN-em będą odrzucane.", "success")
+    return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+
+
+@bp.route("/vehicle/<path:vin>/restore_model", methods=["POST"])
+def restore_wrong_model(vin):
+    """Undo mark_wrong_model: the listings it rejected are approved again, the sightings count again."""
+    conn = get_db()
+    conn.execute("UPDATE pending_listings SET status = 'approved', review_notes = NULL "
+                 "WHERE vin = ? AND status = 'rejected' AND review_notes LIKE ?", (vin, WRONG_MODEL_NOTE + "%"))
+    conn.execute("UPDATE listing_observations SET excluded_reason = NULL WHERE vin = ? AND excluded_reason = ?",
+                 (vin, WRONG_MODEL))
+    conn.commit()
+    conn.close()
+    flash("Auto przywrócone.", "success")
     return redirect(url_for("vehicles.vehicle_detail", vin=vin))
 
 

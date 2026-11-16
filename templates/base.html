@@ -54,9 +54,11 @@
         </li>
         {% if session.get('logged_in') %}
         <li class="nav-item">
-          <a class="nav-link nav-logout" href="/logout" title="Wyloguj">
-            <i class="bi bi-box-arrow-right"></i><span class="nav-label d-lg-none">Wyloguj</span>
-          </a>
+          <form method="post" action="/logout" class="d-inline">
+            <button type="submit" class="nav-link nav-logout btn btn-link" title="Wyloguj">
+              <i class="bi bi-box-arrow-right"></i><span class="nav-label d-lg-none">Wyloguj</span>
+            </button>
+          </form>
         </li>
         {% endif %}
       </ul>
