@@ -117,7 +117,7 @@ scripts/               # CV plate detection, CEPiK fetch, maintenance tools
 ## Development
 
 ```bash
-python -m unittest tests.test_validation tests.test_system tests.test_fixes   # offline tests
+python -m pytest -q tests   # all tests are offline
 ruff check --select F .                                                        # lint
 python db.py                                                                   # create / migrate the local SQLite DB
 ```

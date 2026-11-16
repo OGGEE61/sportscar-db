@@ -117,6 +117,16 @@ class TestSameFlagsEverywhere(unittest.TestCase):
         self.assertNotIn("id-us", sids)
         self.assertIn(f"id-{PLAIN}", sids)                  # damaged, but not from overseas
 
+    def test_logout_is_a_post(self):
+        os.environ["ADMIN_PASSWORD"] = "secret"
+        with self.client.session_transaction() as sess:
+            sess["logged_in"] = True
+        self.assertEqual(self.client.get("/logout").status_code, 405)      # a link cannot log out
+        self.assertEqual(self.client.get("/vehicles").status_code, 200)
+        self.assertIn('<form method="post" action="/logout"', self.client.get("/vehicles").get_data(as_text=True))
+        self.assertEqual(self.client.post("/logout").status_code, 302)
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)    # back to the login page
+
     def test_plate_on_the_vin_line_markers_under_it(self):
         html = self.flags_on("/vehicles")
         block = html[html.index(f'href="/vehicle/{CRASHED}" class="vin-code"'):]

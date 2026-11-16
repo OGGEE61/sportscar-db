@@ -6,7 +6,7 @@ import re
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
-from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
+from webapp.helpers import IS_PRODUCTION, NOW, WRONG_MODEL_NOTE, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
 from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
 from webapp.regions import CITY_TO_REGION
@@ -456,6 +456,19 @@ def api_ingest_pending():
             1,
         ))
         conn.commit()
+
+        # A new ad of a car hidden as a wrong model (the button on the car's page) is rejected on
+        # arrival with the same note: it neither reaches the review queue nor brings the car back
+        if cur.rowcount == 1 and vin:
+            hidden = conn.execute("SELECT review_notes FROM pending_listings WHERE vin = ? AND status = 'rejected' "
+                                  "AND review_notes LIKE ? LIMIT 1", (vin, WRONG_MODEL_NOTE + "%")).fetchone()
+            if hidden:
+                conn.execute("UPDATE pending_listings SET status = 'rejected', reviewed_at = datetime('now'), review_notes = ? "
+                             "WHERE source = ? AND source_listing_id = ?", (hidden["review_notes"], source, sid))
+                conn.commit()
+                conn.close()
+                # Before the known-VIN path below, which would approve it and add a sighting
+                return jsonify({"status": "ok", "id": cur.lastrowid, "tag": "wrong_model"})
 
         # ── Duplicate path ────────────────────────────────────────────────────
         if cur.rowcount == 0:
