@@ -100,7 +100,7 @@ Copy `.env.example` to `.env` for local development. On Vercel set these under
 | Variable | Needed for | Notes |
 |---|---|---|
 | `SECRET_KEY` | Vercel | Signs login sessions. The app refuses to start in production without it. |
-| `ADMIN_PASSWORD` | Vercel | Password for the web UI. Unset = no login (local development only). |
+| `ADMIN_PASSWORD` | Vercel | PIN for the web UI (use 8+ digits: there is no lockout). Unset = no login, the app is open to everyone. |
 | `API_TOKEN` | Vercel + scrapers | Bearer token for the scraper endpoints. Missing in production = they return 503. |
 | `BASE_URL` | Scrapers | Where scrapers send data. Defaults to `http://127.0.0.1:5555`. |
 | `DB_BACKEND` | Vercel | `d1` in production, `sqlite` locally. |

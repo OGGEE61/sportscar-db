@@ -29,9 +29,10 @@ def login():
     if request.method == "POST":
         admin_password = os.environ.get("ADMIN_PASSWORD") or ""
         if admin_password and hmac.compare_digest(request.form.get("password", ""), admin_password):
+            session.permanent = True   # stays logged in on this device (PERMANENT_SESSION_LIFETIME)
             session["logged_in"] = True
             return redirect(url_for("dashboard.dashboard"))
-        return render_template("login.html", error="Invalid password")
+        return render_template("login.html", error="Nieprawidłowy PIN")
     return render_template("login.html")
 
 

@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import time
+from datetime import timedelta
 
 from flask import Flask
 
@@ -105,6 +106,7 @@ def create_app() -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=IS_PRODUCTION,
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     )
 
     app.jinja_env.filters["fromjson"] = json.loads
