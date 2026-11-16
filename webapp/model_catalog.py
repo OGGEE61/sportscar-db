@@ -406,12 +406,12 @@ STANDARD_MODELS = [
     },
     {
         "id": "e_w124",
-        "name": "Mercedes W124 (3.0 diesel, R6 / V8 benzyna)",
+        "name": "Mercedes W124 (3.0 diesel, benzyna od 320)",
         "make": "Mercedes-Benz",
         "model": "Klasa E",
         "variant": "W124",
         "years": "1984–1997",
-        "engine": "3.0L diesel · 2.6-6.0L R6 / V8 benzyna · 109-381 HP · RWD / 4Matic",
+        "engine": "3.0L diesel · 3.2-6.0L R6 / V8 benzyna · 109-381 HP · RWD / 4Matic",
         "where": "v.make = 'Mercedes-Benz' AND v.variant = 'W124'"
     },
     {
