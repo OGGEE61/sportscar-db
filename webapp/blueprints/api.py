@@ -6,6 +6,7 @@ import re
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
+from validation import damage_in_text
 from webapp.helpers import IS_PRODUCTION, NOW, WRONG_MODEL_NOTE, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
 from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
@@ -424,8 +425,12 @@ def api_ingest_pending():
     p["registration_plate"] = reg_plate = normalize_plate(reg_plate) or None
 
     conn = get_db()
-    if p.get("damaged") and sid:
-        conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id) VALUES (?, ?)", (source, sid))
+    # Damaged: the portal's own mark, or the ad's text offering the car as damaged. OR IGNORE keeps
+    # a mark the user dismissed on the car's page.
+    damage = "portal" if p.get("damaged") else damage_in_text(p.get("raw_title"), p.get("raw_description"))
+    if damage and sid:
+        conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id, reason) VALUES (?, ?, ?)",
+                     (source, sid, damage if damage == "portal" else "text: " + damage[:200]))
     # A plate the reviewer marked as wrong must not come back from the listing text
     if reg_plate and vin and conn.execute(
             "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",

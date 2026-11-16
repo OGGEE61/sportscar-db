@@ -48,7 +48,7 @@
   {%- endif -%}
 
   {%- if c.flag_sold_damaged -%}
-  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone">Uszkodzony</span>
+  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone albo opisane jako uszkodzone w treści">Uszkodzony</span>
   {%- endif -%}
   {%- if c.flag_damage_history -%}
   <span class="badge flag flag-bad" title="Szkoda w historii auta (raport VIN, aukcja, oględziny)"><i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody{% if c.flag_damage_country %}: {{ c.flag_damage_country }}{% endif %}</span>

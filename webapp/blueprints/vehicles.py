@@ -162,6 +162,13 @@ def vehicle_detail(vin):
         note = conn.execute("SELECT review_notes FROM pending_listings WHERE vin = ? AND status = 'rejected' "
                             "AND review_notes LIKE ? LIMIT 1", (vin, WRONG_MODEL_NOTE + "%")).fetchone()
         wrong_model = (note["review_notes"][len(WRONG_MODEL_NOTE):] if note else "") or "bez opisu"
+    # Why the car is marked damaged (the portal's mark, or a quote from the ad), for the card
+    # that lets the user dismiss a wrong one
+    damage_marks = conn.execute("""
+        SELECT DISTINCT d.source, d.source_listing_id, d.reason, d.dismissed
+        FROM damaged_listings d JOIN listing_observations o
+          ON o.source = d.source AND o.source_listing_id = d.source_listing_id
+        WHERE o.vin = ?""", (vin,)).fetchall()
     sold_damaged = conn.execute(
         "SELECT 1 FROM listing_observations x WHERE x.vin = ? AND " + damaged_ad_sql("x") + " LIMIT 1", (vin,)).fetchone() is not None
 
@@ -255,6 +262,7 @@ def vehicle_detail(vin):
     return render_template("vehicle.html",
         vehicle=vehicle,
         wrong_model=wrong_model,
+        damage_marks=damage_marks,
         sold_damaged=sold_damaged,
         damage_reports=damage_reports,
         ad_groups=ad_groups,
@@ -540,6 +548,29 @@ def delete_tag(vin):
         conn.execute("DELETE FROM tags WHERE vin=? AND tag=?", (vin, tag))
         conn.commit()
         conn.close()
+    return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DAMAGE MARK — dismiss a wrong "Uszkodzony", or bring it back
+# ─────────────────────────────────────────────────────────────────────────────
+
+@bp.route("/vehicle/<path:vin>/damage_mark", methods=["POST"])
+def set_damage_mark(vin):
+    """Form field dismissed=1: the car's ads are not damaged after all (a wrong match in the ad's
+    text, a seller's mistake); 0 brings the marks back. The rows stay, so a later scrape of the
+    same ad does not mark it again."""
+    dismissed = 1 if request.form.get("dismissed") == "1" else 0
+    conn = get_db()
+    conn.execute("""
+        UPDATE damaged_listings SET dismissed = ?
+        WHERE EXISTS (SELECT 1 FROM listing_observations o WHERE o.vin = ?
+                        AND o.source = damaged_listings.source
+                        AND o.source_listing_id = damaged_listings.source_listing_id)""", (dismissed, vin))
+    conn.commit()
+    conn.close()
+    flash("Oznaczenie „Uszkodzony” zdjęte: auto wraca do statystyk cen." if dismissed
+          else "Oznaczenie „Uszkodzony” przywrócone.", "success")
     return redirect(url_for("vehicles.vehicle_detail", vin=vin))
 
 

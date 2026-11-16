@@ -734,6 +734,26 @@ def init_db():
     )""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(22,'favorites')")
 
+    # Migration v23: damage stated only in an ad's text. Sellers often leave the portal's
+    # "damaged" box unticked; validation.damage_in_text finds wording that offers the car as
+    # damaged. `reason` says how an ad got here ('portal', or 'text: <quote>'); `dismissed` is the
+    # user's "this is not damage" (the car's page), kept so that the next scrape does not bring
+    # the mark back. Once: stored listings are checked.
+    d_cols = {r[1] for r in db.execute("PRAGMA table_info(damaged_listings)").fetchall()}
+    if "reason" not in d_cols:
+        db.execute("ALTER TABLE damaged_listings ADD COLUMN reason TEXT")
+    if "dismissed" not in d_cols:
+        db.execute("ALTER TABLE damaged_listings ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 23").fetchone():
+        from validation import damage_in_text
+        db.execute("UPDATE damaged_listings SET reason = 'portal' WHERE reason IS NULL")
+        for r in db.execute("SELECT source, source_listing_id, raw_title, raw_description FROM pending_listings "
+                            "WHERE status IN ('approved', 'pending') AND source_listing_id IS NOT NULL").fetchall():
+            if quote := damage_in_text(r["raw_title"], r["raw_description"]):
+                db.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id, reason) VALUES (?, ?, ?)",
+                           (r["source"], r["source_listing_id"], "text: " + quote[:200]))
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(23,'damage_from_text')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
