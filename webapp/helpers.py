@@ -91,7 +91,7 @@ PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
 
 def car_flags_sql(alias="v"):
     """SELECT columns of the markers every list shows next to a car (templates/_car_flags.html):
-    flag_vin_status, flag_plate, flag_origin, flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
+    flag_vin_status, flag_plate, flag_origin, flag_favorite (the star), flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
     flag_damage_country,
     flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km,
     flag_ad ('active' while an ad is up, else when the last one disappeared; NULL without ads) and
@@ -104,6 +104,7 @@ def car_flags_sql(alias="v"):
     return f"""{a}.vin_status AS flag_vin_status,
         {a}.registration_plate AS flag_plate,
         {a}.origin_market AS flag_origin,
+        EXISTS (SELECT 1 FROM favorites ff WHERE ff.vin = {a}.vin) AS flag_favorite,
         EXISTS (SELECT 1 FROM tags ft WHERE ft.vin = {a}.vin AND ft.tag IN ({tags})) AS flag_plate_from_photo,
         EXISTS (SELECT 1 FROM listing_observations fx WHERE fx.vin = {a}.vin AND {damaged_ad_sql("fx")}) AS flag_sold_damaged,
         {damage_history_sql(a)} AS flag_damage_history,

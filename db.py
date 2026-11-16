@@ -726,6 +726,14 @@ def init_db():
         """)
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(21,'dealer_new_all_models')")
 
+    # Migration v22: cars the user marked as favourites (the star next to a VIN; /favorites)
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS favorites (
+        vin        TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(22,'favorites')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
@@ -778,6 +786,8 @@ def resolve_placeholder(old_vin: str, new_vin: str,
                 """, (old_vin, new_vin))
             db.execute(f"UPDATE {tbl} SET vin=? WHERE vin=?", (new_vin, old_vin))
         db.execute("UPDATE pending_listings SET vin=? WHERE vin=?", (new_vin, old_vin))
+        db.execute("UPDATE OR IGNORE favorites SET vin=? WHERE vin=?", (new_vin, old_vin))
+        db.execute("DELETE FROM favorites WHERE vin=?", (old_vin,))
         db.execute("""
             UPDATE cepik_reports SET vin=? WHERE vin=?
               AND NOT EXISTS (SELECT 1 FROM cepik_reports WHERE vin=?)
