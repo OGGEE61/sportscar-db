@@ -82,4 +82,4 @@ if __name__ == "__main__":
                f"{c['failed']} bez odpowiedzi" + (", przerwano: moj.gov.pl nie odpowiada" if c["stopped"] else "")
                + f" (z {c['cars']} w kolejce)")
     print(message)
-    _log_run("warning" if c["stopped"] else "success", message, processed=c["saved"], source="cepik")
+    _log_run("partial" if c["stopped"] else "success", message, processed=c["saved"], source="cepik")
