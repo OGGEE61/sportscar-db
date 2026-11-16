@@ -397,6 +397,64 @@ def api_next_scrapers():
     return jsonify({"keys": keys})
 
 
+@bp.route("/api/cepik_queue", methods=["POST"])
+def api_cepik_queue():
+    """Cars that still need a CEPiK report, for scripts/maintenance/cepik_remote.py on the VPS.
+
+    Body: {"limit": N} (default 40, at most 200). Returns {"cars": [{"vin", "plate",
+    "first_registration_date", "make", "model"}]}: cars never tried first, then failed lookups,
+    oldest attempt first. The job asks CEPiK itself and sends each answer to /api/cepik_result.
+    """
+    if err := check_api_token(): return err
+    from scripts.fetch_cepik import cars_to_check, ensure_sync_log
+    limit = min(max(safe_int((request.get_json(force=True, silent=True) or {}).get("limit")) or 40, 1), 200)
+    conn = get_db()
+    ensure_sync_log(conn)
+    rows = cars_to_check(conn, limit)
+    conn.close()
+    return jsonify({"cars": [{"vin": r["vin"], "plate": r["registration_plate"],
+                              "first_registration_date": r["first_registration_date"],
+                              "make": r["make"], "model": r["model"]} for r in rows]})
+
+
+@bp.route("/api/cepik_result", methods=["POST"])
+def api_cepik_result():
+    """Store what CEPiK answered for one car of /api/cepik_queue.
+
+    Body: {"vin", "plate", "report": {...} or null, "http_status": int or null}. A report (as
+    CepikClient.fetch_vehicle_data returns it) is saved like a local run saves it, rollback check
+    included. Without one: http_status 404 means CEPiK does not know this VIN + plate (the plate
+    goes back to /plates), anything else is a failed lookup that the next run retries.
+    Returns {"outcome": "saved" | "reverted" | "queued" | "error"}.
+    """
+    if err := check_api_token(): return err
+    from types import SimpleNamespace
+    from scripts.fetch_cepik import ensure_sync_log, record_cepik_failure, save_cepik_report
+    p = request.get_json(force=True, silent=True) or {}
+    vin = (p.get("vin") or "").strip().upper()
+    report = p.get("report")
+    conn = get_db()
+    try:
+        if not vin or not conn.execute("SELECT 1 FROM vehicles WHERE vin = ?", (vin,)).fetchone():
+            return jsonify({"error": "unknown vin"}), 404
+        ensure_sync_log(conn)
+        if report:
+            if not isinstance(report, dict) or (report.get("vin") or "").strip().upper() != vin:
+                return jsonify({"error": "report is not for this vin"}), 400
+            save_cepik_report(report, conn)
+            conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) "
+                         "VALUES (?, 'success', 'OK', datetime('now'))", (vin,))
+            conn.commit()
+            return jsonify({"outcome": "saved"})
+        outcome = record_cepik_failure(conn, SimpleNamespace(last_status=safe_int(p.get("http_status"))),
+                                       vin, p.get("plate") or "")
+        return jsonify({"outcome": outcome})
+    except KeyError as e:
+        return jsonify({"error": f"report lacks {e}"}), 400
+    finally:
+        conn.close()
+
+
 @bp.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
     if err := check_api_token(): return err
