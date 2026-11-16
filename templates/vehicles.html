@@ -2,11 +2,11 @@
 {% from "_pagination.html" import pager %}
 {% from "_source.html" import source_badge %}
 {% from "_car_flags.html" import vin_block %}
-{% block title %}Vehicles – SportsCar DB{% endblock %}
+{% block title %}{{ "Ulubione" if favorites_only else "Vehicles" }} – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0">Vehicles</h2>
+  <h2 class="mb-0">{% if favorites_only %}<i class="bi bi-star-fill text-warning me-2"></i>Ulubione{% else %}Vehicles{% endif %}</h2>
   <a href="/add" class="btn btn-primary btn-sm">+ Add Vehicle</a>
 </div>
 
@@ -49,6 +49,7 @@
   </div>
   <div class="col-md-2">
     <select name="sort" class="form-select">
+      {% if favorites_only %}<option value="fav_added" {% if sort=='fav_added' %}selected{% endif %}>Ostatnio dodane</option>{% endif %}
       <option value="last_seen" {% if sort=='last_seen' %}selected{% endif %}>Last seen</option>
       <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Last updated</option>
       <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Year ↓</option>
@@ -60,7 +61,7 @@
   </div>
   <div class="col-md-1 d-flex gap-1">
     <button class="btn btn-primary w-100" title="Apply filter"><i class="bi bi-funnel"></i></button>
-    <a href="/vehicles" class="btn btn-outline-secondary" title="Reset filter">↺</a>
+    <a href="{{ base_path }}" class="btn btn-outline-secondary" title="Reset filter">↺</a>
   </div>
 </form>
 
@@ -69,7 +70,7 @@
   {% if selected_region %}
   <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
     Region: {{ regions.get(selected_region, selected_region) }}
-    <a href="/vehicles?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}" class="text-decoration-none text-danger ms-1">✕</a>
+    <a href="{{ base_path }}?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}" class="text-decoration-none text-danger ms-1">✕</a>
   </span>
   {% endif %}
 </div>
@@ -134,10 +135,10 @@
   </div>
   {% else %}
   <div class="list-group-item py-4 text-center text-muted">
-    No vehicles found.
+    {% if favorites_only %}Nie masz jeszcze ulubionych aut. Kliknij gwiazdkę przy aucie, żeby je tu dodać.{% else %}No vehicles found.{% endif %}
   </div>
   {% endfor %}
 </div>
 {% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort %}
-{{ pager(page, pages, '/vehicles?' ~ qs ~ '&page=', 'Vehicles pages', ids=true) }}
+{{ pager(page, pages, base_path ~ '?' ~ qs ~ '&page=', 'Vehicles pages', ids=true) }}
 {% endblock %}

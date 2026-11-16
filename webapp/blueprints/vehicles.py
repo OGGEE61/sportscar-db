@@ -1,7 +1,7 @@
 import json
 import time
 from datetime import datetime
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
 from webapp.helpers import NOW, car_flags_sql, car_visible_sql, damaged_ad_sql, safe_float, safe_int, script_json
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
@@ -20,6 +20,35 @@ PER_PAGE = 50
 
 @bp.route("/vehicles")
 def vehicles_list():
+    return _vehicles_page(favorites_only=False)
+
+
+@bp.route("/favorites")
+def favorites_list():
+    """The cars marked with the star: the /vehicles list limited to them, newest favourite first."""
+    return _vehicles_page(favorites_only=True)
+
+
+@bp.route("/api/favorite", methods=["POST"])
+def api_favorite():
+    """Body {"vin", "on"}: add the car to the favourites or take it off. Returns {"favorite": bool}."""
+    data = request.get_json(silent=True) or {}
+    vin, on = str(data.get("vin") or "").strip(), bool(data.get("on"))
+    conn = get_db()
+    try:
+        if not conn.execute("SELECT 1 FROM vehicles WHERE vin = ?", (vin,)).fetchone():
+            return jsonify({"error": "Nie ma takiego auta"}), 404
+        if on:
+            conn.execute("INSERT OR IGNORE INTO favorites (vin) VALUES (?)", (vin,))
+        else:
+            conn.execute("DELETE FROM favorites WHERE vin = ?", (vin,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"favorite": on})
+
+
+def _vehicles_page(favorites_only: bool):
     conn   = get_db()
     q      = request.args.get("q", "").strip()
     make   = request.args.get("make", "")
@@ -27,10 +56,12 @@ def vehicles_list():
     region = request.args.get("region", "").strip()
     source = request.args.get("source", "")
     source = source if source in ("olx", "otomoto", "autoplac") else ""
-    sort   = request.args.get("sort", "last_seen")
+    sort   = request.args.get("sort", "fav_added" if favorites_only else "last_seen")
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
     wheres, params = [car_visible_sql()], []
+    if favorites_only:
+        wheres.append("v.vin IN (SELECT vin FROM favorites)")
     if q:
         wheres.append("(v.make LIKE ? OR v.model LIKE ? OR v.vin LIKE ? OR v.variant LIKE ?)")
         params += [f"%{q}%"] * 4
@@ -68,8 +99,9 @@ def vehicles_list():
         "power":      ("NULL", "v.power_hp DESC"),
         "obs":        (f"(SELECT COUNT(*) FROM listing_observations x WHERE {usable})", "sort_key DESC"),
         "price":      (f"(SELECT MIN(x.price_pln) FROM listing_observations x WHERE {usable})", "sort_key ASC NULLS LAST"),
+        "fav_added":  ("(SELECT f.created_at FROM favorites f WHERE f.vin = v.vin)", "sort_key DESC NULLS LAST, v.updated_at DESC"),
     }
-    sort_key, order_sql = sort_map.get(sort, sort_map["last_seen"])
+    sort_key, order_sql = sort_map.get(sort, sort_map["fav_added" if favorites_only else "last_seen"])
 
     total = conn.execute(f"SELECT COUNT(*) FROM vehicles v{where_sql}", params).fetchone()[0]
     pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
@@ -104,7 +136,8 @@ def vehicles_list():
         vehicles=vehicles, makes=[m["make"] for m in makes],
         q=q, selected_make=make, status=status, sort=sort,
         selected_region=region, regions=REGION_NAMES, source=source,
-        page=page, pages=pages, total=total)
+        page=page, pages=pages, total=total,
+        favorites_only=favorites_only, base_path="/favorites" if favorites_only else "/vehicles")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -516,6 +549,7 @@ def delete_vehicle(vin):
     conn.execute("DELETE FROM listing_observations WHERE vin=?", (vin,))
     conn.execute("DELETE FROM condition_reports WHERE vin=?", (vin,))
     conn.execute("DELETE FROM tags WHERE vin=?", (vin,))
+    conn.execute("DELETE FROM favorites WHERE vin=?", (vin,))
     conn.execute("DELETE FROM vin_correction_log WHERE old_vin=? OR new_vin=?", (vin, vin))
     conn.execute("DELETE FROM vehicles WHERE vin=?", (vin,))
     conn.commit()
