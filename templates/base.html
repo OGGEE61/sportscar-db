@@ -39,6 +39,7 @@
         {{ nav_item("/models", "bi-graph-up", "Modele", request.path.startswith("/models")) }}
         {{ nav_item("/vehicles", "bi-car-front", "Auta", request.path.startswith("/vehicle")) }}
         {{ nav_item("/deals", "bi-tag", "Okazje", request.path.startswith("/deals")) }}
+        {{ nav_item("/favorites", "bi-star", "Ulubione", request.path.startswith("/favorites")) }}
         {{ nav_item("/review", "bi-inbox", "Kolejka", request.path.startswith("/review")) }}
         {{ nav_item("/plates", "bi-camera", "Tablice", request.path.startswith("/plates"),
                     '<span id="badge-plates" class="badge rounded-pill bg-primary nav-count d-none"></span>') }}
@@ -53,9 +54,11 @@
         </li>
         {% if session.get('logged_in') %}
         <li class="nav-item">
-          <a class="nav-link nav-logout" href="/logout" title="Wyloguj">
-            <i class="bi bi-box-arrow-right"></i><span class="nav-label d-lg-none">Wyloguj</span>
-          </a>
+          <form method="post" action="/logout" class="d-inline">
+            <button type="submit" class="nav-link nav-logout btn btn-link" title="Wyloguj">
+              <i class="bi bi-box-arrow-right"></i><span class="nav-label d-lg-none">Wyloguj</span>
+            </button>
+          </form>
         </li>
         {% endif %}
       </ul>
@@ -95,6 +98,24 @@ document.addEventListener("input", e => {
   if (e.target.classList?.contains("plate-field")) applyPlateFilter(e.target);
 });
 document.addEventListener("DOMContentLoaded", () => document.querySelectorAll(".plate-field").forEach(applyPlateFilter));
+// Favourite star (templates/_car_flags.html): delegated, so it works in sections htmx loads later
+document.addEventListener("click", e => {
+  const btn = e.target.closest?.(".fav-toggle");
+  if (!btn) return;
+  e.preventDefault();
+  const on = btn.getAttribute("aria-pressed") !== "true";
+  fetch("/api/favorite", {method: "POST", headers: {"Content-Type": "application/json"},
+                          body: JSON.stringify({vin: btn.dataset.vin, on})})
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => document.querySelectorAll(".fav-toggle").forEach(b => {
+      if (b.dataset.vin !== btn.dataset.vin) return;   // the same car may be on the page twice
+      b.classList.toggle("is-fav", d.favorite);
+      b.setAttribute("aria-pressed", d.favorite ? "true" : "false");
+      b.title = d.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych";
+      b.firstElementChild.className = "bi " + (d.favorite ? "bi-star-fill" : "bi-star");
+    }))
+    .catch(() => alert("Nie udało się zapisać ulubionego. Spróbuj ponownie."));
+});
 // Navbar counters load after paint so no page waits on the database for them
 fetch('/api/badges').then(r => r.ok ? r.json() : null).then(d => {
   if (!d) return;

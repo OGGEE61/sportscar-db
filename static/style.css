@@ -115,6 +115,8 @@ body {
   font-weight: 600;
 }
 
+/* The logout control is a form button (POST), styled as the nav links around it */
+.app-navbar button.nav-logout { border: 0; background: none; text-decoration: none; }
 .app-navbar .nav-logout:hover {
   color: #dc2626 !important;
   background-color: #fef2f2 !important;
@@ -702,6 +704,14 @@ body {
 }
 .vin-block .vin-line .vin-code { margin-bottom: 0; }
 .vin-block a.vin-code:hover { color: #1d4ed8; text-decoration: underline; }
+
+/* Favourite star on the VIN line (templates/_car_flags.html) */
+.fav-toggle {
+  border: 0; background: none; padding: 0 2px; line-height: 1;
+  color: #94a3b8; font-size: 0.95rem; cursor: pointer;
+}
+.fav-toggle:hover { color: #f59e0b; }
+.fav-toggle.is-fav { color: #f59e0b; }
 
 /* Location cell (templates/_location.html) */
 .loc-place { font-size: 0.875rem; }

@@ -48,6 +48,12 @@
   </div>
   <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
 </div>
+{% if wrong_model %}
+<div class="alert alert-warning py-2">
+  <i class="bi bi-eye-slash me-1"></i>Auto ukryte jako błędnie przypisany model: <strong>{{ wrong_model }}</strong>.
+  <a href="#wrong-model" class="alert-link ms-1">Przywróć</a>
+</div>
+{% endif %}
 
 <div class="row g-4">
   <div class="col-lg-5">
@@ -599,6 +605,63 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
   </div>
 </div>
 {% endif %}
+
+<!-- Damage mark -->
+{% if damage_marks %}
+{% set active_marks = damage_marks | selectattr("dismissed", "equalto", 0) | list %}
+<div class="card mb-4 {{ 'border-danger' if active_marks else '' }}" id="damage-mark">
+  <div class="card-header">Oznaczenie „Uszkodzony”</div>
+  <div class="card-body">
+    <ul class="small mb-2 ps-3">
+      {% for m in damage_marks %}
+      <li>
+        {{ m.source }} {{ m.source_listing_id }}:
+        {% if (m.reason or '').startswith('text: ') %}z treści ogłoszenia: <em>„…{{ m.reason[6:] }}…”</em>
+        {% else %}ogłoszenie oznaczone na portalu jako uszkodzone{% endif %}
+        {% if m.dismissed %}<span class="badge bg-secondary ms-1">zdjęte</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/damage_mark">
+      {% if active_marks %}
+      <input type="hidden" name="dismissed" value="1">
+      <span class="small text-muted me-2">Uszkodzone auta nie liczą się do median i średnich cen.</span>
+      <button class="btn btn-outline-secondary btn-sm">To nie jest uszkodzone auto</button>
+      {% else %}
+      <input type="hidden" name="dismissed" value="0">
+      <button class="btn btn-outline-danger btn-sm">Przywróć oznaczenie</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Wrong model -->
+<div class="card mb-4 border-warning" id="wrong-model">
+  <div class="card-header bg-warning-subtle">To nie ten model</div>
+  <div class="card-body">
+    {% if wrong_model %}
+    <p class="small mb-2">Auto jest ukryte jako błędnie przypisane: <strong>{{ wrong_model }}</strong>.</p>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/restore_model">
+      <button class="btn btn-outline-secondary btn-sm">Przywróć auto</button>
+    </form>
+    {% else %}
+    <p class="small text-muted mb-2">
+      Gdy to auto nie jest modelem, pod który trafiło (np. M8 wystawione jako M5). Auto znika z list i statystyk,
+      jego ogłoszenia są odrzucane, a nowe z tym VIN-em nie wejdą do Kolejki. Nic nie jest kasowane: można to cofnąć.
+    </p>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/wrong_model" class="row g-2 align-items-center">
+      <div class="col-md-6">
+        <input name="reason" class="form-control form-control-sm" maxlength="200" required
+               placeholder="Czym jest naprawdę, np. „M8 Gran Coupé, nie M5”">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-warning btn-sm">Ukryj auto</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
 
 <!-- Delete vehicle -->
 <div class="card mb-4 border-danger">

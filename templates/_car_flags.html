@@ -48,7 +48,7 @@
   {%- endif -%}
 
   {%- if c.flag_sold_damaged -%}
-  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone">Uszkodzony</span>
+  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone albo opisane jako uszkodzone w treści">Uszkodzony</span>
   {%- endif -%}
   {%- if c.flag_damage_history -%}
   <span class="badge flag flag-bad" title="Szkoda w historii auta (raport VIN, aukcja, oględziny)"><i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody{% if c.flag_damage_country %}: {{ c.flag_damage_country }}{% endif %}</span>
@@ -60,12 +60,19 @@
 {%- endmacro %}
 
 
+{# The star that adds a car to the favourites (/favorites) or takes it off; base.html handles the click #}
+{% macro fav_star(vin, on) -%}
+<button type="button" class="fav-toggle{% if on %} is-fav{% endif %}" data-vin="{{ vin }}" aria-pressed="{{ 'true' if on else 'false' }}"
+        title="{{ 'Usuń z ulubionych' if on else 'Dodaj do ulubionych' }}"><i class="bi {{ 'bi-star-fill' if on else 'bi-star' }}"></i></button>
+{%- endmacro %}
+
 {% macro vin_block(c, vin, link=True, full=True) -%}
 <div class="vin-block">
   <div class="vin-line">
     {%- if link %}<a href="/vehicle/{{ vin }}" class="vin-code">{{ vin if full else vin[:12] ~ '…' }}</a>
     {%- else %}<code class="vin-code">{{ vin }}</code>{% endif %}
     {{- plate_badge(c) }}
+    {{- fav_star(vin, c.flag_favorite) }}
   </div>
   <div>{{ car_flags(c, with_plate=False) }}</div>
 </div>

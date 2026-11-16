@@ -151,3 +151,51 @@ def is_other_mercedes_chassis(vin, chassis) -> bool:
         return True
     code = vin[3:6]
     return len(code) == 3 and code.isdigit() and code != chassis
+
+
+# ── Damage stated in the ad's text ───────────────────────────────────────────
+# Sellers often leave the portal's "damaged" box unticked and say it in the title or description.
+# Only wording that offers the car in a damaged state counts; a repaired past damage ("miał
+# uszkodzony przód, wymieniono…") is history, not the car's state, and is left alone.
+_TAGS = re.compile(r"<[^>]+>")
+_NOT_DAMAGED = r"(?:nie|bez|brak|żadn\w+|nigdy|nie\s*był\w*)\s+(?:\w+\s+){0,2}"
+# Offers of cars standing at US insurance auctions (import brokers' templates)
+_DAMAGE_AUCTION = re.compile(
+    r"uszkodzenie auta\s*:|rodzaj szkody\s*:|dokument\s*:\s*salvage|salvage (?:title|certificate)|numer lota|"
+    r"run\s*&\s*drive|primary damage|\bcopart\b|\biaai\b|licytacji firmy ubezpieczeniowej|"
+    r"szacunkowy koszt zakupu wraz z transportem")
+_DAMAGE_TITLE = re.compile(r"(?<!nie)uszkodz|(?<!nie)rozbit|po wypadku|po kolizji|do naprawy|do remontu|powypadk|\bdamaged\b")
+_DAMAGE_OFFER = re.compile(
+    r"(?:sprzedam|sprzedaż|oferuję|na sprzedaż)[^.!?]{0,60}uszkodzon|"
+    r"(?:auto|samoch[oó]d|pojazd|egzemplarz)\s+(?:jest\s+)?(?:mocno\s+|lekko\s+)?uszkodzon|"
+    r"(?:auto|samoch[oó]d|pojazd)\s+do\s+(?:naprawy|remontu|odbudowy)|"
+    r"do naprawy (?:blacharskiej|lakierniczej|tył|przód|bok|zderzak|lamp)|"
+    r"(?:lekko|mocno)\s+uszkodzon|uszkodzon[yae]\s+(?:lew[ya]|praw[ya]|przód|tył|bok|podwozie)|"
+    r"uszkodzenia\s+(?:widoczne|jak)\s+na\s+zdj|w\s+stanie\s+uszkodzonym|"
+    r"po\s+(?:kolizji|wypadku|stłuczce),?\s+do\s+naprawy|uwaga\s*:?\s*pojazd uszkodzon")
+# The same sentence says the damage is in the past or was repaired
+_DAMAGE_PAST = re.compile(
+    r"napraw(?:i|ion|a\b|ie\b|ą\b)|wymieni|odbudow|usunięt|zrobion|miał\w*\s|był\w*\s|został\w*\s|"
+    r"kupion\w*\s|sprowadzon\w*\s+(?:\w+\s+){0,6}jako|kilka lat temu|w przeszłości|histori")
+
+
+def damage_in_text(title, description):
+    """The wording that offers the car as damaged, or None.
+
+    For ads whose seller did not tick the portal's "damaged" box. Returns a short quote (shown
+    with the "Uszkodzony" marker), so a wrong match can be seen and dismissed on the car's page.
+    """
+    title = " ".join(_TAGS.sub(" ", title or "").lower().split())
+    text = " ".join(_TAGS.sub(" ", description or "").lower().replace("&amp;", "&").split())
+    if (m := _DAMAGE_TITLE.search(title)) and not re.search(_NOT_DAMAGED + r"(?:uszkodz|rozbit)", title):
+        return title[max(0, m.start() - 30):m.end() + 30].strip()
+    if m := _DAMAGE_AUCTION.search(text):
+        return text[max(0, m.start() - 20):m.end() + 60].strip()
+    for sentence in re.split(r"(?<=[.!?])\s+|\s[-–•*]\s", text):
+        m = _DAMAGE_OFFER.search(sentence)
+        if not m:
+            continue
+        if re.search(_NOT_DAMAGED + r"uszkodz", sentence) or _DAMAGE_PAST.search(sentence.replace("do naprawy", "")):
+            continue
+        return sentence[max(0, m.start() - 40):m.end() + 60].strip()
+    return None

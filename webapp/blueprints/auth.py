@@ -35,7 +35,7 @@ def login():
     return render_template("login.html")
 
 
-@bp.route("/logout")
+@bp.route("/logout", methods=["POST"])   # not a GET: a link or an image on another page could log the user out
 def logout():
     session.pop("logged_in", None)
     return redirect(url_for("auth.login"))

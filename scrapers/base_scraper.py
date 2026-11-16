@@ -36,7 +36,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from validation import OVERSEAS_ORIGINS, VIN_RE, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
+from validation import OVERSEAS_ORIGINS, VIN_RE, damage_in_text, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
 
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -1489,7 +1489,9 @@ def _otomoto_searches() -> dict:
 
 def _still_overseas(detail: dict) -> bool:
     """A damaged car from the USA or Canada: sold before it is shipped, so no Polish plate yet."""
-    return bool(detail.get("damaged")) and detail.get("origin_market") in OVERSEAS_ORIGINS
+    if detail.get("origin_market") not in OVERSEAS_ORIGINS:
+        return False
+    return bool(detail.get("damaged") or damage_in_text(detail.get("title"), detail.get("raw_description")))
 
 
 def _dealer_stock(detail: dict) -> bool:

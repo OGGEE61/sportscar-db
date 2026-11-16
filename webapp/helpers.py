@@ -54,9 +54,10 @@ except OSError:
 
 
 def damaged_ad_sql(alias):
-    """SQL condition: this observation's ad is marked as damaged on its site."""
+    """SQL condition: this observation's ad is damaged: marked so on its site, or offered as
+    damaged in its text (validation.damage_in_text), and not dismissed on the car's page."""
     return (f"EXISTS (SELECT 1 FROM damaged_listings d WHERE d.source = {alias}.source "
-            f"AND d.source_listing_id = {alias}.source_listing_id)")
+            f"AND d.source_listing_id = {alias}.source_listing_id AND d.dismissed = 0)")
 
 
 def damage_history_sql(alias="v"):
@@ -71,7 +72,7 @@ def overseas_damaged_listing_sql(alias):
     i.e. a car not yet brought to Poland. No plate to look for."""
     origins = ", ".join(f"'{o}'" for o in OVERSEAS_ORIGINS)
     return (f"(COALESCE({alias}.origin_market, '') IN ({origins}) AND EXISTS (SELECT 1 FROM damaged_listings d "
-            f"WHERE d.source = {alias}.source AND d.source_listing_id = {alias}.source_listing_id))")
+            f"WHERE d.source = {alias}.source AND d.source_listing_id = {alias}.source_listing_id AND d.dismissed = 0))")
 
 
 def is_abroad(c) -> bool:
@@ -86,12 +87,19 @@ def is_abroad(c) -> bool:
     return bool((flag("flag_origin") or "") in OVERSEAS_ORIGINS and not flag("flag_plate") and flag("flag_sold_damaged"))
 
 
+# A car filed under a model it is not (an M8 sold as an M5, a 2 Series as an M2), hidden from the
+# car's page: its sightings get this excluded_reason and its listings are rejected with a note
+# that starts with WRONG_MODEL_NOTE. The VIN stays known, so a new ad of it is rejected on arrival.
+WRONG_MODEL = "wrong_model"
+WRONG_MODEL_NOTE = "Nie ten model: "
+
+
 PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
 
 
 def car_flags_sql(alias="v"):
     """SELECT columns of the markers every list shows next to a car (templates/_car_flags.html):
-    flag_vin_status, flag_plate, flag_origin, flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
+    flag_vin_status, flag_plate, flag_origin, flag_favorite (the star), flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
     flag_damage_country,
     flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km,
     flag_ad ('active' while an ad is up, else when the last one disappeared; NULL without ads) and
@@ -104,6 +112,7 @@ def car_flags_sql(alias="v"):
     return f"""{a}.vin_status AS flag_vin_status,
         {a}.registration_plate AS flag_plate,
         {a}.origin_market AS flag_origin,
+        EXISTS (SELECT 1 FROM favorites ff WHERE ff.vin = {a}.vin) AS flag_favorite,
         EXISTS (SELECT 1 FROM tags ft WHERE ft.vin = {a}.vin AND ft.tag IN ({tags})) AS flag_plate_from_photo,
         EXISTS (SELECT 1 FROM listing_observations fx WHERE fx.vin = {a}.vin AND {damaged_ad_sql("fx")}) AS flag_sold_damaged,
         {damage_history_sql(a)} AS flag_damage_history,
