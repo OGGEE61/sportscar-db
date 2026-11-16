@@ -115,6 +115,8 @@ body {
   font-weight: 600;
 }
 
+/* The logout control is a form button (POST), styled as the nav links around it */
+.app-navbar button.nav-logout { border: 0; background: none; text-decoration: none; }
 .app-navbar .nav-logout:hover {
   color: #dc2626 !important;
   background-color: #fef2f2 !important;
