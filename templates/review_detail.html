@@ -129,6 +129,9 @@
         {% elif listing.vin_confidence == 'found_in_description' %}Found in description text (verify manually)
         {% endif %}
       </span>
+      {% elif listing.status == 'pending' and listing.source == 'otomoto' and listing.vin_confidence == 'found_in_schema' %}
+      <span><i class="bi bi-hourglass-split me-1"></i>VIN jest w ogłoszeniu, ukryty za „Pokaż VIN”. Czeka na odsłonięcie
+        (do 45 dziennie); do tego czasu przyciski odrzucania pomijają to ogłoszenie.</span>
       {% else %}
       <span class="text-muted">No VIN detected — will create placeholder on approve</span>
       {% endif %}

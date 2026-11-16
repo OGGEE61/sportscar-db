@@ -1845,6 +1845,18 @@ class TestRevealEndpoints(ScrapingTestCase):
         conn.close()
         self.assertEqual(status, {"waiting": "rejected", "hasvin2": "pending"})
 
+    def test_queue_screen_tells_waiting_listings_from_those_without_a_vin(self):
+        waiting = self.add("waiting")
+        self.add("novin", vc="none")
+        html = self.client.get("/review").get_data(as_text=True)
+        self.assertEqual(html.count("VIN za „Pokaż VIN”</span>"), 1)
+        self.assertEqual(html.count(">NO VIN</span>"), 1)
+        self.assertIn("ukryty za „Pokaż VIN”", self.client.get(f"/review/{waiting}").get_data(as_text=True))
+        # Once Otomoto says there is none, it reads as any listing without a VIN
+        self.client.post("/api/reveal_result", headers=TOKEN, json={"id": waiting, "no_vin": True})
+        html = self.client.get("/review").get_data(as_text=True)
+        self.assertEqual((html.count("VIN za „Pokaż VIN”</span>"), html.count(">NO VIN</span>")), (0, 2))
+
     def test_reveal_job_reports_an_ad_without_a_vin_but_not_a_failed_request(self):
         import importlib
         job = importlib.import_module("scripts.maintenance.reveal_pending_vins")
