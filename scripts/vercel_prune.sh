@@ -30,4 +30,8 @@ for d in ds:
 echo "Will delete $(wc -l < "$LIST") deployments of $PROJECT"
 cat "$LIST"
 [ "$YES" = "--yes" ] || { echo "Dry run. Re-run with --yes to delete."; exit 0; }
-while read -r url _; do npx vercel remove "$url" --safe --yes || echo "FAILED: $url (alias attached? remove by hand)"; done < "$LIST"
+# </dev/null: npx would otherwise read the rest of the list from stdin, and only the first
+# deployment would ever be removed
+while read -r url _; do
+  npx vercel remove "$url" --safe --yes < /dev/null || echo "FAILED: $url (alias attached? remove by hand)"
+done < "$LIST"
