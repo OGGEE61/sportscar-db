@@ -79,12 +79,16 @@ def logs():
         f"SELECT *, {src_expr} AS src FROM scraper_logs{where} ORDER BY run_date DESC LIMIT ? OFFSET ?",
         (*params, LOGS_PER_PAGE, (page - 1) * LOGS_PER_PAGE),
     ).fetchall()
+    try:
+        locks = conn.execute("SELECT locked_at, address FROM login_locks ORDER BY id DESC LIMIT 10").fetchall()
+    except Exception:  # database not migrated yet
+        locks = []
     # Mark as read
     conn.execute("UPDATE scraper_logs SET is_read = 1 WHERE is_read = 0")
     conn.commit()
     conn.close()
     invalidate_notifications()  # badge should drop to 0 right away
-    return render_template("logs.html", logs=logs_data, page=page, pages=pages, source=source)
+    return render_template("logs.html", logs=logs_data, locks=locks, page=page, pages=pages, source=source)
 
 _CACHE = {}
 _CACHE_TTL = 300  # seconds; dashboard aggregates may lag the scrapers by up to 5 minutes (each miss reads ~100k rows)

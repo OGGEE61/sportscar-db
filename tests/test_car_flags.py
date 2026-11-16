@@ -127,6 +127,48 @@ class TestSameFlagsEverywhere(unittest.TestCase):
         self.assertEqual(self.client.post("/logout").status_code, 302)
         self.assertEqual(self.client.get("/vehicles").status_code, 302)    # back to the login page
 
+    def test_pin_gate(self):
+        os.environ["ADMIN_PASSWORD"] = "48151623"
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)                 # pages need the PIN
+        self.assertEqual(self.client.get("/api/dashboard/recent").status_code, 401)     # and so does the data
+        self.assertEqual(self.client.post("/review/bulk_reject").status_code, 302)      # and every action
+        self.assertIn("Podaj PIN", self.client.get("/login").get_data(as_text=True))
+        wrong = self.client.post("/login", data={"password": "0000"})
+        self.assertIn("Nieprawidłowy PIN. Pozostało prób: 9", wrong.get_data(as_text=True))
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)
+        right = self.client.post("/login", data={"password": "48151623"})
+        self.assertEqual(right.status_code, 302)
+        self.assertIn("Expires=", right.headers["Set-Cookie"])       # stays logged in after the browser closes
+        self.assertEqual(self.client.get("/vehicles").status_code, 200)
+
+    def test_ten_wrong_pins_lock_the_login(self):
+        os.environ["ADMIN_PASSWORD"] = "48151623"
+        for n in range(9):
+            page = self.client.post("/login", data={"password": "0000"})
+            self.assertIn(f"Pozostało prób: {9 - n}", page.get_data(as_text=True))
+        self.assertEqual(self.client.post("/login", data={"password": "0000"}, headers={"X-Forwarded-For": "203.0.113.7"}).status_code, 429)
+        # Locked: the right PIN does not get in
+        self.assertEqual(self.client.post("/login", data={"password": "48151623"}).status_code, 429)
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)
+
+        conn = db.get_db()      # the hour passed
+        conn.execute("UPDATE login_guard SET locked_until = '2020-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.client.post("/login", data={"password": "48151623"}).status_code, 302)
+        logs = self.client.get("/logs").get_data(as_text=True)      # the owner sees the lock
+        self.assertIn("Blokady logowania", logs)
+        self.assertIn("203.0.113.7", logs)
+
+    def test_right_pin_resets_the_count(self):
+        os.environ["ADMIN_PASSWORD"] = "48151623"
+        for _ in range(9):
+            self.client.post("/login", data={"password": "0000"})
+        self.client.post("/login", data={"password": "48151623"})
+        self.client.post("/logout")
+        self.assertIn("Pozostało prób: 9", self.client.post("/login", data={"password": "0000"}).get_data(as_text=True))
+        self.assertNotIn("Blokady logowania", self.client.get("/login").get_data(as_text=True))
+
     def test_plate_on_the_vin_line_markers_under_it(self):
         html = self.flags_on("/vehicles")
         block = html[html.index(f'href="/vehicle/{CRASHED}" class="vin-code"'):]

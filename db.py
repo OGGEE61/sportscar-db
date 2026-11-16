@@ -754,6 +754,24 @@ def init_db():
                            (r["source"], r["source_listing_id"], "text: " + quote[:200]))
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(23,'damage_from_text')")
 
+    # Migration v24: wrong PINs in a row and the lock they lead to (webapp/blueprints/auth.py);
+    # login_locks keeps each lock for the /logs page.
+    # One row for the whole app, not per address: a guesser can change addresses.
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS login_guard (
+        id           INTEGER PRIMARY KEY CHECK (id = 1),
+        failures     INTEGER NOT NULL DEFAULT 0,
+        locked_until TEXT
+    )""")
+    db.execute("INSERT OR IGNORE INTO login_guard (id) VALUES (1)")
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS login_locks (
+        id        INTEGER PRIMARY KEY,
+        locked_at TEXT NOT NULL DEFAULT (datetime('now')),
+        address   TEXT
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(24,'login_guard')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
