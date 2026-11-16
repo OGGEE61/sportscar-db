@@ -8,7 +8,9 @@ only on those, at the scrapers' pace and within the same limits:
      then on the plate is no longer in the ad page). An approved listing's car gets the plate too.
 Newest first. The listings come from the app (/api/reveal_queue) and the results go back to it
 (/api/reveal_result), which stores a VIN only if it passes is_plausible_vin and a plate only if it
-passes is_valid_registration_plate. Nothing is approved, rejected or deleted.
+passes is_valid_registration_plate. An ad that answers without a usable VIN is reported too, so it
+stops waiting for a reveal (the review queue can then reject it as a listing without a VIN).
+Nothing is approved, rejected or deleted.
 
 Shares with the scrapes: the per-day limit, the pause after an HTTP 403 (no request at all is sent
 while it lasts) and the list of ads that recently answered without a VIN or plate.
@@ -85,8 +87,14 @@ def fill_vins(items: list, session) -> tuple:
         elif vin:
             outcome = f"VIN {vin} not stored (rejected by the validator)"
             base_scraper.mark_none("vin", it["source_listing_id"])
+            send_result(it["id"], no_vin=True)
+        elif recently_asked("vin", it["source_listing_id"]):
+            # Otomoto answered, without a usable VIN (reveal_vin called mark_none): tell the app,
+            # so the listing stops waiting for a reveal. A failed request or a block is not this.
+            outcome = "no VIN in the ad"
+            send_result(it["id"], no_vin=True)
         else:
-            outcome = "no VIN"
+            outcome = "request failed"
         print(f"  [vin {i}/{len(items)}] {it['variant']} {it['source_listing_id']}: {outcome}", flush=True)
     return found, None
 

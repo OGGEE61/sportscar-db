@@ -1394,7 +1394,7 @@ class TestNewModelRules(unittest.TestCase):
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
         self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
 
-    def test_w124_keeps_3_litre_diesels_and_six_and_eight_cylinder_petrols(self):
+    def test_w124_keeps_3_litre_diesels_and_petrols_from_the_320(self):
         from otomoto.mercedes_e_w124 import CONFIG
         from olx.mercedes_e_w124 import CONFIG as OLX
         from autoplac.mercedes_e_w124 import CONFIG as AUTOPLAC
@@ -1404,16 +1404,19 @@ class TestNewModelRules(unittest.TestCase):
             self.assertTrue(ok(cfg, fuel_type="diesel", engine_cc=2996))          # 300D
             self.assertFalse(ok(cfg, fuel_type="diesel", engine_cc=2497))         # 250D
             self.assertFalse(ok(cfg, fuel_type="diesel", engine_cc=1997))         # 200D
-            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=2597))          # 260E, the smallest six
-            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199))          # E320
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199))          # 320E / E320, the smallest wanted
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3606))          # E36 AMG
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=4196))          # 400E / E420
             self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=4973))          # 500E
-            self.assertTrue(ok(cfg, fuel_type="petrol+lpg", engine_cc=2960))      # 300E on LPG
+            self.assertTrue(ok(cfg, fuel_type="petrol+lpg", engine_cc=3199))      # E320 on LPG
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2960))         # 300E
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2799))         # E280
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2597))         # 260E
             self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2298))         # 230E
-            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=1998))         # E200
             self.assertTrue(ok(cfg, fuel_type="petrol"))                           # engine size unknown
-            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=2960, vin="WDB1240301A123456"))
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB1240321A123456"))
             self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB2100551A123456"))   # a W210
-        self.assertFalse(OLX.validator({"fuel_type": "petrol", "engine_cc": 2960}))   # no year: not a car ad
+        self.assertFalse(OLX.validator({"fuel_type": "petrol", "engine_cc": 3199}))   # no year: not a car ad
         self.assertEqual(len(CONFIG.list_url), 4)                                  # 2 ways it is filed x diesel, petrol
         for url in CONFIG.list_url:
             self.assertIn("{page}", url)
@@ -1820,6 +1823,41 @@ class TestRevealEndpoints(ScrapingTestCase):
         self.assertFalse(res.get_json()["vin"])
         self.assertIsNone(self.row(bad)["vin"])
 
+    def test_an_ad_without_a_vin_stops_waiting_for_a_reveal(self):
+        import webapp.blueprints.review as review
+        waiting, has_vin = self.add("waiting"), self.add("hasvin2", vin="WBA5U91010FK21968")
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": waiting, "no_vin": True})
+        self.assertEqual(res.get_json(), {"vin": False, "plate": False, "no_vin": True})
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": has_vin, "no_vin": True})
+        self.assertFalse(res.get_json()["no_vin"])                       # a listing with a VIN is left alone
+        conn = db.get_db()
+        rows = {r["source_listing_id"]: dict(r) for r in conn.execute("SELECT * FROM pending_listings")}
+        conn.close()
+        self.assertEqual(rows["waiting"]["vin_confidence"], "none")
+        self.assertEqual(rows["hasvin2"]["vin_confidence"], "found_in_schema")
+        self.assertFalse(review.vin_awaits_reveal(rows["waiting"]))
+        # It left the reveal queue, and "reject without VIN" now takes it
+        q = self.client.post("/api/reveal_queue", headers=TOKEN, json={"plates_since": "2026-11-05"}).get_json()
+        self.assertNotIn("waiting", [it["source_listing_id"] for it in q["vins"]])
+        self.client.post("/review/bulk_reject_novin")
+        conn = db.get_db()
+        status = {r["source_listing_id"]: r["status"] for r in conn.execute("SELECT * FROM pending_listings")}
+        conn.close()
+        self.assertEqual(status, {"waiting": "rejected", "hasvin2": "pending"})
+
+    def test_reveal_job_reports_an_ad_without_a_vin_but_not_a_failed_request(self):
+        import importlib
+        job = importlib.import_module("scripts.maintenance.reveal_pending_vins")
+        sent = []
+        items = [{"id": 1, "source_listing_id": "none", "variant": "x"}, {"id": 2, "source_listing_id": "failed", "variant": "x"}]
+        with mock.patch.object(job, "reveal_skip_reason", return_value=None), \
+             mock.patch.object(job, "reveal_vin", return_value=None), \
+             mock.patch.object(job, "recently_asked", side_effect=lambda kind, sid: sid == "none"), \
+             mock.patch.object(job, "send_result", side_effect=lambda lid, **kw: sent.append((lid, kw)) or {}):
+            found, stop = job.fill_vins(items, mock.Mock())
+        self.assertEqual((found, stop), (0, None))
+        self.assertEqual(sent, [(1, {"no_vin": True})])
+
     def test_plate_goes_to_the_approved_car_too(self):
         self.add_active_listing("ap", "WBS8M9C50J5K99001", "F80")
         conn = db.get_db()
@@ -1872,10 +1910,14 @@ class TestRevealJob(RevealStateMixin, unittest.TestCase):
 
     def test_vins_are_stored_and_an_invalid_one_is_remembered(self):
         with mock.patch.object(self.job, "reveal_vin", side_effect=["WBA5U91010FK21968", None, "WDD15666600000000"]), \
-             mock.patch.object(self.job, "send_result", side_effect=[{"vin": True}, {"vin": False}]) as send:
+             mock.patch.object(self.job, "send_result", side_effect=[{"vin": True}, {"vin": False}, {"no_vin": True}]) as send:
             self.assertEqual(self.job.fill_vins(self.items(3), self.session), (1, None))
         self.assertEqual(send.call_args_list[0], mock.call(0, vin="WBA5U91010FK21968"))
         self.assertTrue(base_scraper.recently_asked("vin", "1002"))
+        # The second ad's request failed (nothing sent); the third's VIN was refused, so the app
+        # is told the ad has no usable VIN
+        self.assertEqual(send.call_args_list[2], mock.call(2, no_vin=True))
+        self.assertEqual(send.call_count, 3)
 
     def test_a_block_stops_the_batch(self):
         def blocked(*a):

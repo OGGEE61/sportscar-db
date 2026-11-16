@@ -308,11 +308,12 @@ def api_reveal_queue():
 def api_reveal_result():
     """Store a revealed VIN and/or plate on a pending listing (see /api/reveal_queue).
 
-    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both).
+    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both), or
+    {"id", "no_vin": true} when Otomoto answered that the ad has no VIN to show.
     Only fills what is empty: a VIN only on a pending listing and only if is_plausible_vin;
     a plate only if is_valid_registration_plate and not one the reviewer rejected for this VIN.
     An approved listing's car gets the plate too, if it has none.
-    Returns {"vin": bool, "plate": bool}: whether each was stored.
+    Returns {"vin": bool, "plate": bool}: whether each was stored (plus "no_vin": bool when sent).
     """
     if err := check_api_token(): return err
     p = request.get_json(force=True, silent=True) or {}
@@ -334,6 +335,13 @@ def api_reveal_result():
         conn.execute("UPDATE pending_listings SET vin = ? WHERE id = ? AND COALESCE(vin, '') = ''",
                      (vin, listing_id))
         stored["vin"] = True
+    # Otomoto answered that this ad has no VIN to show (none, or one the seller masked): the
+    # listing no longer waits for a reveal, so the job stops asking and the review queue's
+    # "reject without VIN" takes it like any other listing without a VIN.
+    if p.get("no_vin") and not vin:
+        cur = conn.execute("UPDATE pending_listings SET vin_confidence = 'none' WHERE id = ? AND status = 'pending' "
+                           "AND vin_confidence = 'found_in_schema' AND COALESCE(TRIM(vin), '') = ''", (listing_id,))
+        stored["no_vin"] = cur.rowcount > 0
     car_vin = row["vin"] or (vin if stored["vin"] else "")
     if plate and car_vin and conn.execute(
             "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
