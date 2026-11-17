@@ -201,6 +201,37 @@ def parse_price(text: str) -> Optional[int]:
         return None
 
 
+_NBP_RATES: dict = {}
+
+
+def pln_rate(currency: str) -> Optional[float]:
+    """PLN per 1 unit of the currency (NBP average rate), asked once per process; None if unknown."""
+    cur = (currency or "PLN").upper()
+    if cur == "PLN":
+        return 1.0
+    if cur not in _NBP_RATES:
+        rate = None
+        try:
+            r = requests.get(f"https://api.nbp.pl/api/exchangerates/rates/a/{cur.lower()}/?format=json",
+                             timeout=15)
+            if r.status_code == 200:
+                rate = float(r.json()["rates"][0]["mid"])
+        except Exception:
+            pass
+        _NBP_RATES[cur] = rate
+    return _NBP_RATES[cur]
+
+
+def price_in_pln(amount: Optional[int], currency: Optional[str]) -> tuple:
+    """(price in PLN, price in EUR) of an ad priced in `currency`. A price in a foreign currency is
+    converted, never stored as if it were zloty: without a rate the PLN price stays empty."""
+    cur = (currency or "PLN").upper()
+    if not amount or cur == "PLN":
+        return amount, None
+    rate = pln_rate(cur)
+    return (round(amount * rate) if rate else None), (amount if cur == "EUR" else None)
+
+
 def load_cookies() -> dict:
     """Load cookies from otomoto_cookies.json.
 
@@ -1226,6 +1257,7 @@ def parse_detail(html: str, url: str) -> dict:
             "photo_urls":              photo_urls,
             "raw_description":         description_text,
             "price_from_detail":       price_from_detail,
+            "price_currency":          (advert.get("price") or {}).get("currency"),
             "location_from_detail":    location_from_detail,
             "origin_market":           origin_market,
         }
@@ -1790,7 +1822,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                                 print(f"    Plate (api):  {plate}")
     
                 photo         = detail.get("photo_url") or thumbnail
-                final_price   = detail.get("price_from_detail") or price_pln
+                final_price, price_eur = price_in_pln(detail.get("price_from_detail"),
+                                                      detail.get("price_currency"))
+                final_price   = final_price or (price_pln if not detail.get("price_currency") else None)
                 final_loc     = detail.get("location_from_detail") or location_city
     
                 # Market extraction from VIN if not already set by description
@@ -1825,6 +1859,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "color_ext":         detail.get("color_ext"),
                     "damaged":           bool(detail.get("damaged")),
                     "price_pln":         final_price,
+                    "price_eur":         price_eur,
                     "mileage_km":        detail.get("mileage_km"),
                     "location_city":     final_loc,
                     "photos":            detail.get("photo_urls") or ([photo] if photo else []),
