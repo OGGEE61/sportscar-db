@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, jsonify, make_response, redirect, rend
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
 from webapp.services.stored_cache import stored
-from webapp.helpers import (FUELS, car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, engine_filter,
+from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, engine_filter,
                             is_abroad, script_json, trend_line)
 from webapp.services.d1_usage import READS_PER_DAY, rows_read_today
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
@@ -348,7 +348,7 @@ def model_analytics():
     """
     rule = current_model['where']
     # Fuel and engine size chosen on the page: every number below (statistics, charts, table) follows
-    fuel, l_from, l_to, engine_conds, engine_params = engine_filter(request.args)
+    fuel, cc_from, cc_to, engine_conds, engine_params = engine_filter(request.args)
     extra = "".join(f" AND {c}" for c in engine_conds)
     try:
         rows = conn.execute(
@@ -441,7 +441,7 @@ def model_analytics():
         "model_analytics.html",
         models=STANDARD_MODELS,
         selected_model=current_model,
-        fuel=fuel, l_from=l_from, l_to=l_to, fuels=FUELS,
+        fuel=fuel, cc_from=cc_from, cc_to=cc_to, fuels=FUELS, cc_min=CC_MIN, cc_max=CC_MAX, cc_step=CC_STEP,
         stats=stats,
         vehicles=vehicles,
         scatter_data=script_json(scatter_data),

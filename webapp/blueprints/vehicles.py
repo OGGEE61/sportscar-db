@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import (FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, car_visible_sql, damaged_ad_sql,
+from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, car_visible_sql, damaged_ad_sql,
                             engine_filter, safe_float, safe_int, script_json)
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services.photos import store_photo
@@ -60,7 +60,7 @@ def _vehicles_page(favorites_only: bool):
     sort   = request.args.get("sort", "fav_added" if favorites_only else "last_seen")
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
-    fuel, l_from, l_to, engine_conds, engine_params = engine_filter(request.args)
+    fuel, cc_from, cc_to, engine_conds, engine_params = engine_filter(request.args)
     wheres, params = [car_visible_sql(), *engine_conds], [*engine_params]
     if favorites_only:
         wheres.append("v.vin IN (SELECT vin FROM favorites)")
@@ -138,7 +138,7 @@ def _vehicles_page(favorites_only: bool):
         vehicles=vehicles, makes=[m["make"] for m in makes],
         q=q, selected_make=make, status=status, sort=sort,
         selected_region=region, regions=REGION_NAMES, source=source,
-        fuel=fuel, l_from=l_from, l_to=l_to, fuels=FUELS,
+        fuel=fuel, cc_from=cc_from, cc_to=cc_to, fuels=FUELS, cc_min=CC_MIN, cc_max=CC_MAX, cc_step=CC_STEP,
         page=page, pages=pages, total=total,
         favorites_only=favorites_only, base_path="/favorites" if favorites_only else "/vehicles")
 

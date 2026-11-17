@@ -99,10 +99,10 @@
 <!-- Fuel and engine size: the whole page (statistics, charts, table) is recalculated -->
 <form class="row g-2 mb-4 align-items-center" method="get" action="/models">
   <input type="hidden" name="model" value="{{ selected_model.id }}">
-  {{ engine_fields(fuel, l_from, l_to, fuels, "col-4 col-md-2") }}
+  {{ engine_fields(fuel, cc_from, cc_to, fuels, "col-6 col-md-2", "col-6 col-md-3", cc_min, cc_max, cc_step) }}
   <div class="col-12 col-md-auto d-flex gap-2">
     <button class="btn btn-primary"><i class="bi bi-funnel"></i> Filtruj</button>
-    {% if fuel or l_from is not none or l_to is not none %}
+    {% if fuel or cc_from is not none or cc_to is not none %}
     <a href="/models?model={{ selected_model.id }}" class="btn btn-outline-secondary">Wyczyść</a>
     {% endif %}
   </div>
