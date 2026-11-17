@@ -160,3 +160,36 @@ def trend_line(points):
     at = lambda x: max(0, round(mean_y + slope * (x - mean_x)))
     lo, hi = min(x for x, _ in points), max(x for x, _ in points)
     return [{"x": lo, "y": at(lo)}, {"x": hi, "y": at(hi)}]
+
+
+# Fuel and engine size filters, shared by /vehicles and /models (fuel_type is stored as these keys)
+FUELS = {"petrol": "Benzyna", "diesel": "Diesel", "hybrid": "Hybryda", "lpg": "LPG", "electric": "Elektryczny"}
+
+
+def _litres(text):
+    """"3", "3.0" or "3,0" -> 3.0; anything else (or negative) -> None."""
+    try:
+        value = float(str(text or "").strip().replace(",", "."))
+    except ValueError:
+        return None
+    return value if 0 < value < 20 else None
+
+
+def engine_filter(args):
+    """The fuel and engine size (litres, from / to) chosen in the query string.
+
+    Returns (fuel, litres_from, litres_to, sql_conditions, params). Engine size is compared at
+    the precision an ad shows it, 0.1 l, so a 2,987 cm3 engine passes "from 3.0" (it is a 3.0).
+    A car without the data does not pass a filter on it."""
+    fuel = args.get("fuel", "")
+    fuel = fuel if fuel in FUELS else ""
+    l_from, l_to = _litres(args.get("l_from")), _litres(args.get("l_to"))
+    conds, params = [], []
+    if fuel:
+        conds.append("v.fuel_type = ?")
+        params.append(fuel)
+    for bound, op in ((l_from, ">="), (l_to, "<=")):
+        if bound is not None:
+            conds.append(f"v.engine_cc IS NOT NULL AND CAST(v.engine_cc / 100.0 + 0.5 AS INTEGER) / 10.0 {op} ?")
+            params.append(bound)
+    return fuel, l_from, l_to, conds, params
