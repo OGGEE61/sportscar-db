@@ -2,6 +2,7 @@
 {% from "_pagination.html" import pager %}
 {% from "_source.html" import source_badge %}
 {% from "_car_flags.html" import vin_block %}
+{% from "_engine_filter.html" import engine_fields %}
 {% block title %}{{ "Ulubione" if favorites_only else "Vehicles" }} – SportsCar DB{% endblock %}
 
 {% block content %}
@@ -59,6 +60,7 @@
       <option value="price"      {% if sort=='price'      %}selected{% endif %}>Price ↑</option>
     </select>
   </div>
+  {{ engine_fields(fuel, l_from, l_to, fuels, "col-4 col-md-1") }}
   <div class="col-md-1 d-flex gap-1">
     <button class="btn btn-primary w-100" title="Apply filter"><i class="bi bi-funnel"></i></button>
     <a href="{{ base_path }}" class="btn btn-outline-secondary" title="Reset filter">↺</a>
@@ -70,7 +72,7 @@
   {% if selected_region %}
   <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
     Region: {{ regions.get(selected_region, selected_region) }}
-    <a href="{{ base_path }}?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}" class="text-decoration-none text-danger ms-1">✕</a>
+    <a href="{{ base_path }}?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}&fuel={{ fuel }}&l_from={{ l_from if l_from is not none else '' }}&l_to={{ l_to if l_to is not none else '' }}" class="text-decoration-none text-danger ms-1">✕</a>
   </span>
   {% endif %}
 </div>
@@ -119,6 +121,7 @@
         <span>{{ v.year }}</span>
         {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} KM</span>{% endif %}
         {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cm³</span>{% endif %}
+        {% if v.fuel_type in fuels %}<span class="border-start ps-2">{{ fuels[v.fuel_type] }}</span>{% endif %}
         <span class="border-start ps-2">{{ v.obs_count }} obserwacji</span>
         <span class="border-start ps-2">{{ v.ad_count }} ogłoszeń</span>
       </div>
@@ -139,6 +142,6 @@
   </div>
   {% endfor %}
 </div>
-{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort %}
+{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort ~ '&fuel=' ~ fuel ~ '&l_from=' ~ (l_from if l_from is not none else '') ~ '&l_to=' ~ (l_to if l_to is not none else '') %}
 {{ pager(page, pages, base_path ~ '?' ~ qs ~ '&page=', 'Vehicles pages', ids=true) }}
 {% endblock %}

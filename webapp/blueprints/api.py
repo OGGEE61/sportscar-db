@@ -579,7 +579,7 @@ def api_ingest_pending():
                     v_existing = conn.execute("SELECT * FROM vehicles WHERE vin=?", (existing_vin,)).fetchone()
                     if v_existing:
                         v_fields = [
-                            "body_type", "engine_cc", "power_hp", "drivetrain", 
+                            "body_type", "engine_cc", "power_hp", "fuel_type", "drivetrain", 
                             "transmission", "color_ext", "registration_plate", 
                             "first_registration_date"
                         ]

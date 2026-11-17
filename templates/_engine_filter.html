@@ -1,0 +1,18 @@
+{# Fuel and engine size (litres) fields for a filter form; engine_filter() in webapp/helpers.py reads them.
+   cols = the Bootstrap column class of each field. #}
+{% macro engine_fields(fuel, l_from, l_to, fuels, cols="col-md-1") %}
+<div class="{{ cols }}">
+  <select name="fuel" class="form-select" title="Paliwo">
+    <option value="">Paliwo</option>
+    {% for key, label in fuels.items() %}
+    <option value="{{ key }}" {% if key == fuel %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="{{ cols }}">
+  <input name="l_from" class="form-control" inputmode="decimal" placeholder="Od (l)" title="Pojemność od, w litrach (auta bez podanej pojemności znikają)" value="{{ l_from if l_from is not none else '' }}">
+</div>
+<div class="{{ cols }}">
+  <input name="l_to" class="form-control" inputmode="decimal" placeholder="Do (l)" title="Pojemność do, w litrach" value="{{ l_to if l_to is not none else '' }}">
+</div>
+{% endmacro %}

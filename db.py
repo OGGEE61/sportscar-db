@@ -772,6 +772,28 @@ def init_db():
     )""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(24,'login_guard')")
 
+    # Migration v25: the car's fuel (petrol / diesel / lpg / hybrid), for the filters on /vehicles
+    # and /models. Ads carry it (pending_listings.fuel_type); the car takes it when it is approved.
+    # Once: filled from the newest ad that states it. One read of the ads and updates by
+    # primary key in chunks, because a join per car would scan the ads for every car on D1.
+    v_cols = {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}
+    if "fuel_type" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 25").fetchone():
+        newest = {}
+        for r in db.execute("SELECT vin, fuel_type FROM pending_listings WHERE status = 'approved' "
+                            "AND COALESCE(fuel_type, '') != '' AND vin IS NOT NULL ORDER BY id").fetchall():
+            newest[r["vin"]] = r["fuel_type"]      # a later ad overwrites an earlier one
+        groups = {}
+        for vin, fuel in newest.items():
+            groups.setdefault(fuel, []).append(vin)
+        for fuel, vins in groups.items():
+            for i in range(0, len(vins), 100):
+                chunk = vins[i:i + 100]
+                db.execute(f"UPDATE vehicles SET fuel_type = ? WHERE fuel_type IS NULL "
+                           f"AND vin IN ({','.join('?' for _ in chunk)})", (fuel, *chunk))
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(25,'vehicle_fuel_type')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

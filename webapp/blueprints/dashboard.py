@@ -5,7 +5,8 @@ from flask import Blueprint, current_app, jsonify, make_response, redirect, rend
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
 from webapp.services.stored_cache import stored
-from webapp.helpers import car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, is_abroad, script_json, trend_line
+from webapp.helpers import (FUELS, car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, engine_filter,
+                            is_abroad, script_json, trend_line)
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -336,12 +337,15 @@ def model_analytics():
         WHERE {condition} AND """ + car_visible_sql() + """
     """
     rule = current_model['where']
+    # Fuel and engine size chosen on the page: every number below (statistics, charts, table) follows
+    fuel, l_from, l_to, engine_conds, engine_params = engine_filter(request.args)
+    extra = "".join(f" AND {c}" for c in engine_conds)
     try:
         rows = conn.execute(
-            base_sql.format(condition=f"(v.model_id = ? OR (v.model_id IS NULL AND ({rule})))"),
-            (current_model['id'],)).fetchall()
+            base_sql.format(condition=f"(v.model_id = ? OR (v.model_id IS NULL AND ({rule}))){extra}"),
+            (current_model['id'], *engine_params)).fetchall()
     except Exception:  # model_id column not migrated yet
-        rows = conn.execute(base_sql.format(condition=f"({rule})")).fetchall()
+        rows = conn.execute(base_sql.format(condition=f"({rule}){extra}"), engine_params).fetchall()
     # Newest observation first (the page's default sort; the table headers re-sort in the browser)
     vehicles = sorted((dict(r) for r in rows), key=lambda v: v.get("observed_at") or "", reverse=True)
 
@@ -427,6 +431,7 @@ def model_analytics():
         "model_analytics.html",
         models=STANDARD_MODELS,
         selected_model=current_model,
+        fuel=fuel, l_from=l_from, l_to=l_to, fuels=FUELS,
         stats=stats,
         vehicles=vehicles,
         scatter_data=script_json(scatter_data),

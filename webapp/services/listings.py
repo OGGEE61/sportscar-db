@@ -179,10 +179,10 @@ def _approve_listing(conn, listing, overrides=None):
     conn.execute("""
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
-           engine_cc, engine_cyl, power_hp, drivetrain, transmission,
+           engine_cc, engine_cyl, power_hp, fuel_type, drivetrain, transmission,
            color_ext, color_int, equipment, registration_plate, first_registration_date, origin_market,
            vin_status, source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
           make        = COALESCE(excluded.make, make),
           model       = COALESCE(excluded.model, model),
@@ -190,6 +190,7 @@ def _approve_listing(conn, listing, overrides=None):
           power_hp    = COALESCE(excluded.power_hp, power_hp),
           engine_cc   = COALESCE(excluded.engine_cc, engine_cc),
           engine_cyl  = COALESCE(excluded.engine_cyl, engine_cyl),
+          fuel_type   = COALESCE(excluded.fuel_type, fuel_type),
           body_type   = COALESCE(excluded.body_type, body_type),
           drivetrain  = COALESCE(excluded.drivetrain, drivetrain),
           transmission= COALESCE(excluded.transmission, transmission),
@@ -209,6 +210,7 @@ def _approve_listing(conn, listing, overrides=None):
         final_engine_cc,
         final_engine_cyl,
         final_power_hp,
+        _get("fuel_type"),
         final_drivetrain,
         final_transmission,
         _get("color_ext"),
