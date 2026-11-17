@@ -66,14 +66,15 @@ class TestEngineFilter(unittest.TestCase):
             self.assertEqual(self.cars(f"{page}{sep}fuel=petrol"), self.vins(2, 3), page)
             self.assertEqual(self.cars(f"{page}{sep}fuel=steam"), self.vins(1, 2, 3, 4, 5), page)   # unknown: ignored
 
-    def test_engine_size_is_compared_in_tenths_of_a_litre(self):
+    def test_engine_size_is_compared_in_hundreds_of_cm3(self):
         for page in ("/vehicles", "/models?model=g_w463"):
             sep = "&" if "?" in page else "?"
-            # 2987 cm3 is a "3.0": it passes "from 3.0"; 3199 is a 3.2 and passes "to 3.2"
-            self.assertEqual(self.cars(f"{page}{sep}l_from=3.0&l_to=3.2"), self.vins(1, 2), page)
-            self.assertEqual(self.cars(f"{page}{sep}l_from=3,5"), self.vins(3, 4), page)          # a comma works
-            self.assertEqual(self.cars(f"{page}{sep}fuel=diesel&l_from=3.5"), self.vins(4), page)
-            self.assertEqual(self.cars(f"{page}{sep}l_to=abc"), self.vins(1, 2, 3, 4, 5), page)   # not a number: ignored
+            # 2987 cm3 counts as 3000: it passes "from 3000"; 3199 counts as 3200 and passes "to 3200"
+            self.assertEqual(self.cars(f"{page}{sep}cc_from=3000&cc_to=3200"), self.vins(1, 2), page)
+            self.assertEqual(self.cars(f"{page}{sep}cc_from=3500"), self.vins(3, 4), page)
+            self.assertEqual(self.cars(f"{page}{sep}fuel=diesel&cc_from=3500"), self.vins(4), page)
+            self.assertEqual(self.cars(f"{page}{sep}cc_to=abc"), self.vins(1, 2, 3, 4, 5), page)     # not a number: ignored
+            self.assertEqual(self.cars(f"{page}{sep}cc_from=99999"), self.vins(1, 2, 3, 4, 5), page)   # outside the slider: ignored
 
     def test_models_statistics_follow_the_filter(self):
         html = self.client.get("/models?model=g_w463&fuel=diesel").get_data(as_text=True)
@@ -83,10 +84,14 @@ class TestEngineFilter(unittest.TestCase):
         self.assertIn("Wyczyść", html)
 
     def test_filters_survive_paging_and_show_the_fuel(self):
-        html = self.client.get("/vehicles?fuel=diesel&l_from=3").get_data(as_text=True)
+        html = self.client.get("/vehicles?fuel=diesel&cc_from=3000").get_data(as_text=True)
         self.assertIn("Diesel</span>", html)
         self.assertNotIn("Benzyna</span>", html)
-        self.assertIn('value="3.0"', html)
+        self.assertIn('name="cc_from" value="3000"', html)        # the slider keeps its place
+        self.assertIn('name="cc_to" value=""', html)
+        with mock.patch("webapp.blueprints.vehicles.PER_PAGE", 1):    # two diesels, so two pages
+            paged = self.client.get("/vehicles?fuel=diesel&cc_from=3000").get_data(as_text=True)
+        self.assertIn("&amp;fuel=diesel&amp;cc_from=3000&amp;cc_to=&amp;page=2", paged)   # the page links keep the filters
 
     def test_approving_a_listing_gives_the_car_its_fuel(self):
         conn = db.get_db()

@@ -719,3 +719,16 @@ body {
   background: #f8fafc; color: #334155; border: 1px solid #e2e8f0;
   font-size: 0.65rem; font-weight: 500;
 }
+
+/* Engine size slider (templates/_engine_filter.html): two range inputs on one track */
+.cc-track { position: relative; height: 22px; }
+.cc-track::before { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 4px; border-radius: 2px; background: #e2e8f0; }
+.cc-fill { position: absolute; top: 9px; height: 4px; border-radius: 2px; background: #3b82f6; }
+.cc-track input[type=range] { position: absolute; left: 0; width: 100%; top: 0; height: 22px; margin: 0;
+  background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.cc-track input[type=range]::-webkit-slider-runnable-track { background: none; height: 22px; }
+.cc-track input[type=range]::-moz-range-track { background: none; }
+.cc-track input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; cursor: pointer;
+  width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; background: #fff; border: 2px solid #3b82f6; }
+.cc-track input[type=range]::-moz-range-thumb { pointer-events: auto; cursor: pointer;
+  width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #3b82f6; }

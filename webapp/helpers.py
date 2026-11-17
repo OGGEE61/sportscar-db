@@ -166,30 +166,33 @@ def trend_line(points):
 FUELS = {"petrol": "Benzyna", "diesel": "Diesel", "hybrid": "Hybryda", "lpg": "LPG", "electric": "Elektryczny"}
 
 
-def _litres(text):
-    """"3", "3.0" or "3,0" -> 3.0; anything else (or negative) -> None."""
+CC_MIN, CC_MAX, CC_STEP = 1000, 7000, 100      # the slider's range; a handle at the end means "no limit"
+
+
+def _cc(text):
+    """"3000" -> 3000; anything else (or outside the slider's range) -> None."""
     try:
-        value = float(str(text or "").strip().replace(",", "."))
+        value = int(str(text or "").strip())
     except ValueError:
         return None
-    return value if 0 < value < 20 else None
+    return value if CC_MIN <= value <= CC_MAX else None
 
 
 def engine_filter(args):
-    """The fuel and engine size (litres, from / to) chosen in the query string.
+    """The fuel and engine size (cm3, from / to) chosen in the query string.
 
-    Returns (fuel, litres_from, litres_to, sql_conditions, params). Engine size is compared at
-    the precision an ad shows it, 0.1 l, so a 2,987 cm3 engine passes "from 3.0" (it is a 3.0).
-    A car without the data does not pass a filter on it."""
+    Returns (fuel, cc_from, cc_to, sql_conditions, params). Engine size is compared rounded to
+    the slider's step (100 cm3): a 2,987 cm3 engine is a "3000" and passes "from 3000". A car
+    without the data does not pass a filter on it."""
     fuel = args.get("fuel", "")
     fuel = fuel if fuel in FUELS else ""
-    l_from, l_to = _litres(args.get("l_from")), _litres(args.get("l_to"))
+    cc_from, cc_to = _cc(args.get("cc_from")), _cc(args.get("cc_to"))
     conds, params = [], []
     if fuel:
         conds.append("v.fuel_type = ?")
         params.append(fuel)
-    for bound, op in ((l_from, ">="), (l_to, "<=")):
+    for bound, op in ((cc_from, ">="), (cc_to, "<=")):
         if bound is not None:
-            conds.append(f"v.engine_cc IS NOT NULL AND CAST(v.engine_cc / 100.0 + 0.5 AS INTEGER) / 10.0 {op} ?")
+            conds.append(f"v.engine_cc IS NOT NULL AND CAST(v.engine_cc / {CC_STEP}.0 + 0.5 AS INTEGER) * {CC_STEP} {op} ?")
             params.append(bound)
-    return fuel, l_from, l_to, conds, params
+    return fuel, cc_from, cc_to, conds, params
