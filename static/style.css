@@ -721,14 +721,18 @@ body {
 }
 
 /* Engine size slider (templates/_engine_filter.html): two range inputs on one track */
-.cc-track { position: relative; height: 22px; }
-.cc-track::before { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 4px; border-radius: 2px; background: #e2e8f0; }
-.cc-fill { position: absolute; top: 9px; height: 4px; border-radius: 2px; background: #3b82f6; }
-.cc-track input[type=range] { position: absolute; left: 0; width: 100%; top: 0; height: 22px; margin: 0;
+.cc-field { height: 38px; padding: 4px 12px 0; background: #fff; border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: var(--bs-border-radius, .375rem); }
+.cc-head { display: flex; justify-content: space-between; line-height: 1; font-size: .7rem; color: #6c757d; }
+.cc-label { font-weight: 600; color: #212529; }
+.cc-track { position: relative; height: 18px; }
+.cc-track::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 4px; border-radius: 2px; background: #e2e8f0; }
+.cc-fill { position: absolute; top: 7px; height: 4px; border-radius: 2px; background: #3b82f6; }
+.cc-track input[type=range] { position: absolute; left: 0; width: 100%; top: 0; height: 18px; margin: 0;
   background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
-.cc-track input[type=range]::-webkit-slider-runnable-track { background: none; height: 22px; }
+.cc-track input[type=range]::-webkit-slider-runnable-track { background: none; height: 18px; }
 .cc-track input[type=range]::-moz-range-track { background: none; }
 .cc-track input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; cursor: pointer;
-  width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; background: #fff; border: 2px solid #3b82f6; }
+  width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; background: #fff; border: 2px solid #3b82f6; }
 .cc-track input[type=range]::-moz-range-thumb { pointer-events: auto; cursor: pointer;
-  width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #3b82f6; }
+  width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid #3b82f6; }
