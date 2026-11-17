@@ -1584,7 +1584,8 @@ class TestRevealBudget(TestRevealVin):
     def test_the_daily_limit_counts_every_process(self):
         sent = 0
         with self.reply(self.vin_body("WDB4632481X123456")) as post:
-            for run in range(5):
+            runs = base_scraper.REVEALS_PER_DAY // base_scraper.VIN_REVEALS_PER_RUN + 2   # more than the day allows
+            for run in range(runs):
                 self.new_process()
                 for i in range(base_scraper.VIN_REVEALS_PER_RUN):
                     base_scraper.reveal_vin(f"{run}-{i}", {})
