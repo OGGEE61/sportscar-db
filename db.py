@@ -775,7 +775,7 @@ def init_db():
     # Migration v25: the car's fuel (petrol / diesel / lpg / hybrid), for the filters on /vehicles
     # and /models. Ads carry it (pending_listings.fuel_type); the car takes it when it is approved.
     # Once: filled from the newest ad that states it. One read of the ads and updates by
-    # primary key in chunks, because a join per car would scan the ads for every car on D1.
+    # primary key in chunks of 50, because a join per car would scan the ads for every car on D1.
     v_cols = {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}
     if "fuel_type" not in v_cols:
         db.execute("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT")
@@ -788,8 +788,8 @@ def init_db():
         for vin, fuel in newest.items():
             groups.setdefault(fuel, []).append(vin)
         for fuel, vins in groups.items():
-            for i in range(0, len(vins), 100):
-                chunk = vins[i:i + 100]
+            for i in range(0, len(vins), 50):      # D1 allows 100 bound variables a query
+                chunk = vins[i:i + 50]
                 db.execute(f"UPDATE vehicles SET fuel_type = ? WHERE fuel_type IS NULL "
                            f"AND vin IN ({','.join('?' for _ in chunk)})", (fuel, *chunk))
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(25,'vehicle_fuel_type')")
