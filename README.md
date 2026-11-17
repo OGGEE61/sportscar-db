@@ -106,7 +106,7 @@ Copy `.env.example` to `.env` for local development. On Vercel set these under
 | `DB_BACKEND` | Vercel | `d1` in production, `sqlite` locally. |
 | `CF_ACCOUNT_ID`, `CF_D1_DATABASE_ID`, `CF_API_TOKEN` | Vercel | Cloudflare D1 access (token permission: D1 Edit). |
 | `R2_ENDPOINT_URL`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Vercel | Photo storage. Unset = photos go to `static/photos/`. |
-| `CF_ANALYTICS_TOKEN` | Local, optional | Cloudflare token with Account Analytics: Read, to see D1 usage per day and per query. |
+| `CF_ANALYTICS_TOKEN` | Local, optional (Vercel too) | Cloudflare token with Account Analytics: Read. Locally: `python scripts/maintenance/d1_usage.py` prints D1 usage per day. On Vercel: the dashboard shows a warning bar when the day's reads pass 50% of the limit. |
 | `OLLAMA_URL`, `BIELIK_MODEL` | `enrich_with_bielik.py`, optional | Local LLM that summarises ads. |
 
 **Access control.** Every page and `/api/*` route needs a login, except the endpoints the scrapers

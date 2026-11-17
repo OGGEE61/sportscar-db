@@ -7,6 +7,7 @@ from webapp import _inject_notifications, invalidate_notifications
 from webapp.services.stored_cache import stored
 from webapp.helpers import (FUELS, car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, engine_filter,
                             is_abroad, script_json, trend_line)
+from webapp.services.d1_usage import READS_PER_DAY, rows_read_today
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -214,6 +215,15 @@ def dashboard_summary():
     stats, otomoto_session = data["stats"], data["otomoto_session"]
     resp = make_response(render_template("_dashboard_summary.html", stats=stats, otomoto_session=otomoto_session))
     return _private_cache(resp)
+
+
+@bp.route("/api/d1_usage")
+def d1_usage():
+    """Warning bar for the dashboard: empty unless today's D1 reads are past half of the daily limit
+    (or cannot be read: no token). Costs no D1 reads."""
+    rows = rows_read_today()
+    share = 100 * rows / READS_PER_DAY if rows is not None else 0
+    return _private_cache(make_response(render_template("_d1_usage.html", rows=rows or 0, share=share)), seconds=300)
 
 
 def _load_charts():
