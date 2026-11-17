@@ -1,0 +1,11 @@
+{# Shown only when today's D1 reads are past half of the free plan's daily limit #}
+{% if share >= 50 %}
+<div class="alert {{ 'alert-danger' if share >= 80 else 'alert-warning' }} d-flex align-items-start gap-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <div>
+    <strong>Baza D1: dziś odczytano {{ "{:,}".format(rows).replace(",", " ") }} wierszy, {{ share|round|int }}% dziennego limitu.</strong>
+    Po przekroczeniu 5 mln aplikacja przestaje działać do północy UTC (01:00 czasu polskiego).
+    Szczegóły: <code>python scripts/maintenance/d1_usage.py</code>.
+  </div>
+</div>
+{% endif %}
