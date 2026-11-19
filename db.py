@@ -794,6 +794,45 @@ def init_db():
                            f"AND vin IN ({','.join('?' for _ in chunk)})", (fuel, *chunk))
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(25,'vehicle_fuel_type')")
 
+    # Migration v26: brokers' import offers (validation.is_import_offer): a car still abroad, priced at
+    # an estimate. The ad is flagged on arrival (/api/ingest_pending) and this trigger leaves each of
+    # its sightings out of the market data, whichever path adds the sighting. Like dealer stock, the
+    # sightings and the VIN stay; a car with a sighting of an ordinary ad stays visible.
+    # Once: ads already stored are checked in Python, flagged and their sightings excluded, by key
+    # in chunks of 50 (D1 allows 100 bound variables a query).
+    p_cols = {r[1] for r in db.execute("PRAGMA table_info(pending_listings)").fetchall()}
+    if "import_offer" not in p_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN import_offer INTEGER NOT NULL DEFAULT 0")
+    db.execute("DROP TRIGGER IF EXISTS trg_obs_import_offer")
+    db.execute("""
+    CREATE TRIGGER trg_obs_import_offer
+    AFTER INSERT ON listing_observations
+    BEGIN
+        UPDATE listing_observations SET excluded_reason = 'import_offer'
+        WHERE id = NEW.id AND excluded_reason IS NULL AND EXISTS (
+            SELECT 1 FROM pending_listings p WHERE p.source = NEW.source
+              AND p.source_listing_id = NEW.source_listing_id AND p.import_offer = 1);
+    END""")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 26").fetchone():
+        from validation import is_import_offer
+        offers = [r for r in db.execute("SELECT id, source, source_listing_id, raw_title, raw_description "
+                                        "FROM pending_listings WHERE import_offer = 0").fetchall()
+                  if is_import_offer(r["raw_title"], r["raw_description"])]
+        ids = [r["id"] for r in offers]
+        for i in range(0, len(ids), 50):
+            chunk = ids[i:i + 50]
+            db.execute(f"UPDATE pending_listings SET import_offer = 1 WHERE id IN ({','.join('?' for _ in chunk)})", chunk)
+        by_source = {}
+        for r in offers:
+            if r["source_listing_id"]:
+                by_source.setdefault(r["source"], []).append(r["source_listing_id"])
+        for source, sids in by_source.items():
+            for i in range(0, len(sids), 50):
+                chunk = sids[i:i + 50]
+                db.execute(f"UPDATE listing_observations SET excluded_reason = 'import_offer' WHERE excluded_reason IS NULL "
+                           f"AND source = ? AND source_listing_id IN ({','.join('?' for _ in chunk)})", (source, *chunk))
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(26,'import_offers')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

@@ -61,7 +61,9 @@ def _vehicles_page(favorites_only: bool):
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
     fuel, cc_from, cc_to, engine_conds, engine_params = engine_filter(request.args)
-    wheres, params = [car_visible_sql(), *engine_conds], [*engine_params]
+    # A full VIN finds the car even if it is left out of the lists (dealer stock, an import offer)
+    full_vin = len(q) == 17 and q.isalnum()
+    wheres, params = [*([] if full_vin else [car_visible_sql()]), *engine_conds], [*engine_params]
     if favorites_only:
         wheres.append("v.vin IN (SELECT vin FROM favorites)")
     if q:
