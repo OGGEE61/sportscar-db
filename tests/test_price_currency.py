@@ -59,5 +59,20 @@ class TestOtomotoDetailCurrency(unittest.TestCase):
         self.assertEqual((d["price_from_detail"], d["price_currency"]), (57500, "EUR"))
 
 
+class TestOlxAndAutoplacCurrency(unittest.TestCase):
+    def test_olx_detail_carries_the_ad_currency(self):
+        state = {"ad": {"ad": {"price": {"regularPrice": {"value": 30000, "currencyCode": "EUR"}}, "params": []}}}
+        html = f'window.__PRERENDERED_STATE__ = {json.dumps(json.dumps(state))};'
+        d = base_scraper.parse_detail(html, "https://www.olx.pl/d/oferta/x-CID5-ID1.html")
+        self.assertEqual((d["price_from_detail"], d["price_currency"]), (30000, "EUR"))
+
+    def test_autoplac_detail_carries_the_ad_currency(self):
+        offer = {"priceInfo": {"primary": {"price": 40000}, "currency": "EUR"}}
+        state = {f"{base_scraper.AUTOPLAC_API}offer/abc-NH": {"body": {"offer": offer}}}
+        html = f'<script id="ng-state" type="application/json">{json.dumps(state)}</script>'
+        d = base_scraper.parse_detail(html, "https://autoplac.pl/oferta/bmw/m2/abc-NH")
+        self.assertEqual((d["price_from_detail"], d["price_currency"]), (40000, "EUR"))
+
+
 if __name__ == "__main__":
     unittest.main()

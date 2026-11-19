@@ -750,6 +750,7 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
 
     # Price
     price_val = (ad.get("price") or {}).get("regularPrice", {}).get("value")
+    price_currency = (ad.get("price") or {}).get("regularPrice", {}).get("currencyCode")
 
     # Photos (extract up to 10 photos for license plate detection and gallery)
     photos = ad.get("photos", [])
@@ -866,6 +867,7 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
         "photo_urls":              photo_urls,
         "raw_description":         desc_clean,
         "price_from_detail":       price_val,
+        "price_currency":          price_currency,
         "location_from_detail":    location_str,
         "origin_market":           origin_market,
     }
@@ -997,6 +999,7 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
         "photo_urls":              photo_urls,
         "raw_description":         desc_clean,
         "price_from_detail":       ((ad.get("priceInfo") or {}).get("primary") or {}).get("price"),
+        "price_currency":          (ad.get("priceInfo") or {}).get("currency"),
         "location_from_detail":    location_str,
         "origin_market":           resolve_market(vin_found, desc_clean, make=ad.get("brand") or ""),
     }
