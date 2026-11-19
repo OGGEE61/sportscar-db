@@ -155,7 +155,7 @@ def vehicle_detail(vin):
     vehicle = conn.execute("SELECT v.*, " + car_flags_sql("v") + " FROM vehicles v WHERE v.vin=?", (vin,)).fetchone()
     if not vehicle:
         conn.close()
-        return "VIN not found", 404
+        return "Nie znaleziono VIN-u", 404
 
     observations = conn.execute("""
         SELECT * FROM listing_observations

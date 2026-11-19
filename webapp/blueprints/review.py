@@ -57,7 +57,7 @@ def review_detail(pid):
         f"SELECT *, {damage_reason_sql('pending_listings')} AS damage FROM pending_listings WHERE id=?", (pid,)).fetchone()
     conn.close()
     if not listing:
-        return "Not found", 404
+        return "Nie znaleziono ogłoszenia", 404
     photos = json.loads(listing["photos"]) if listing["photos"] else []
     equipment = json.loads(listing["equipment"]) if listing["equipment"] else []
     ai_equipment = []
@@ -76,7 +76,7 @@ def review_approve(pid):
         f"SELECT *, {damage_reason_sql('pending_listings')} AS damage FROM pending_listings WHERE id=?", (pid,)).fetchone()
     if not listing:
         conn.close()
-        return "Not found", 404
+        return "Nie znaleziono ogłoszenia", 404
     try:
         _approve_listing(conn, listing, overrides=dict(request.form))
         conn.commit()
@@ -233,7 +233,7 @@ def review_bulk_reject_approved_novin():
             count += 1
     conn.commit()
     conn.close()
-    flash(f"Retroactively rejected {count} approved listings with missing/invalid VINs and removed their vehicle profiles.", "success")
+    flash(f"Odrzucono {count} zatwierdzonych ogłoszeń bez poprawnego VIN-u i usunięto profile ich aut.", "success")
     return redirect(url_for("review.review_queue", status="approved", source=request.args.get("source") or None))
 
 

@@ -14,8 +14,8 @@
 
 {# Buttons to filter a list by source; base_url must end with ? or & #}
 {% macro source_filter(base_url, current) -%}
-<div class="btn-group btn-group-sm" role="group" aria-label="Filter by source">
-  <a href="{{ base_url }}" class="btn btn-outline-secondary {% if not current %}active{% endif %}">All</a>
+<div class="btn-group btn-group-sm" role="group" aria-label="Filtruj po źródle">
+  <a href="{{ base_url }}" class="btn btn-outline-secondary {% if not current %}active{% endif %}">Wszystkie</a>
   <a href="{{ base_url }}source=otomoto" class="btn btn-outline-secondary {% if current == 'otomoto' %}active{% endif %}">Otomoto</a>
   <a href="{{ base_url }}source=olx" class="btn btn-outline-secondary {% if current == 'olx' %}active{% endif %}">OLX</a>
   <a href="{{ base_url }}source=autoplac" class="btn btn-outline-secondary {% if current == 'autoplac' %}active{% endif %}">Autoplac</a>

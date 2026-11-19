@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pager %}
-{% block title %}Review Queue – SportsCar DB{% endblock %}
+{% block title %}Kolejka przeglądu – SportsCar DB{% endblock %}
 
 {% from "_source.html" import source_badge, source_filter %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0">Review Queue</h2>
+  <h2 class="mb-0">Kolejka przeglądu</h2>
   {{ source_filter("/review?status=" ~ status_filter ~ "&", source) }}
 </div>
 
 <!-- Status tabs -->
 <ul class="nav nav-tabs mb-4">
-  {% for tab, label, color in [('pending','Pending','warning'), ('approved','Approved','success'), ('rejected','Rejected','danger')] %}
+  {% for tab, label, color in [('pending','Oczekujące','warning'), ('approved','Zatwierdzone','success'), ('rejected','Odrzucone','danger')] %}
   <li class="nav-item">
     <a class="nav-link {% if status_filter == tab %}active{% endif %}"
        href="/review?status={{ tab }}{% if source %}&source={{ source }}{% endif %}">
@@ -26,9 +26,9 @@
 
 {% if not listings %}
 <div class="alert alert-secondary">
-  No {{ status_filter }} listings.
+  Brak ogłoszeń w tej zakładce.
   {% if status_filter == 'pending' %}
-  Run the OLX scraper to fetch new listings.
+  Nowe pojawią się po kolejnym przebiegu scraperów.
   {% endif %}
 </div>
 {% else %}
@@ -40,24 +40,24 @@
 <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-3 p-2 bg-light border rounded">
   <div class="form-check mb-0">
     <input class="form-check-input" type="checkbox" id="select-all">
-    <label class="form-check-label small fw-semibold" for="select-all">Select all</label>
+    <label class="form-check-label small fw-semibold" for="select-all">Zaznacz wszystkie</label>
   </div>
-  <span class="small text-muted" id="sel-count">0 selected</span>
+  <span class="small text-muted" id="sel-count">zaznaczono: 0</span>
   <div class="d-flex flex-wrap gap-2 ms-md-auto">
     <button type="button" class="btn btn-success btn-sm" id="bulk-approve-btn" disabled>
-      Approve selected
+      Zatwierdź zaznaczone
     </button>
     <button type="button" class="btn btn-danger btn-sm" id="bulk-reject-btn" disabled>
-      Reject selected
+      Odrzuć zaznaczone
     </button>
     <button type="button" class="btn btn-outline-success btn-sm" id="approve-all-vin-btn">
-      Approve All with VIN
+      Zatwierdź wszystkie z VIN-em
     </button>
     <button type="button" class="btn btn-warning btn-sm" id="reject-novin-btn">
-      Reject All w/o VIN
+      Odrzuć wszystkie bez VIN-u
     </button>
     <button type="button" class="btn btn-outline-danger btn-sm" id="reject-all-btn">
-      Reject all
+      Odrzuć wszystkie
     </button>
   </div>
 </div>
@@ -68,7 +68,7 @@
 <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-3 p-2 bg-light border rounded">
   <div class="d-flex flex-wrap gap-2 ms-md-auto">
     <button type="button" class="btn btn-warning btn-sm" id="reject-approved-novin-btn">
-      Reject All w/o VIN
+      Odrzuć wszystkie bez VIN-u
     </button>
   </div>
 </div>
@@ -79,7 +79,7 @@
 <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-3 p-2 bg-light border rounded">
   <div class="d-flex flex-wrap gap-2 ms-md-auto">
     <button type="button" class="btn btn-outline-danger btn-sm" id="clear-rejected-btn">
-      Clear all rejected
+      Usuń wszystkie odrzucone
     </button>
   </div>
 </div>
@@ -102,7 +102,7 @@
     {% endif %}
 
     <!-- Thumbnail -->
-    <a href="/review/{{ l.id }}" class="flex-shrink-0" title="Review details">
+    <a href="/review/{{ l.id }}" class="flex-shrink-0" title="Szczegóły">
       {% if l.local_photo %}
       <img src="{{ media_url(l.local_photo) }}" class="rounded shadow-sm" loading="lazy" decoding="async"
            style="width: 100px; height: 75px; object-fit: cover;">
@@ -113,7 +113,7 @@
       {% else %}
       <div class="bg-secondary rounded shadow-sm d-flex align-items-center justify-content-center"
            style="width: 100px; height: 75px;">
-        <span class="text-white opacity-50" style="font-size: 0.7em;">No photo</span>
+        <span class="text-white opacity-50" style="font-size: 0.7em;">Brak zdjęcia</span>
       </div>
       {% endif %}
     </a>
@@ -167,7 +167,7 @@
               title="Ogłoszenie ma VIN ukryty za „Pokaż VIN”. Czeka na odsłonięcie, więc przyciski odrzucania go pomijają.">
           <i class="bi bi-hourglass-split me-1"></i>VIN za „Pokaż VIN”</span>
         {% else %}
-        <span class="badge bg-danger" style="font-size: 0.6em;">NO VIN</span>
+        <span class="badge bg-danger" style="font-size: 0.6em;">BRAK VIN</span>
         {% endif %}
         {% endif %}
 
@@ -193,7 +193,7 @@
     <!-- Actions (Right edge) -->
     <div class="d-flex flex-column gap-2 align-items-end flex-shrink-0 ms-2">
       {% if l.source_url %}
-      <a href="{{ l.source_url }}" target="_blank" class="btn btn-sm btn-light border" title="Open original ad">&#8599;</a>
+      <a href="{{ l.source_url }}" target="_blank" class="btn btn-sm btn-light border" title="Otwórz ogłoszenie">&#8599;</a>
       {% endif %}
 
       {% if status_filter == 'approved' or status_filter == 'pending' %}
@@ -202,7 +202,7 @@
             data-title="{{ l.raw_title | e }}"
             data-status="{{ status_filter }}"
             data-reason="{% if status_filter == 'approved' %}removed from approved{% else %}quick reject{% endif %}">
-        <button type="button" class="btn btn-outline-danger btn-sm remove-btn" title="Reject">✖</button>
+        <button type="button" class="btn btn-outline-danger btn-sm remove-btn" title="Odrzuć">✖</button>
       </div>
       {% endif %}
       
@@ -210,7 +210,7 @@
       <div class="d-inline approve-action"
             data-action="/review/{{ l.id }}/approve"
             data-title="{{ l.raw_title | e }}">
-        <button type="button" class="btn btn-outline-success btn-sm approve-btn" title="Quick Approve">✓</button>
+        <button type="button" class="btn btn-outline-success btn-sm approve-btn" title="Szybko zatwierdź">✓</button>
       </div>
       {% endif %}
     </div>
@@ -221,7 +221,7 @@
 
 </form>
 
-{{ pager(page, pages, '/review?status=' ~ status_filter ~ '&source=' ~ source ~ '&page=', 'Review pages') }}
+{{ pager(page, pages, '/review?status=' ~ status_filter ~ '&source=' ~ source ~ '&page=', 'Strony kolejki') }}
 
 <!-- Operation Tracker (Toasts) -->
 <div id="op-tracker" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1055; pointer-events: none;"></div>
@@ -284,17 +284,17 @@ const BgOp = (() => {
     if (total == null) {
       bar.classList.add('progress-bar-striped', 'progress-bar-animated');
       bar.style.width = '100%';
-      detail.textContent = 'Working… you can keep using the app.';
+      detail.textContent = 'Trwa… możesz dalej korzystać z aplikacji.';
     } else {
       bar.style.width = '0%';
-      detail.textContent = `0 of ${total} done`;
+      detail.textContent = `0 z ${total} gotowe`;
     }
     document.getElementById('op-tracker').appendChild(el);
     let done = false;
     return {
       update(n, failed = 0) {
         bar.style.width = Math.round(100 * (n + failed) / total) + '%';
-        detail.textContent = `${n} of ${total} done` + (failed ? `, ${failed} failed` : '');
+        detail.textContent = `${n} z ${total} gotowe` + (failed ? `, błędów: ${failed}` : '');
       },
       finish(message, type = 'success') {
         if (done) return;
@@ -321,12 +321,12 @@ async function approveOneByOne(ids, title) {
       const row = document.querySelector(`.card-check[value="${id}"]`)?.closest('.list-group-item');
       if (row) row.remove();
     } catch (err) {
-      console.error(`Failed to approve ${id}:`, err);
+      console.error(`Nie udało się zatwierdzić ${id}:`, err);
       failed++;
     }
     op.update(completed, failed);
   }
-  op.finish(`Approved ${completed} of ${ids.length} listings` + (failed ? ` (${failed} failed).` : '.'),
+  op.finish(`Zatwierdzono ${completed} z ${ids.length} ogłoszeń` + (failed ? ` (błędów: ${failed}).` : '.'),
             failed ? 'warning' : 'success');
   if (typeof updateBar === 'function') updateBar();
   return { completed, failed };
@@ -341,14 +341,14 @@ async function runOneRequest(url, title, doneMessage) {
     op.finish(doneMessage, 'success');
     return true;
   } catch (err) {
-    op.finish('Failed: ' + err.message, 'danger');
+    op.finish('Błąd: ' + err.message, 'danger');
     return false;
   }
 }
 
 function handleQuickAction(btn, actionName, confirmMsg) {
   const container = btn.closest('div[data-action]');
-  const title = container.dataset.title || 'Listing';
+  const title = container.dataset.title || 'Ogłoszenie';
   const row = container.closest('.list-group-item');
   const actionUrl = container.dataset.action;
   
@@ -380,7 +380,7 @@ function handleQuickAction(btn, actionName, confirmMsg) {
   .catch(err => {
     row.style.opacity = '1';
     row.style.pointerEvents = 'auto';
-    showToast('Error', 'Failed to process request: ' + err.message, 'danger');
+    showToast('Błąd', 'Nie udało się wykonać żądania: ' + err.message, 'danger');
   });
 }
 
@@ -389,16 +389,16 @@ document.querySelectorAll('.remove-btn').forEach(btn => {
     e.stopPropagation();
     const container = btn.closest('div[data-action]');
     const msg = container.dataset.status === 'approved' 
-      ? 'Remove this approved listing?\nIt will be moved to Rejected.'
+      ? 'Usunąć to zatwierdzone ogłoszenie?\nTrafi do odrzuconych.'
       : null;
-    handleQuickAction(btn, 'Rejected', msg);
+    handleQuickAction(btn, 'Odrzucono', msg);
   });
 });
 
 document.querySelectorAll('.approve-btn').forEach(btn => {
   btn.addEventListener('click', e => {
     e.stopPropagation();
-    handleQuickAction(btn, 'Approved', null);
+    handleQuickAction(btn, 'Zatwierdzono', null);
   });
 });
 
@@ -411,7 +411,7 @@ const counter    = document.getElementById('sel-count');
 function updateBar() {
   const allChecks = checks();
   const n = [...allChecks].filter(c => c.checked).length;
-  if (counter) counter.textContent = n + ' selected';
+  if (counter) counter.textContent = 'zaznaczono: ' + n;
   if (rejectBtn) rejectBtn.disabled  = n === 0;
   if (approveBtn) approveBtn.disabled = n === 0;
   if (selectAll) {
@@ -424,7 +424,7 @@ function submitBulkAction(actionUrl, actionName) {
   const selected = [...checks()].filter(c => c.checked);
   if (!selected.length) return;
   
-  if (!confirm(`${actionName} ${selected.length} listing(s)?`)) return;
+  if (!confirm(`${actionName}: ${selected.length} ogł.?`)) return;
   
   // Disable UI
   selected.forEach(c => {
@@ -442,12 +442,12 @@ function submitBulkAction(actionUrl, actionName) {
 
   if (actionUrl.includes('bulk_approve')) {
     // Approving is slow: one listing at a time, with progress
-    approveOneByOne(selected.map(c => c.value), `Approving ${selected.length} selected`).then(restore);
+    approveOneByOne(selected.map(c => c.value), `Zatwierdzam zaznaczone: ${selected.length}`).then(restore);
     return;
   }
 
   // Rejecting is one fast request
-  const op = BgOp.start(`Rejecting ${selected.length} selected`, null);
+  const op = BgOp.start(`Odrzucam zaznaczone: ${selected.length}`, null);
   const formData = new FormData();
   selected.forEach(c => formData.append('ids', c.value));
   fetch(actionUrl + '?ajax=1', { method: 'POST', body: formData })
@@ -457,17 +457,17 @@ function submitBulkAction(actionUrl, actionName) {
   })
   .then(data => {
     if (data.skipped) {   // kept listings stay listed; the page says why
-      op.finish('Done. Reloading…');
+      op.finish('Gotowe. Odświeżam…');
       window.location.reload();
       return;
     }
     selected.forEach(c => c.closest('.list-group-item')?.remove());
-    op.finish(`Rejected ${selected.length} listings.`);
+    op.finish(`Odrzucono ogłoszeń: ${selected.length}.`);
     updateBar();
   })
   .catch(err => {
     restore();
-    op.finish('Failed: ' + err.message, 'danger');
+    op.finish('Błąd: ' + err.message, 'danger');
   });
 }
 
@@ -475,7 +475,7 @@ if (rejectBtn) {
   rejectBtn.type = "button";
   rejectBtn.onclick = (e) => {
     e.preventDefault();
-    submitBulkAction('/review/bulk_reject', 'Bulk Reject');
+    submitBulkAction('/review/bulk_reject', 'Odrzuć');
   };
 }
 
@@ -483,7 +483,7 @@ if (approveBtn) {
   approveBtn.type = "button";
   approveBtn.onclick = (e) => {
     e.preventDefault();
-    submitBulkAction('/review/bulk_approve', 'Bulk Approve');
+    submitBulkAction('/review/bulk_approve', 'Zatwierdź');
   };
 }
 
@@ -503,10 +503,10 @@ const rejectAllBtn = document.getElementById('reject-all-btn');
 if (rejectAllBtn) {
   rejectAllBtn.onclick = (e) => {
     e.preventDefault();
-    if (!confirm('Reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings?')) return;
+    if (!confirm('Odrzucić WSZYSTKIE oczekujące ogłoszenia{% if source %} {{ source|upper }}{% endif %}?')) return;
     rejectAllBtn.disabled = true;
     runOneRequest('/review/reject_all_pending?ajax=1{{ '&source=' ~ source if source else '' }}',
-                  'Rejecting all pending', 'All pending listings rejected.')
+                  'Odrzucam wszystkie oczekujące', 'Wszystkie oczekujące ogłoszenia odrzucone.')
       .then(ok => ok ? setTimeout(() => window.location.reload(), 1200) : (rejectAllBtn.disabled = false));
   };
 }
@@ -515,10 +515,10 @@ const rejectNovinBtn = document.getElementById('reject-novin-btn');
 if (rejectNovinBtn) {
   rejectNovinBtn.onclick = (e) => {
     e.preventDefault();
-    if (!confirm('Are you sure you want to reject ALL {% if source %}{{ source|upper }} {% endif %}pending listings that are missing a valid VIN?')) return;
+    if (!confirm('Odrzucić WSZYSTKIE oczekujące ogłoszenia{% if source %} {{ source|upper }}{% endif %} bez poprawnego VIN-u?')) return;
     rejectNovinBtn.disabled = true;
     runOneRequest('/review/bulk_reject_novin?{{ 'source=' ~ source if source else '' }}',
-                  'Rejecting listings without VIN', 'Done. Reloading…')
+                  'Odrzucam ogłoszenia bez VIN-u', 'Gotowe. Odświeżam…')
       .then(ok => ok ? setTimeout(() => window.location.reload(), 800) : (rejectNovinBtn.disabled = false));
   };
 }
@@ -527,10 +527,10 @@ const rejectApprovedNovinBtn = document.getElementById('reject-approved-novin-bt
 if (rejectApprovedNovinBtn) {
   rejectApprovedNovinBtn.onclick = (e) => {
     e.preventDefault();
-    if (!confirm('Are you sure you want to reject ALL approved listings that are missing a valid VIN? This will completely remove their vehicle profiles and observation data.')) return;
+    if (!confirm('Odrzucić WSZYSTKIE zatwierdzone ogłoszenia bez poprawnego VIN-u? Usunie to całkowicie ich profile aut and observation data.')) return;
     rejectApprovedNovinBtn.disabled = true;
     runOneRequest('/review/bulk_reject_approved_novin?{{ 'source=' ~ source if source else '' }}',
-                  'Rejecting approved listings without VIN', 'Done. Reloading…')
+                  'Odrzucam zatwierdzone ogłoszenia bez VIN-u', 'Gotowe. Odświeżam…')
       .then(ok => ok ? setTimeout(() => window.location.reload(), 800) : (rejectApprovedNovinBtn.disabled = false));
   };
 }
@@ -547,17 +547,17 @@ if (approveAllVinBtn) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       ids = (await res.json()).ids;
     } catch (err) {
-      showToast('Error', 'Failed to load listings with VIN: ' + err.message, 'danger');
+      showToast('Błąd', 'Nie udało się wczytać ogłoszeń z VIN-em: ' + err.message, 'danger');
       return;
     }
     if (!ids.length) {
-      showToast('Nothing to approve', 'No {% if source %}{{ source|upper }} {% endif %}pending listings have a valid VIN.', 'info');
+      showToast('Nic do zatwierdzenia', 'Żadne oczekujące ogłoszenie{% if source %} {{ source|upper }}{% endif %} nie ma poprawnego VIN-u.', 'info');
       return;
     }
-    if (!confirm(`Approve ALL ${ids.length} {% if source %}{{ source|upper }} {% endif %}pending listings that have a valid VIN?`)) return;
+    if (!confirm(`Zatwierdzić WSZYSTKIE (${ids.length}) oczekujące ogłoszenia{% if source %} {{ source|upper }}{% endif %} z poprawnym VIN-em?`)) return;
 
     approveAllVinBtn.disabled = true;
-    await approveOneByOne(ids, `Approving ${ids.length} listings with VIN`);
+    await approveOneByOne(ids, `Zatwierdzam ogłoszenia z VIN-em: ${ids.length}`);
     approveAllVinBtn.disabled = false;
     setTimeout(() => window.location.reload(), 1500);
   };
@@ -567,10 +567,10 @@ const clearRejectedBtn = document.getElementById('clear-rejected-btn');
 if (clearRejectedBtn) {
   clearRejectedBtn.onclick = (e) => {
     e.preventDefault();
-    if (!confirm('Permanently delete ALL rejected listings?')) return;
+    if (!confirm('Trwale usunąć WSZYSTKIE odrzucone ogłoszenia?')) return;
     clearRejectedBtn.disabled = true;
     runOneRequest('/review/clear_rejected?ajax=1{{ '&source=' ~ source if source else '' }}',
-                  'Deleting rejected listings', 'All rejected listings deleted.')
+                  'Usuwam odrzucone ogłoszenia', 'Wszystkie odrzucone ogłoszenia usunięte.')
       .then(ok => ok ? setTimeout(() => window.location.reload(), 1200) : (clearRejectedBtn.disabled = false));
   };
 }

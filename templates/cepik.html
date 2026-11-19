@@ -209,7 +209,7 @@
               {{ "{:,}".format(r.last_odometer_km) }} km
             </div>
             <div class="text-muted small" style="font-size: 0.72rem;">
-              {{ r.last_odometer_date }}
+              {{ r.last_odometer_date or '' }}
             </div>
             {% else %}
             <span class="text-muted small">—</span>

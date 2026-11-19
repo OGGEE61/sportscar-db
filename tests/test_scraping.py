@@ -408,7 +408,7 @@ class TestVehiclePriceChart(ScrapingTestCase):
         res = self.client.get(f"/vehicle/{self.VIN}")
         self.assertEqual(res.status_code, 200)
         html = res.get_data(as_text=True)
-        self.assertIn("Price History by platform", html)
+        self.assertIn("Historia cen wg portalu", html)
         for source in ("otomoto", "olx", "autoplac"):
             self.assertRegex(html, rf'"source":\s*"{source}"')
         # the chart script builds one dataset per platform, coloured like the badges
@@ -461,7 +461,7 @@ class TestDashboardStatCards(ScrapingTestCase):
     def test_summary_has_no_placeholders_card(self):
         html = self.client.get("/api/dashboard/summary").get_data(as_text=True)
         self.assertNotIn("Placeholders", html)
-        for label in ("Total VINs", "Observations", "Active Listings", "Unique Ads", "Avg Price"):
+        for label in ("VIN-y", "Obserwacje", "Aktywne ogłoszenia", "Ogłoszenia", "Średnia cena"):
             self.assertIn(label, html)
         self.assertEqual(html.count('class="card stat-card'), 5)
 
@@ -483,14 +483,14 @@ class TestPager(ScrapingTestCase):
 
     def test_shapes(self):
         L = self.labels
-        self.assertEqual(L(self.pager(1, 3)), ["‹ Prev", "1", "2", "3", "Next ›"])
-        self.assertEqual(L(self.pager(10, 20)), ["‹ Prev", "1", "…", "8", "9", "10", "11", "12", "…", "20", "Next ›"])
-        self.assertEqual(L(self.pager(1, 20)), ["‹ Prev", "1", "2", "3", "…", "20", "Next ›"])
-        self.assertEqual(L(self.pager(20, 20)), ["‹ Prev", "1", "…", "18", "19", "20", "Next ›"])
-        self.assertEqual(L(self.pager(4, 20)), ["‹ Prev", "1", "2", "3", "4", "5", "6", "…", "20", "Next ›"])
+        self.assertEqual(L(self.pager(1, 3)), ["‹ Poprzednia", "1", "2", "3", "Następna ›"])
+        self.assertEqual(L(self.pager(10, 20)), ["‹ Poprzednia", "1", "…", "8", "9", "10", "11", "12", "…", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(1, 20)), ["‹ Poprzednia", "1", "2", "3", "…", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(20, 20)), ["‹ Poprzednia", "1", "…", "18", "19", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(4, 20)), ["‹ Poprzednia", "1", "2", "3", "4", "5", "6", "…", "20", "Następna ›"])
         # a gap of one page is shown as that page, not as "…"
-        self.assertEqual(L(self.pager(5, 20)), ["‹ Prev", "1", "2", "3", "4", "5", "6", "7", "…", "20", "Next ›"])
-        self.assertEqual(L(self.pager(17, 20)), ["‹ Prev", "1", "…", "15", "16", "17", "18", "19", "20", "Next ›"])
+        self.assertEqual(L(self.pager(5, 20)), ["‹ Poprzednia", "1", "2", "3", "4", "5", "6", "7", "…", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(17, 20)), ["‹ Poprzednia", "1", "…", "15", "16", "17", "18", "19", "20", "Następna ›"])
 
     def test_single_page_has_no_pager(self):
         self.assertEqual(self.pager(1, 1).strip(), "")
@@ -501,7 +501,7 @@ class TestPager(ScrapingTestCase):
         self.assertIn('href="/x?a=1&amp;page=11"', html)    # next
         self.assertIn('href="/x?a=1&amp;page=20"', html)    # last page is reachable
         self.assertIn('id="page-prev"', html)
-        self.assertIn("Page 10 of 20", html)
+        self.assertIn("Strona 10 z 20", html)
         self.assertRegex(html, r'page-item active">\s*<a class="page-link" href="[^"]*page=10"')
         first = self.pager(1, 20)
         self.assertRegex(first, r'page-item disabled"><a class="page-link" href="[^"]*page=0"')   # Prev disabled
@@ -511,7 +511,7 @@ class TestPager(ScrapingTestCase):
         for i in range(250):
             self.client.post("/api/log_run", headers=TOKEN, json={"status": "success", "message": f"m{i}", "source": "olx"})
         html = self.client.get("/logs?page=2").get_data(as_text=True)
-        self.assertIn("Page 2 of 3", html)
+        self.assertIn("Strona 2 z 3", html)
         self.assertIn("page=3", html)
         self.assertIn("page=1", html)
 
@@ -1851,12 +1851,12 @@ class TestRevealEndpoints(ScrapingTestCase):
         self.add("novin", vc="none")
         html = self.client.get("/review").get_data(as_text=True)
         self.assertEqual(html.count("VIN za „Pokaż VIN”</span>"), 1)
-        self.assertEqual(html.count(">NO VIN</span>"), 1)
+        self.assertEqual(html.count(">BRAK VIN</span>"), 1)
         self.assertIn("ukryty za „Pokaż VIN”", self.client.get(f"/review/{waiting}").get_data(as_text=True))
         # Once Otomoto says there is none, it reads as any listing without a VIN
         self.client.post("/api/reveal_result", headers=TOKEN, json={"id": waiting, "no_vin": True})
         html = self.client.get("/review").get_data(as_text=True)
-        self.assertEqual((html.count("VIN za „Pokaż VIN”</span>"), html.count(">NO VIN</span>")), (0, 2))
+        self.assertEqual((html.count("VIN za „Pokaż VIN”</span>"), html.count(">BRAK VIN</span>")), (0, 2))
 
     def test_reveal_job_reports_an_ad_without_a_vin_but_not_a_failed_request(self):
         import importlib

@@ -78,7 +78,7 @@ class TestEngineFilter(unittest.TestCase):
 
     def test_models_statistics_follow_the_filter(self):
         html = self.client.get("/models?model=g_w463&fuel=diesel").get_data(as_text=True)
-        self.assertIn("Tracked", html)
+        self.assertIn("Śledzone auta", html)
         self.assertIn("(2)", html)                                   # the table's count
         self.assertIn('<option value="diesel" selected>', html)      # the form keeps the choice
         self.assertIn("Wyczyść", html)
