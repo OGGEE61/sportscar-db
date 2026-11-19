@@ -133,9 +133,10 @@ def main():
     queue = fetch_queue()
     vin_items = [] if vin_why else due("vin", queue.get("vins", []))
     plate_items = [] if plate_why else due("plate", queue.get("plates", []))
+    waiting = {"vin": len(queue.get("vins", [])), "plate": len(queue.get("plates", []))}
     print(f"Queue: {len(vin_items)} VINs and {len(plate_items)} plates to reveal "
-          f"(of {len(queue.get('vins', []))} and {len(queue.get('plates', []))}); "
-          f"this run takes up to {batch} of each.")
+          f"(of {waiting['vin']} and {waiting['plate']}); this run takes up to {batch} of each."
+          + (f" VINs skipped: {vin_why}." if vin_why else "") + (f" Plates skipped: {plate_why}." if plate_why else ""))
     if not (vin_items or plate_items):
         return
 
@@ -149,10 +150,14 @@ def main():
     stop = vin_stop or plate_stop
     blocked = base_scraper._vin_reveals["blocked"]
     print(f"Done: {vins} VINs and {plates} plates filled in." + (f" Stopped: {stop}." if stop else ""))
+    def part(kind, label, done, items, skipped):
+        # A kind skipped for today's limit says so, instead of "0 of 0" as if nothing were waiting
+        if skipped:
+            return f"{label}: skipped, {skipped} ({waiting[kind]} waiting)"
+        return f"{label}: {done} of {min(len(items), batch)} revealed ({len(items)} due, {waiting[kind]} waiting)"
     _log_run("partial" if blocked else "success",
-             f"VIN backfill: {vins} of {min(len(vin_items), batch)} pending Otomoto listings got a VIN, "
-             f"{plates} of {min(len(plate_items), batch)} got a plate "
-             f"(queue: {len(vin_items)} VINs, {len(plate_items)} plates)"
+             f"VIN backfill: {part('vin', 'VINs', vins, vin_items, vin_why)}; "
+             f"{part('plate', 'plates', plates, plate_items, plate_why)}"
              + (" (stopped: Otomoto blocked the reveals, all reveals paused for 24 h)." if blocked
                 else f" (stopped: {stop})." if stop else "."),
              processed=vins + plates, source="otomoto")

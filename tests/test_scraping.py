@@ -1973,7 +1973,25 @@ class TestRevealJob(RevealStateMixin, unittest.TestCase):
             self.job.main()
         reveal.assert_called_once_with("1001", {})
         self.assertEqual(log.call_args.args[0], "success")
-        self.assertIn("1 of 1 pending", log.call_args.args[1])
+        self.assertIn("VINs: 1 of 1 revealed (1 due, 2 waiting)", log.call_args.args[1])
+
+    def test_a_kind_over_todays_limit_is_logged_as_skipped_with_its_queue(self):
+        # VINs used up for today, plates not: the log line must not read "0 of 0" as if none waited
+        limit = lambda kind, *a: "limit of 60 per day reached" if kind == "vin" else None
+        with mock.patch.object(self.job, "reveal_skip_reason", side_effect=limit), \
+             mock.patch.object(self.job, "fetch_queue", return_value={"vins": self.items(48), "plates": self.items(1)}), \
+             mock.patch.object(self.job, "_Session", return_value=mock.Mock(cookies={}, get=lambda: {})), \
+             mock.patch.object(self.job, "check_session", return_value=True), \
+             mock.patch.object(self.job, "reveal_vin") as reveal_vin, \
+             mock.patch.object(self.job, "reveal_plate", return_value="DW12345"), \
+             mock.patch.object(self.job, "send_result", return_value={"plate": True}), \
+             mock.patch.object(self.job, "_log_run") as log, \
+             mock.patch.object(sys, "argv", ["reveal_pending_vins.py"]):
+            self.job.main()
+        reveal_vin.assert_not_called()
+        line = log.call_args.args[1]
+        self.assertIn("VINs: skipped, limit of 60 per day reached (48 waiting)", line)
+        self.assertIn("plates: 1 of 1 revealed (1 due, 1 waiting)", line)
 
 
 class TestUseStored(unittest.TestCase):
