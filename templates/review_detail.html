@@ -33,6 +33,9 @@
       {% if listing.damage %}
           <span class="badge flag flag-bad ms-2 align-middle" style="font-size: 0.5em;" title="{{ 'Zaznaczone na portalu jako uszkodzone' if listing.damage == 'portal' else 'Z treści ogłoszenia: „' ~ listing.damage ~ '”' }}">Uszkodzony</span>
           {% endif %}
+          {% if listing.import_offer %}
+          <span class="badge bg-warning text-dark ms-2 align-middle" style="font-size: 0.5em;" title="Oferta pośrednika: auto jeszcze za granicą, cena to szacunek kosztu zakupu i sprowadzenia. Nie liczy się do statystyk.">Do sprowadzenia</span>
+          {% endif %}
     </h2>
     <div class="small text-muted mt-1">
       Source: {{ source_badge(listing.source, listing.found_by) }}

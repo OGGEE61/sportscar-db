@@ -6,7 +6,7 @@ import re
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
-from validation import damage_in_text
+from validation import damage_in_text, is_import_offer
 from webapp.helpers import IS_PRODUCTION, NOW, WRONG_MODEL_NOTE, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
 from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
@@ -507,8 +507,8 @@ def api_ingest_pending():
                seller_type, seller_name,
                vin, vin_confidence,
                registration_plate, first_registration_date, origin_market,
-               is_listing_active)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               is_listing_active, import_offer)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             source, sid, p.get("source_url"),
             p.get("raw_title"), p.get("raw_description"),
@@ -524,7 +524,7 @@ def api_ingest_pending():
             p.get("seller_type"), p.get("seller_name"),
             vin or None, vc,
             reg_plate, p.get("first_registration_date"), p.get("origin_market"),
-            1,
+            1, int(is_import_offer(p.get("raw_title"), p.get("raw_description"))),
         ))
         conn.commit()
 

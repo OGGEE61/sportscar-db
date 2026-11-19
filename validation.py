@@ -209,3 +209,24 @@ def damage_in_text(title, description):
             continue
         return sentence[max(0, m.start() - 40):m.end() + 60].strip()
     return None
+
+
+# ── Import offers of brokers ──────────────────────────────────────────────────
+# A broker lists a car still at an auction or a dealer abroad (USA, Canada, Japan, Korea): the price
+# is an estimate of what the car would cost to buy and bring, not a price of a car in Poland. Its
+# sightings are kept (the VIN stays known) and left out of the market data (excluded_reason
+# 'import_offer'). A private seller's "zdjęcia z aukcji do wglądu" is a car already imported: not this.
+_IMPORT_OFFER = re.compile(
+    r"cena,? za którą zakupimy samoch[oó]d|propozycj\w+ do sprowadzenia|szac\w+ koszt\w* zakupu|"
+    r"oferta dotyczy importu samochodu|dostępny do zakupu i (?:bezpośredniego )?importu|do wylicytowania|"
+    r"importu z aukcji|inspekcji przed licytacją|(?:aukcj|licytacj)\w*\s+firm\w*\s+ubezpieczeniow|"
+    r"koszt\w* zakupu (?:i importu |wraz z )|z licytacji w usa|do kupienia na aukcji|"
+    r"ofert\w* licytacji|dostępny na aukcji w|będzie licytowany|szacowana cena (?:z transportem|zakupu|podana)|"
+    r"sprzedawany przez firmę ubezpieczeniową|wylicytowanie pojazdu|przedmiotem aukcji jest")
+
+
+def is_import_offer(title, description) -> bool:
+    """True for a broker's offer of a car still abroad, priced at an estimated cost of buying it."""
+    text = " ".join(_TAGS.sub(" ", f"{title or ''} {description or ''}").replace("\\", "")
+                    .replace("&nbsp;", " ").lower().split())
+    return bool(_IMPORT_OFFER.search(text))

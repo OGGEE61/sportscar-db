@@ -130,6 +130,9 @@
           {% if l.damage %}
           <span class="badge flag flag-bad ms-1" style="font-size: 0.7em;" title="{{ 'Zaznaczone na portalu jako uszkodzone' if l.damage == 'portal' else 'Z treści ogłoszenia: „' ~ l.damage ~ '”' }}">Uszkodzony</span>
           {% endif %}
+          {% if l.import_offer %}
+          <span class="badge bg-warning text-dark ms-1" style="font-size: 0.7em;" title="Oferta pośrednika: auto jeszcze za granicą, cena to szacunek kosztu zakupu i sprowadzenia. Nie liczy się do statystyk.">Do sprowadzenia</span>
+          {% endif %}
         </a>
         <span class="fs-5 fw-bold text-success text-nowrap ms-2">
           {{ "{:,.0f} PLN".format(l.price_pln) if l.price_pln else '— PLN' }}
