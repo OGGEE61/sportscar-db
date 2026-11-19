@@ -30,6 +30,25 @@ class TestDamageInText(unittest.TestCase):
             ("Audi RS3", "Świetna wersja. UWAGA: pojazd uszkodzony. 4 drzwi."),
             ("BMW M2", "Polski salon | FV VAT. Samochód uszkodzony. Na sprzedaż BMW M2 G87."),
             ("BMW M4", "Belka jest cała. Do naprawy blacharskiej tył oraz wymiana klapy."),
+            # Missed until 2026-11-19 (ads from the review queue)
+            ("Mercedes-Benz Klasa A", "w cenie samochodu opłacona akcyza , w pełni sprawny ,przebieg 100 % autentyczny, "
+                                      "uszkodzony jak na zdjęciach , komplet zdjęć"),
+            ("Mercedes-Benz Klasa G 55 AMG", "Mercedes G55 2003 uszkodzony jak na zdjeciach Posiadam namiary"),
+            ("Toyota GR Yaris", "Aktualnie auto posiada widoczne na zdjęciach uszkodzenie przedniego zderzaka."),
+            ("BMW M340i", "Auto ma drobne uszkodzenie z przodu. Samochód w tej chwili jest w drodze do PL."),
+            ("Porsche Macan", "Napęd: Na cztery koła Auto sprowadzone, uszkodzone,po odprawie celnej Zapraszam"),
+            ("Bmw m2 mała szkoda", "Sprzedam bmw m2 g87 po nieduzej szkodzie pali jeździ."),
+            ("Porsche Macan", "Auto z lekka szkoda , przetarty bok, w pelni sprawne."),
+            ("Mercedes A45", "Silnik i skrzynia działają prawidłowo,wizualnie po obcierce. Do ogarnięcia elektryka."),
+            ("BMW M4", "BMW pali i jeździ, opisane uszkodzenia to podwozie, auto w całości jak na zdjęciach."),
+            ("BMW M4", "Auto zakupione bezposrednio od firmy ubezpieczeniowej w drodze do PL . Szkoda jak widac bardzo "
+                       "niewielka. Do załozenia lampy tylne i do naprawy tylny zderzak Szacowany czas dostawy."),
+            ("Mercedes GLA 45", "Tylko jedna szkoda wg. CARFAX. Przód do delikatnej poprawki."),
+            ("BMW X3 M", "Samochód dostępny do zakupu i importu z aukcji firm ubezpieczeniowych w USA."),
+            ("BMW Seria 3", "-- AMER-POL -- Auto do wylicytowania i sprowadzenia z aukcji firmy ubezpieczeniowej w USA."),
+            ("BMW M4", "Sprowadzony z Kanady Pali i jeździ Wersja bardzo bogato wyposażona: Samochód uszkodzony jak na "
+                       "zdjęciach Cena po wszystkich opłatach łącznie z akcyzą Vin i carfax wyślę na życzenie ( w carfax "
+                       "pierwsza szkoda wcześniej nic nie było )"),
         ]:
             self.assertIsNotNone(damage_in_text(title, text), text or title)
 
@@ -44,6 +63,16 @@ class TestDamageInText(unittest.TestCase):
             ("Audi R8", "Miał rozbity reflektor w pierwszym roku, wymieniony w ASO."),
             ("BMW M2", "Brak jakichkolwiek uszkodzeń, lakier oryginalny."),
             ("BMW M2", ""), (None, None),
+            # Wording seen in undamaged ads
+            ("BMW X3", "0258 Ogumienie zdatne do jazdy po uszkodzeniu 02NH Hamulec sportowy M"),
+            ("BMW M5", "Zapewniamy wsparcie przy naprawie aut uszkodzonych -- Współpracujemy z warsztatami."),
+            ("Mercedes C63", "Mozliwa ZAMIANA na tańsze lub droższe auto , dwa auta ( uszkodzone lub zabytkowe )."),
+            ("Audi A45", "Auto w stanie bardzo dobrym, nie ma żadnych uszkodzeń rys czy innych wad."),
+            ("BMW M2", "Auto było sprowadzone z Kanady z uszkodzonymi drzwiami (zostały wymienione na nowe)."),
+            ("Mercedes E63", "Pochodzenie pojazdu Ameryka. Uderzony przodem poduszki nie wystrzelone."),
+            ("BMW M340i", "Samochód miał jedną szkodę parkingową. Zarysowane zostały lewe przednie i tylne drzwi."),
+            ("Porsche 718", "KUP AUTO NAWET DO 40% TANIEJ NIŻ W EUROPIE! Samochód dostępny do importu od dealera w Korei."),
+            ("Audi RS Q3", "Zamek centralny z pilotem Zestaw do naprawy przebitej opony Śruby antykradzieżowe."),
         ]:
             self.assertIsNone(damage_in_text(title, text), text or title)
 
@@ -82,6 +111,19 @@ class TestDamageMarks(unittest.TestCase):
         conn.execute("INSERT INTO vehicles (vin, make, model, variant, year) VALUES (?, 'BMW', 'M3', 'F80 M3', 2016)", (VIN,))
         conn.commit()
         conn.close()
+
+    def test_review_queue_shows_the_mark(self):
+        self.ingest("flag", damaged=True, raw_title="Klasa A", raw_description="Ładny egzemplarz.")
+        self.ingest("text", raw_title="BMW M3", raw_description="Samochód uszkodzony jak na zdjęciach.")
+        self.ingest("clean", raw_title="BMW M3 bez wad", raw_description="Stan idealny.")
+        conn = db.get_db()
+        ids = {r["source_listing_id"]: r["id"] for r in conn.execute("SELECT id, source_listing_id FROM pending_listings")}
+        conn.close()
+        queue = self.client.get("/review").get_data(as_text=True)
+        self.assertEqual(queue.count(">Uszkodzony</span>"), 2)
+        self.assertIn("Zaznaczone na portalu jako uszkodzone", self.client.get(f"/review/{ids['flag']}").get_data(as_text=True))
+        self.assertIn("uszkodzony jak na zdjęciach", self.client.get(f"/review/{ids['text']}").get_data(as_text=True))
+        self.assertNotIn(">Uszkodzony</span>", self.client.get(f"/review/{ids['clean']}").get_data(as_text=True))
 
     def test_ingest_marks_by_portal_flag_or_text(self):
         self.ingest("flag", damaged=True, raw_description="Ładny egzemplarz.")
