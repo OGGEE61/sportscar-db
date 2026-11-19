@@ -127,6 +127,9 @@
           {% if l.origin_market %}
           <span class="badge bg-info text-dark ms-1" style="font-size: 0.7em;">{{ l.origin_market }}</span>
           {% endif %}
+          {% if l.damage %}
+          <span class="badge flag flag-bad ms-1" style="font-size: 0.7em;" title="{{ 'Zaznaczone na portalu jako uszkodzone' if l.damage == 'portal' else 'Z treści ogłoszenia: „' ~ l.damage ~ '”' }}">Uszkodzony</span>
+          {% endif %}
         </a>
         <span class="fs-5 fw-bold text-success text-nowrap ms-2">
           {{ "{:,.0f} PLN".format(l.price_pln) if l.price_pln else '— PLN' }}

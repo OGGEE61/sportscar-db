@@ -60,6 +60,12 @@ def damaged_ad_sql(alias):
             f"AND d.source_listing_id = {alias}.source_listing_id AND d.dismissed = 0)")
 
 
+def damage_reason_sql(alias):
+    """SQL expression: why this ad is damaged ('portal', or the quote from its text), NULL if it is not."""
+    return (f"(SELECT d.reason FROM damaged_listings d WHERE d.source = {alias}.source "
+            f"AND d.source_listing_id = {alias}.source_listing_id AND d.dismissed = 0)")
+
+
 def damage_history_sql(alias="v"):
     """SQL condition: a condition report says the car is not accident free (e.g. a VIN check
     found it damaged abroad), whatever its current ads say."""

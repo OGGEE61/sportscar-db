@@ -2,7 +2,7 @@ import json
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from db import get_db, make_placeholder_vin
-from webapp.helpers import is_plausible_vin
+from webapp.helpers import damage_reason_sql, is_plausible_vin
 from webapp.services.listings import _approve_listing
 
 bp = Blueprint("review", __name__)
@@ -39,7 +39,7 @@ def review_queue():
     page = min(page, pages)
     order_col = "reviewed_at" if status_filter == "approved" else "scraped_at"
     listings = conn.execute(f"""
-        SELECT * FROM pending_listings
+        SELECT *, {damage_reason_sql("pending_listings")} AS damage FROM pending_listings
         WHERE status = ?{src_sql}
         ORDER BY {order_col} DESC
         LIMIT ? OFFSET ?
@@ -54,7 +54,7 @@ def review_queue():
 def review_detail(pid):
     conn = get_db()
     listing = conn.execute(
-        "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
+        f"SELECT *, {damage_reason_sql('pending_listings')} AS damage FROM pending_listings WHERE id=?", (pid,)).fetchone()
     conn.close()
     if not listing:
         return "Not found", 404
@@ -73,7 +73,7 @@ def review_detail(pid):
 def review_approve(pid):
     conn = get_db()
     listing = conn.execute(
-        "SELECT * FROM pending_listings WHERE id=?", (pid,)).fetchone()
+        f"SELECT *, {damage_reason_sql('pending_listings')} AS damage FROM pending_listings WHERE id=?", (pid,)).fetchone()
     if not listing:
         conn.close()
         return "Not found", 404
