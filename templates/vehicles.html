@@ -3,22 +3,22 @@
 {% from "_source.html" import source_badge %}
 {% from "_car_flags.html" import vin_block %}
 {% from "_engine_filter.html" import engine_fields %}
-{% block title %}{{ "Ulubione" if favorites_only else "Vehicles" }} – SportsCar DB{% endblock %}
+{% block title %}{{ "Ulubione" if favorites_only else "Auta" }} – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0">{% if favorites_only %}<i class="bi bi-star-fill text-warning me-2"></i>Ulubione{% else %}Vehicles{% endif %}</h2>
-  <a href="/add" class="btn btn-primary btn-sm">+ Add Vehicle</a>
+  <h2 class="mb-0">{% if favorites_only %}<i class="bi bi-star-fill text-warning me-2"></i>Ulubione{% else %}Auta{% endif %}</h2>
+  <a href="/add" class="btn btn-primary btn-sm">+ Dodaj auto</a>
 </div>
 
 <!-- Filters -->
 <form class="row g-2 mb-4" method="get">
   <div class="col-md-2">
-    <input name="q" class="form-control" placeholder="Search VIN / make / model…" value="{{ q }}">
+    <input name="q" class="form-control" placeholder="Szukaj: VIN / marka / model…" value="{{ q }}">
   </div>
   <div class="col-md-2">
     <select name="make" class="form-select">
-      <option value="">All makes</option>
+      <option value="">Wszystkie marki</option>
       {% for m in makes %}
       <option value="{{ m }}" {% if m == selected_make %}selected{% endif %}>{{ m }}</option>
       {% endfor %}
@@ -26,7 +26,7 @@
   </div>
   <div class="col-md-2">
     <select name="region" class="form-select">
-      <option value="">All voivodeships</option>
+      <option value="">Wszystkie województwa</option>
       {% for code, rname in regions.items() %}
       <option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ rname }}</option>
       {% endfor %}
@@ -34,15 +34,15 @@
   </div>
   <div class="col-md-2">
     <select name="status" class="form-select">
-      <option value="">All statuses</option>
-      <option value="verified"    {% if status=='verified'    %}selected{% endif %}>Verified</option>
-      <option value="unverified"  {% if status=='unverified'  %}selected{% endif %}>Unverified</option>
-      <option value="placeholder" {% if status=='placeholder' %}selected{% endif %}>Placeholder</option>
+      <option value="">Wszystkie statusy VIN</option>
+      <option value="verified"    {% if status=='verified'    %}selected{% endif %}>Zweryfikowany</option>
+      <option value="unverified"  {% if status=='unverified'  %}selected{% endif %}>Niezweryfikowany</option>
+      <option value="placeholder" {% if status=='placeholder' %}selected{% endif %}>Tymczasowy</option>
     </select>
   </div>
   <div class="col-md-1">
-    <select name="source" class="form-select" title="Source">
-      <option value="">All sources</option>
+    <select name="source" class="form-select" title="Źródło">
+      <option value="">Wszystkie źródła</option>
       <option value="otomoto" {% if source=='otomoto' %}selected{% endif %}>Otomoto</option>
       <option value="olx"     {% if source=='olx'     %}selected{% endif %}>OLX</option>
       <option value="autoplac" {% if source=='autoplac' %}selected{% endif %}>Autoplac</option>
@@ -51,27 +51,27 @@
   <div class="col-md-2">
     <select name="sort" class="form-select">
       {% if favorites_only %}<option value="fav_added" {% if sort=='fav_added' %}selected{% endif %}>Ostatnio dodane</option>{% endif %}
-      <option value="last_seen" {% if sort=='last_seen' %}selected{% endif %}>Last seen</option>
-      <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Last updated</option>
-      <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Year ↓</option>
-      <option value="year_asc"   {% if sort=='year_asc'   %}selected{% endif %}>Year ↑</option>
-      <option value="power"      {% if sort=='power'      %}selected{% endif %}>Power ↓</option>
-      <option value="obs"        {% if sort=='obs'        %}selected{% endif %}>Observations ↓</option>
-      <option value="price"      {% if sort=='price'      %}selected{% endif %}>Price ↑</option>
+      <option value="last_seen" {% if sort=='last_seen' %}selected{% endif %}>Ostatnio widziane</option>
+      <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Ostatnio zmienione</option>
+      <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Rocznik ↓</option>
+      <option value="year_asc"   {% if sort=='year_asc'   %}selected{% endif %}>Rocznik ↑</option>
+      <option value="power"      {% if sort=='power'      %}selected{% endif %}>Moc ↓</option>
+      <option value="obs"        {% if sort=='obs'        %}selected{% endif %}>Obserwacje ↓</option>
+      <option value="price"      {% if sort=='price'      %}selected{% endif %}>Cena ↑</option>
     </select>
   </div>
   {{ engine_fields(fuel, cc_from, cc_to, fuels, "col-6 col-md-2", "col-6 col-md-3", cc_min, cc_max, cc_step) }}
   <div class="col-md-1 d-flex gap-1">
-    <button class="btn btn-primary w-100" title="Apply filter"><i class="bi bi-funnel"></i></button>
-    <a href="{{ base_path }}" class="btn btn-outline-secondary" title="Reset filter">↺</a>
+    <button class="btn btn-primary w-100" title="Filtruj"><i class="bi bi-funnel"></i></button>
+    <a href="{{ base_path }}" class="btn btn-outline-secondary" title="Wyczyść filtr">↺</a>
   </div>
 </form>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
-  <p class="text-muted small mb-0">{{ total }} result(s){% if pages > 1 %} · page {{ page }}/{{ pages }}{% endif %}</p>
+  <p class="text-muted small mb-0">wyników: {{ total }}{% if pages > 1 %} · strona {{ page }}/{{ pages }}{% endif %}</p>
   {% if selected_region %}
   <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
-    Region: {{ regions.get(selected_region, selected_region) }}
+    Województwo: {{ regions.get(selected_region, selected_region) }}
     <a href="{{ base_path }}?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}&fuel={{ fuel }}&cc_from={{ cc_from if cc_from is not none else '' }}&cc_to={{ cc_to if cc_to is not none else '' }}" class="text-decoration-none text-danger ms-1">✕</a>
   </span>
   {% endif %}
@@ -90,7 +90,7 @@
       {% else %}
       <div class="bg-secondary rounded shadow-sm d-flex align-items-center justify-content-center"
            style="width: 120px; height: 80px;">
-        <span class="text-white opacity-50" style="font-size: 0.7em;">No photo</span>
+        <span class="text-white opacity-50" style="font-size: 0.7em;">Brak zdjęcia</span>
       </div>
       {% endif %}
     </a>
@@ -138,10 +138,10 @@
   </div>
   {% else %}
   <div class="list-group-item py-4 text-center text-muted">
-    {% if favorites_only %}Nie masz jeszcze ulubionych aut. Kliknij gwiazdkę przy aucie, żeby je tu dodać.{% else %}No vehicles found.{% endif %}
+    {% if favorites_only %}Nie masz jeszcze ulubionych aut. Kliknij gwiazdkę przy aucie, żeby je tu dodać.{% else %}Nie znaleziono aut.{% endif %}
   </div>
   {% endfor %}
 </div>
 {% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort ~ '&fuel=' ~ fuel ~ '&cc_from=' ~ (cc_from if cc_from is not none else '') ~ '&cc_to=' ~ (cc_to if cc_to is not none else '') %}
-{{ pager(page, pages, base_path ~ '?' ~ qs ~ '&page=', 'Vehicles pages', ids=true) }}
+{{ pager(page, pages, base_path ~ '?' ~ qs ~ '&page=', 'Strony listy aut', ids=true) }}
 {% endblock %}
