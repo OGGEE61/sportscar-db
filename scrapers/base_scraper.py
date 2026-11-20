@@ -362,6 +362,31 @@ def refresh_session(cookies: dict, log_errors: bool = True) -> dict:
         return cookies
 
 
+# parametersDict keys by which otomoto says an ad has a VIN behind "Wyświetl VIN". Most ads carry
+# both; ads moved over from OLX (OLX_ID in the URL) carry only with_vin. Otomoto renames these
+# now and then, so any other key with "vin" as a word and a yes value counts too, and is logged so
+# it can be added here.
+VIN_FLAG_KEYS = ("has_vin", "with_vin")
+_VIN_WORD = re.compile(r"(?:^|_)vin(?:_|$)")
+_YES = ("1", "true", "tak", "yes")
+
+
+def vin_behind_reveal(params_dict: dict) -> bool:
+    """True if an otomoto ad's parametersDict says it has a VIN to reveal."""
+    def yes(key):
+        values = (params_dict.get(key) or {}).get("values") or [{}]
+        return str(values[0].get("value", "")).strip().lower() in _YES
+
+    if any(yes(k) for k in VIN_FLAG_KEYS):
+        return True
+    # "vin" itself holds the encrypted VIN, not a flag
+    unknown = [k for k in params_dict if k not in VIN_FLAG_KEYS and k != "vin" and _VIN_WORD.search(k) and yes(k)]
+    if unknown:
+        print(f"    [vin] unknown VIN flag {', '.join(unknown)}: taken as a VIN behind the button "
+              f"(add it to VIN_FLAG_KEYS)")
+    return bool(unknown)
+
+
 def _decrypt_vin(encrypted: str, advert_id: str) -> Optional[str]:
     """Decrypt an otomoto encrypted VIN using the advert's numeric ID as key material.
 
@@ -1148,7 +1173,7 @@ def parse_detail(html: str, url: str) -> dict:
         vin_confidence = "none"
         invalid_vin    = None
         advert_id      = advert.get("id", "")
-        has_vin        = bool((pd).get("has_vin"))
+        has_vin        = vin_behind_reveal(pd)
 
         # Tier 1: decrypt the encrypted value in params["vin"] or pd["vin"]
         enc_vin = params.get("vin") or _pd_val("vin") or ""

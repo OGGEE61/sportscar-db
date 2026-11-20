@@ -1704,6 +1704,34 @@ class TestOtomotoDetailPlate(unittest.TestCase):
         self.assertFalse(self.detail({})["plate_behind_reveal"])
 
 
+class TestOtomotoVinFlag(unittest.TestCase):
+    """An ad whose VIN is behind "Wyświetl VIN" must be flagged, or the VIN is never revealed."""
+
+    def detail(self, params_dict):
+        return TestOtomotoDetailPlate.detail(None, params_dict)
+
+    @staticmethod
+    def flag(value="1", label=""):
+        return {"values": [{"value": value, "label": label}]}
+
+    def test_each_known_flag_marks_a_vin_to_reveal(self):
+        # 6151759476, an X3 M40i moved over from OLX, carries only with_vin
+        for key in base_scraper.VIN_FLAG_KEYS:
+            d = self.detail({key: self.flag()})
+            self.assertEqual((d["vin"], d["vin_confidence"]), (None, "found_in_schema"), key)
+
+    def test_an_unknown_vin_flag_counts_and_is_logged(self):
+        with mock.patch("builtins.print") as out:
+            d = self.detail({"vin_available": self.flag("Tak")})
+        self.assertEqual(d["vin_confidence"], "found_in_schema")
+        self.assertIn("unknown VIN flag vin_available", str(out.call_args_list))
+
+    def test_no_flag_a_no_value_or_a_lookalike_key_means_no_vin(self):
+        for params in ({}, {"with_vin": self.flag("0")}, {"has_vin": self.flag("0", "Nie")},
+                       {"province": self.flag()}, {"vin": self.flag("1")}):
+            self.assertEqual(self.detail(params)["vin_confidence"], "none", params)
+
+
 class TestOtomotoVinIsValidated(unittest.TestCase):
     """A VIN from the description or from "Show VIN" must pass is_plausible_vin, like the page's own."""
 
@@ -1834,7 +1862,7 @@ class TestRevealEndpoints(ScrapingTestCase):
         conn = db.get_db()
         rows = {r["source_listing_id"]: dict(r) for r in conn.execute("SELECT * FROM pending_listings")}
         conn.close()
-        self.assertEqual(rows["waiting"]["vin_confidence"], "none")
+        self.assertEqual(rows["waiting"]["vin_confidence"], "not_shown")   # not "none": not re-read
         self.assertEqual(rows["hasvin2"]["vin_confidence"], "found_in_schema")
         self.assertFalse(review.vin_awaits_reveal(rows["waiting"]))
         # It left the reveal queue, and "reject without VIN" now takes it
