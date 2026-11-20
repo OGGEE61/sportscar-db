@@ -3,11 +3,11 @@
 {% from "_source.html" import source_badge %}
 {% from "_car_flags.html" import vin_block %}
 {% from "_engine_filter.html" import engine_fields %}
-{% block title %}{{ "Ulubione" if favorites_only else "Auta" }} – SportsCar DB{% endblock %}
+{% block title %}{{ "Ulubione" if favorites_only else "Baza VIN-ów" }} – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0">{% if favorites_only %}<i class="bi bi-star-fill text-warning me-2"></i>Ulubione{% else %}Auta{% endif %}</h2>
+  <h2 class="mb-0">{% if favorites_only %}<i class="bi bi-star-fill text-warning me-2"></i>Ulubione{% else %}Baza VIN-ów{% endif %}</h2>
   <a href="/add" class="btn btn-primary btn-sm">+ Dodaj auto</a>
 </div>
 
@@ -118,6 +118,10 @@
 
       <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
         {% for s in (v.sources or '').split(',') if s %}{{ source_badge(s) }}{% endfor %}
+        {% if v.left_out %}
+        {% set why = 'Do sprowadzenia' if v.left_out == 'import_offer' else 'Z salonu' if v.left_out.startswith('dealer') else 'Inny model' %}
+        <span class="badge bg-warning text-dark" title="Poza statystykami: {{ why | lower }} (ceny tego auta nie liczą się do median ani okazji)">{{ why }}</span>
+        {% endif %}
         <span>{{ v.year }}</span>
         {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} KM</span>{% endif %}
         {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cm³</span>{% endif %}

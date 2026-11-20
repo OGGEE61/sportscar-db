@@ -69,10 +69,14 @@ class TestWrongModel(unittest.TestCase):
         self.assertEqual(reasons, {f"id-{M8}": "wrong_model", "old": "dealer_new"})
         self.assertEqual(self.state(M5)[1], {f"id-{M5}": None})                  # the other car is untouched
         self.assertIn("Auto ukryte jako błędnie przypisany model: <strong>M8 Gran Coupé, nie M5</strong>", page)
-        for path in ("/vehicles", "/models?model=m5_f90", "/api/dashboard/recent"):
+        for path in ("/models?model=m5_f90", "/api/dashboard/recent"):
             html = self.client.get(path).get_data(as_text=True)
             self.assertNotIn(M8, html, path)
             self.assertIn(M5[:12], html, path)
+        # The VIN base keeps every car: the M8 is listed, marked as another model
+        html = self.client.get("/vehicles").get_data(as_text=True)
+        self.assertIn(M8, html)
+        self.assertIn(">Inny model</span>", html)
 
     def test_a_reason_is_required(self):
         page = self.hide(reason="   ").get_data(as_text=True)
@@ -97,7 +101,7 @@ class TestWrongModel(unittest.TestCase):
         listings, reasons = self.state()
         self.assertEqual(listings["new-ad"], ("rejected", "Nie ten model: M8 Gran Coupé, nie M5"))
         self.assertNotIn("new-ad", reasons)                                      # no sighting was added
-        self.assertNotIn(M8, self.client.get("/vehicles").get_data(as_text=True))
+        self.assertIn(">Inny model</span>", self.client.get("/vehicles").get_data(as_text=True))   # still marked
 
     def test_a_new_ad_of_a_normal_car_is_approved_as_before(self):
         self.hide()
