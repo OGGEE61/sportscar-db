@@ -179,9 +179,7 @@ def _load_summary():
             COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL THEN o.source_listing_id END)        AS unique_ads,
             AVG(CASE WHEN o.excluded_reason IS NULL AND o.removed_at IS NULL AND o.price_pln > 0
                       AND NOT """ + damaged_ad_sql("o") + """ THEN o.price_pln END)                  AS avg_price,
-            COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL THEN o.vin END)
-              + (SELECT COUNT(*) FROM vehicles v
-                 WHERE NOT EXISTS (SELECT 1 FROM listing_observations x WHERE x.vin = v.vin))       AS total_vins
+            (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins
         FROM listing_observations o
     """).fetchone()
     stats = {

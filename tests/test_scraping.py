@@ -1283,14 +1283,14 @@ class DealerStockExclusionTest(ScrapingTestCase):
         self.assertNotIn("400", summary)  # no crash; stats rendered
         import webapp.blueprints.dashboard as dash
         stats = dash._load_summary()["stats"]
-        self.assertEqual(stats["total_vins"], 1)
-        self.assertEqual(stats["total_obs"], 1)
+        self.assertEqual(stats["total_vins"], 2)     # every VIN we have, the dealer-stock one too
+        self.assertEqual(stats["total_obs"], 1)      # sightings of the market only
         self.assertEqual(stats["avg_price"], 300000)
         conn = db.get_db()
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin = ?", ("A" * 17,)).fetchone()[0], 1)
         conn.close()
 
-    def test_vehicles_list_skips_dealer_stock_but_keeps_resold_car(self):
+    def test_vehicles_list_marks_dealer_stock_but_not_a_resold_car(self):
         conn = db.get_db()
         self._car(conn, "A" * 17, "M2", 2026)
         self._obs(conn, "A" * 17, "1", 5, "2026-09-01")           # dealer only: hidden
@@ -1300,10 +1300,10 @@ class DealerStockExclusionTest(ScrapingTestCase):
         conn.commit()
         conn.close()
         html = self.client.get("/vehicles").get_data(as_text=True)
-        self.assertNotIn("A" * 17, html)
+        self.assertIn("A" * 17, html)                          # the VIN base lists every car ...
         self.assertIn("B" * 17, html)
+        self.assertEqual(html.count(">Z salonu</span>"), 1)    # ... and marks the one left out
         self.assertIn("B" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
-        self.assertNotIn("A" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
 
 
 class TestTrendLine(unittest.TestCase):

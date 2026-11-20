@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
-from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, car_visible_sql, damaged_ad_sql,
+from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, damaged_ad_sql,
                             engine_filter, safe_float, safe_int, script_json)
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services.photos import store_photo
@@ -61,9 +61,9 @@ def _vehicles_page(favorites_only: bool):
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
     fuel, cc_from, cc_to, engine_conds, engine_params = engine_filter(request.args)
-    # A full VIN finds the car even if it is left out of the lists (dealer stock, an import offer)
-    full_vin = len(q) == 17 and q.isalnum()
-    wheres, params = [*([] if full_vin else [car_visible_sql()]), *engine_conds], [*engine_params]
+    # The VIN base lists every car we have. Cars whose sightings are left out of the market data
+    # (dealer stock, an import offer, a wrong model) are listed too, marked with the reason.
+    wheres, params = [*engine_conds], [*engine_params]
     if favorites_only:
         wheres.append("v.vin IN (SELECT vin FROM favorites)")
     if q:
@@ -74,10 +74,10 @@ def _vehicles_page(favorites_only: bool):
     if status:
         wheres.append("v.vin_status = ?"); params.append(status)
     if source:
-        wheres.append("v.vin IN (SELECT vin FROM listing_observations WHERE excluded_reason IS NULL AND source = ?)"); params.append(source)
+        wheres.append("v.vin IN (SELECT vin FROM listing_observations WHERE source = ?)"); params.append(source)
     if region:
         cities_in_region = [c for c, r in CITY_TO_REGION.items() if r == region]
-        cond = "lo.excluded_reason IS NULL AND (lo.location_region = ?"
+        cond = "(lo.location_region = ?"
         rparams = [region]
         if cities_in_region:
             cond += f" OR lo.location_city IN ({','.join('?' for _ in cities_in_region)})"
@@ -91,7 +91,7 @@ def _vehicles_page(favorites_only: bool):
     # The page's 50 cars are picked first, with a sort key that costs a few index rows per car
     # (idx_obs_vin_observed); their sighting summary, tags and markers are computed for those 50
     # only. Summarising every car's sightings on each page view read ~75k rows.
-    usable = "x.vin = v.vin AND x.excluded_reason IS NULL"
+    usable = "x.vin = v.vin"
     sort_map = {
         # ORDER BY ... LIMIT 1, not MAX(): with the extra condition MAX() reads every sighting
         "last_seen":  (f"(SELECT x.observed_at FROM listing_observations x WHERE {usable} "
@@ -117,6 +117,12 @@ def _vehicles_page(favorites_only: bool):
         )
         SELECT p.*, o.obs_count, o.ad_count, o.min_price, o.max_price, o.last_observed, o.active_ads, o.sources,
                (SELECT GROUP_CONCAT(t.tag) FROM tags t WHERE t.vin = p.vin) AS tags,
+               -- Why the car is out of the market data: set only when none of its sightings counts
+               CASE WHEN NOT EXISTS (SELECT 1 FROM listing_observations u WHERE u.vin = p.vin AND u.excluded_reason IS NULL)
+                    THEN (SELECT e.excluded_reason FROM listing_observations e WHERE e.vin = p.vin
+                          AND e.excluded_reason IS NOT NULL   -- a wrong model first, dealer stock last
+                          ORDER BY e.excluded_reason LIKE 'dealer%', e.excluded_reason = 'import_offer'
+                          LIMIT 1) END AS left_out,
                {car_flags_sql("p")}
         FROM page p
         LEFT JOIN (
@@ -129,7 +135,7 @@ def _vehicles_page(favorites_only: bool):
                    SUM(CASE WHEN removed_at IS NULL THEN 1 ELSE 0 END) AS active_ads,
                    GROUP_CONCAT(DISTINCT source)     AS sources
             FROM listing_observations
-            WHERE excluded_reason IS NULL AND vin IN (SELECT vin FROM page)
+            WHERE vin IN (SELECT vin FROM page)
             GROUP BY vin
         ) o ON o.vin = p.vin
         ORDER BY {order_sql.replace("v.", "p.")}

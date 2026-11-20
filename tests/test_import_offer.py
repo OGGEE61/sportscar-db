@@ -92,10 +92,11 @@ class TestImportOfferSightings(unittest.TestCase):
         self.ingest("offer2", "WBS11HP0X0CR00002", OFFER)
         self.assertEqual(self.query("SELECT excluded_reason FROM listing_observations WHERE source_listing_id = 'offer2'"),
                          [("import_offer",)])
-        self.assertIn("WBS11HP0X0CR00002", self.client.get("/vehicles").get_data(as_text=True))
-        self.assertNotIn("WBS11HP0X0CR00001", self.client.get("/vehicles").get_data(as_text=True))
-        # Left out of the lists, but the VIN is kept: a search for it finds the car
-        self.assertIn("WBS11HP0X0CR00001", self.client.get("/vehicles?q=WBS11HP0X0CR00001").get_data(as_text=True))
+        # The VIN base lists both; the offer is marked, out of the market data
+        html = self.client.get("/vehicles").get_data(as_text=True)
+        self.assertIn("WBS11HP0X0CR00002", html)
+        self.assertIn("WBS11HP0X0CR00001", html)
+        self.assertEqual(html.count(">Do sprowadzenia</span>"), 1)
         self.assertEqual(self.client.get("/vehicle/WBS11HP0X0CR00001").status_code, 200)
 
     def test_migration_flags_ads_already_stored(self):
