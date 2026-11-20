@@ -7,7 +7,8 @@ by a bulk button by mistake. This opens each rejected listing's page:
   - up: is_listing_active = 1, the page is read again (VIN, plate, first registration, specs), and
     the listing goes back to pending when it now passes its scraper's rules
     (scripts/maintenance/audit_listings.py) and has a VIN, or one behind "Show VIN" (the reveal job
-    gets it) that Otomoto hasn't already refused (vin_confidence 'not_shown').
+    gets it) that Otomoto hasn't already refused (vin_confidence 'not_shown', or 'invalid_vin' for
+    a fake one).
 Only listings rejected without a stated reason, or for a missing VIN, are restored: a rejection
 with its own note (a wrong model, a damaged car) stands. Nothing is approved or deleted.
 
@@ -71,9 +72,10 @@ def decide(listing: dict, state: str, detail: dict, configs: dict) -> dict:
         return {"state": state, "action": "keep", "why": f"odrzucone z powodem: {listing['review_notes'][:50]}", "listing": now}
     if a["broken"]:
         return {"state": state, "action": "keep", "why": "; ".join(a["broken"])[:90], "listing": now}
-    # Otomoto already answered this ad's "Show VIN" without one (the seller masked it): asking
-    # again would only use the day's reveals, so only a VIN in the page itself brings it back
-    if vin == "behind_reveal" and listing.get("vin_confidence") == "not_shown":
+    # Otomoto already answered this ad's "Show VIN" without one ('not_shown': the seller masked it)
+    # or with a fake one ('invalid_vin', e.g. ZAPYTAJSPRZEDAWCE): asking again would only use the
+    # day's reveals, so only a VIN in the page itself brings it back
+    if vin == "behind_reveal" and listing.get("vin_confidence") in ("not_shown", "invalid_vin"):
         return {"state": state, "action": "keep", "why": "VIN za „Pokaż VIN”, ale Otomoto już go odmówiło",
                 "listing": now}
     if vin in ("stored", "in_description", "behind_reveal"):
