@@ -65,6 +65,15 @@ class TestRecheckDecision(unittest.TestCase):
         d = self.r.decide(self.listing(), "active", {"vin_confidence": "found_in_schema"}, self.configs)
         self.assertEqual((d["action"], d["why"]), ("restore", "VIN: behind_reveal"))
 
+    def test_vin_otomoto_already_refused_stays_unless_the_page_has_it(self):
+        refused = self.listing(vin_confidence="not_shown")
+        d = self.r.decide(refused, "active", {"vin_confidence": "found_in_schema"}, self.configs)
+        self.assertEqual(d["action"], "keep")
+        self.assertIn("odmówiło", d["why"])
+        d = self.r.decide(refused, "active", {"vin": "WDD1569421J123456", "vin_confidence": "found_in_schema"},
+                          self.configs)
+        self.assertEqual(d["action"], "restore")
+
     def test_still_no_vin_stays(self):
         self.assertEqual(self.r.decide(self.listing(), "active", {}, self.configs)["action"], "keep")
 
