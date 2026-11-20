@@ -338,9 +338,10 @@ def api_reveal_result():
         stored["vin"] = True
     # Otomoto answered that this ad has no VIN to show (none, or one the seller masked): the
     # listing no longer waits for a reveal, so the job stops asking and the review queue's
-    # "reject without VIN" takes it like any other listing without a VIN.
+    # "reject without VIN" takes it like any other listing without a VIN. 'not_shown', not 'none'
+    # (no VIN flag in the page): scripts/maintenance/recheck_hidden_vins.py re-reads only the latter.
     if p.get("no_vin") and not vin:
-        cur = conn.execute("UPDATE pending_listings SET vin_confidence = 'none' WHERE id = ? AND status = 'pending' "
+        cur = conn.execute("UPDATE pending_listings SET vin_confidence = 'not_shown' WHERE id = ? AND status = 'pending' "
                            "AND vin_confidence = 'found_in_schema' AND COALESCE(TRIM(vin), '') = ''", (listing_id,))
         stored["no_vin"] = cur.rowcount > 0
     car_vin = row["vin"] or (vin if stored["vin"] else "")

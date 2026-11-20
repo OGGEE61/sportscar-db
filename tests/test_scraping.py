@@ -1862,7 +1862,7 @@ class TestRevealEndpoints(ScrapingTestCase):
         conn = db.get_db()
         rows = {r["source_listing_id"]: dict(r) for r in conn.execute("SELECT * FROM pending_listings")}
         conn.close()
-        self.assertEqual(rows["waiting"]["vin_confidence"], "none")
+        self.assertEqual(rows["waiting"]["vin_confidence"], "not_shown")   # not "none": not re-read
         self.assertEqual(rows["hasvin2"]["vin_confidence"], "found_in_schema")
         self.assertFalse(review.vin_awaits_reveal(rows["waiting"]))
         # It left the reveal queue, and "reject without VIN" now takes it
