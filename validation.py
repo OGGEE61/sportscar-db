@@ -114,6 +114,9 @@ def is_valid_first_registration_date(value, today=None) -> bool:
 # Polish market's.
 OVERSEAS_ORIGINS = ("USA", "USA/Kanada", "Kanada")
 
+# The markets a car's origin is told as, by Bielik (enrich_with_bielik.py) and on the origin review page
+MARKETS = ["Polska", "Europa", "USA", "Kanada", "Japonia", "Szwajcaria", "Zatoka Perska"]
+
 
 # Nearly new cars are dealer stock ("salonówki"), not the used-car market this project
 # tracks. Applies to every model: scrapers skip them and the database hides their sightings.

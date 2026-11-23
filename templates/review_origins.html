@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_source.html" import source_badge %}
+{% block title %}Rozbieżności rynku – SportsCar DB{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+  <h2 class="mb-0">Rozbieżności rynku <span class="badge bg-warning text-dark fs-6 align-middle" id="origin-conflict-count">{{ cars|length }}</span></h2>
+  <a href="/review" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Kolejka</a>
+</div>
+<p class="text-muted small mb-4">
+  Auta, przy których rynek pochodzenia zapisany w bazie różni się od tego, co Bielik wyczytał z ogłoszeń.
+  Twoja decyzja zostaje zapamiętana: kolejne pobranie ogłoszenia jej nie nadpisze, a Bielik nie zgłosi auta ponownie.
+</p>
+
+{% for c in cars %}
+<div class="card mb-3 origin-card" id="car-{{ c.vin }}">
+  <div class="card-body">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+      <div>
+        <a href="/vehicle/{{ c.vin }}" class="fw-semibold">{{ c.make }} {{ c.model }}{% if c.variant %} {{ c.variant }}{% endif %}</a>
+        {% if c.year %}<span class="text-muted">{{ c.year }}</span>{% endif %}
+        <div class="font-monospace small text-muted">{{ c.vin }}</div>
+      </div>
+      <div class="text-nowrap">
+        <span class="small text-muted">W bazie</span> <span class="badge bg-secondary">{{ c.origin_market }}</span>
+        <i class="bi bi-arrow-right mx-1 text-muted"></i>
+        <span class="small text-muted">Bielik</span> <span class="badge bg-primary">{{ c.ai_suggested_market }}</span>
+      </div>
+    </div>
+    {% if c.ai_reasoning %}
+    <div class="mt-2 small"><i class="bi bi-stars text-primary me-1"></i>{{ c.ai_reasoning }}</div>
+    {% endif %}
+    {% if ads.get(c.vin) %}
+    <div class="mt-2 small d-flex flex-wrap gap-2 align-items-center">
+      <span class="text-muted">Ogłoszenia:</span>
+      {% for a in ads[c.vin] %}
+      {% if a.source_url %}<a href="{{ a.source_url }}" target="_blank" rel="noopener" class="text-decoration-none">{% endif %}
+        {{ source_badge(a.source) }} <span class="text-muted">{{ (a.scraped_at or '')[:10] }}</span>
+      {% if a.source_url %}<i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <form method="post" action="/review/origins/{{ c.vin }}" class="d-flex flex-wrap gap-2"
+            hx-post="/review/origins/{{ c.vin }}" hx-target="closest .origin-card" hx-swap="outerHTML">
+        <button name="market" value="{{ c.ai_suggested_market }}" class="btn btn-sm btn-primary">
+          <i class="bi bi-check-lg"></i> Bielik ma rację: {{ c.ai_suggested_market }}
+        </button>
+        <button name="market" value="{{ c.origin_market }}" class="btn btn-sm btn-outline-secondary">
+          Zostaw: {{ c.origin_market }}
+        </button>
+      </form>
+      <form method="post" action="/review/origins/{{ c.vin }}" class="d-flex gap-1"
+            hx-post="/review/origins/{{ c.vin }}" hx-target="closest .origin-card" hx-swap="outerHTML">
+        <select name="market" class="form-select form-select-sm w-auto" aria-label="Inny rynek">
+          {% for m in markets %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+          <option value="{{ unknown }}">{{ unknown }}</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary">Inny rynek</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-secondary">Brak rozbieżności do sprawdzenia.</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.body.addEventListener("htmx:responseError", () => alert("Nie udało się zapisać. Spróbuj ponownie."));
+</script>
+{% endblock %}

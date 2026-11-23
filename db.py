@@ -844,6 +844,15 @@ def init_db():
             db.execute(f"ALTER TABLE vehicles ADD COLUMN {col} {decl}")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(27,'vehicle_ai_analysis')")
 
+    # Migration v28: a car's origin market as a person decided it on the origin review page
+    # (/review/origins), where the stored market and Bielik's disagree. Once set, scraping does not
+    # overwrite origin_market and Bielik does not flag the car again. The partial index keeps the
+    # page and its counter to the flagged cars.
+    if "origin_checked_at" not in {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}:
+        db.execute("ALTER TABLE vehicles ADD COLUMN origin_checked_at TEXT")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_ai_conflict ON vehicles(vin) WHERE ai_conflict = 1")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(28,'origin_checked')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

@@ -4,6 +4,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from db import get_db, make_placeholder_vin
 from webapp.helpers import damage_reason_sql, is_plausible_vin
 from webapp.services.listings import _approve_listing
+from validation import MARKETS
 
 bp = Blueprint("review", __name__)
 
@@ -44,10 +45,76 @@ def review_queue():
         ORDER BY {order_col} DESC
         LIMIT ? OFFSET ?
     """, (status_filter, *src_params, REVIEW_PER_PAGE, (page - 1) * REVIEW_PER_PAGE)).fetchall()
+    origin_conflicts = _origin_conflict_count(conn)
     conn.close()
     return render_template("review.html",
         listings=listings, counts=counts, status_filter=status_filter,
-        source=source, page=page, pages=pages)
+        source=source, page=page, pages=pages, origin_conflicts=origin_conflicts)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ORIGIN REVIEW: cars whose stored origin market and Bielik's disagree
+# ─────────────────────────────────────────────────────────────────────────────
+
+ORIGIN_UNKNOWN = "nieznany"
+
+
+def _origin_conflict_count(conn):
+    return conn.execute("SELECT COUNT(*) FROM vehicles WHERE ai_conflict = 1").fetchone()[0]
+
+
+@bp.route("/review/origins")
+def review_origins():
+    # Both queries read only the flagged cars through idx_vehicles_ai_conflict and idx_pending_vin.
+    # Sorting and the status filter are done here: in SQL the planner takes the make/model and
+    # status indexes instead, which read the whole tables.
+    conn = get_db()
+    cars = sorted(conn.execute("""
+        SELECT vin, make, model, variant, year, origin_market, ai_suggested_market, ai_reasoning, ai_ad_count
+        FROM vehicles WHERE ai_conflict = 1
+    """).fetchall(), key=lambda c: (c["make"] or "", c["model"] or "", c["vin"]))
+    ads = {}
+    for ad in conn.execute("""
+        SELECT vin, source, source_url, scraped_at, status FROM pending_listings
+        WHERE vin IN (SELECT vin FROM vehicles WHERE ai_conflict = 1)
+    """):
+        if ad["status"] in ("approved", "pending"):
+            ads.setdefault(ad["vin"], []).append(ad)
+    conn.close()
+    for car_ads in ads.values():
+        car_ads.sort(key=lambda a: a["scraped_at"] or "", reverse=True)
+    return render_template("review_origins.html", cars=cars, ads=ads, markets=MARKETS, unknown=ORIGIN_UNKNOWN)
+
+
+@bp.route("/review/origins/<vin>", methods=["POST"])
+def review_origin_decide(vin):
+    """Form field market: the car's origin market as decided (one of MARKETS, the stored one, or
+    "nieznany"). It is kept from then on: scraping does not overwrite it and Bielik does not flag
+    the car again. Agreeing with Bielik also takes his interior colour, held back over the conflict."""
+    market = request.form.get("market", "")
+    conn = get_db()
+    car = conn.execute("SELECT origin_market FROM vehicles WHERE vin = ?", (vin,)).fetchone()
+    if not car:
+        conn.close()
+        return "Nie znaleziono auta", 404
+    if market not in MARKETS and market != ORIGIN_UNKNOWN and market != car["origin_market"]:
+        conn.close()
+        return "Nieznany rynek", 400
+    chosen = None if market == ORIGIN_UNKNOWN else market
+    conn.execute("""
+        UPDATE vehicles
+        SET origin_market = ?, origin_checked_at = CURRENT_TIMESTAMP, ai_conflict = 0, updated_at = CURRENT_TIMESTAMP,
+            color_int = CASE WHEN ? = ai_suggested_market THEN COALESCE(color_int, ai_interior_color) ELSE color_int END
+        WHERE vin = ?
+    """, (chosen, chosen, vin))
+    conn.commit()
+    left = _origin_conflict_count(conn)
+    conn.close()
+    if request.headers.get("HX-Request"):
+        # The card is swapped out; the counter is updated out of band
+        return f'<span id="origin-conflict-count" hx-swap-oob="true">{left}</span>'
+    flash(f"Zapisano rynek: {chosen or ORIGIN_UNKNOWN}.", "success")
+    return redirect(url_for("review.review_origins"))
 
 
 @bp.route("/review/<int:pid>")

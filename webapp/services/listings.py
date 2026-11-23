@@ -176,6 +176,7 @@ def _approve_listing(conn, listing, overrides=None):
     else:
         initial_status = "unverified"
 
+    # An origin market a person decided on /review/origins (origin_checked_at) is not overwritten
     conn.execute("""
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
@@ -196,7 +197,8 @@ def _approve_listing(conn, listing, overrides=None):
           transmission= COALESCE(excluded.transmission, transmission),
           registration_plate = COALESCE(excluded.registration_plate, registration_plate),
           first_registration_date = COALESCE(excluded.first_registration_date, first_registration_date),
-          origin_market = COALESCE(excluded.origin_market, origin_market),
+          origin_market = CASE WHEN origin_checked_at IS NULL
+                               THEN COALESCE(excluded.origin_market, origin_market) ELSE origin_market END,
           color_int   = COALESCE(excluded.color_int, color_int),
           equipment   = COALESCE(excluded.equipment, equipment),
           updated_at  = datetime('now')

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from db import get_db
+from validation import MARKETS
 from webapp.regions import CITY_TO_REGION, REGION_NAME_TO_CODE
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
@@ -22,7 +23,6 @@ def clean_html(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
-MARKETS = ["Polska", "Europa", "USA", "Kanada", "Japonia", "Szwajcaria", "Zatoka Perska"]
 ACCIDENT_STATUSES = ["bezwypadkowy", "uszkodzony", "po kolizji"]
 REGIONS = ["dolnośląskie", "kujawsko-pomorskie", "lubelskie", "lubuskie", "łódzkie", "małopolskie", "mazowieckie",
            "opolskie", "podkarpackie", "podlaskie", "pomorskie", "śląskie", "świętokrzyskie",
@@ -269,7 +269,8 @@ def enrich_ads(db, limit=None):
 def cars_to_analyze(db):
     """Cars never analysed, or with an ad newer than their analysis."""
     return db.execute("""
-        SELECT v.vin, v.make, v.model, v.origin_market, v.ai_processed_at, MAX(p.scraped_at) AS newest_ad
+        SELECT v.vin, v.make, v.model, v.origin_market, v.origin_checked_at, v.ai_processed_at,
+               MAX(p.scraped_at) AS newest_ad
         FROM vehicles v JOIN pending_listings p ON p.vin = v.vin
         WHERE p.status IN ('approved', 'pending') AND length(p.raw_description) > 30
         GROUP BY v.vin
@@ -279,7 +280,8 @@ def cars_to_analyze(db):
 
 
 def save_car(db, car, fields: dict, ad_count: int):
-    conflict = int(markets_conflict(car["origin_market"], fields["ai_suggested_market"]))
+    # A market a person confirmed on the origin review page is not questioned again
+    conflict = int(not car["origin_checked_at"] and markets_conflict(car["origin_market"], fields["ai_suggested_market"]))
     db.execute("""
         UPDATE vehicles
         SET ai_summary = ?, ai_suggested_market = ?, ai_conflict = ?, ai_reasoning = ?, ai_equipment = ?,
