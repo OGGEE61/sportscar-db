@@ -79,7 +79,7 @@
       <div class="ai-summary-header d-flex align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-2">
           <span class="ai-sparkle-pill"><i class="bi bi-stars"></i> Bielik AI</span>
-          <span class="fw-semibold text-dark small">Ekspertyza ogłoszenia</span>
+          <span class="fw-semibold text-dark small">{% if ai_data.ad_count and ai_data.ad_count > 1 %}Ekspertyza {{ ai_data.ad_count }} ogłoszeń tego auta{% else %}Ekspertyza ogłoszenia{% endif %}</span>
         </div>
         {% if ai_data and ai_data.market %}
         <span class="badge bg-white text-secondary border">Rynek: <strong class="text-dark">{{ ai_data.market }}</strong></span>
