@@ -193,8 +193,8 @@ class TestDealsRoutes(unittest.TestCase):
     def test_page_and_list(self):
         for i in range(5):
             self.add(f"WBS8M9C50G5{i:06d}", 300_000, "Warszawa", f"w{i}", days_ago=60)
-        self.add("WBS8M9C50G5999999", 240_000, "Poznań, Wielkopolskie", "p1", days_ago=2)
-        self.add("WBS8M9C50G5888888", 240_000, "Kraków", "k1", days_ago=2)
+        self.add("WBS8M9C50G5999129", 240_000, "Poznań, Wielkopolskie", "p1", days_ago=2)
+        self.add("WBS8M9C50G5888241", 240_000, "Kraków", "k1", days_ago=2)
 
         page = self.client.get("/deals?km=25&sort=deal")
         self.assertEqual(page.status_code, 200)
@@ -202,8 +202,8 @@ class TestDealsRoutes(unittest.TestCase):
         self.assertIn('hx-get="/api/deals?km=25&days=30&sort=deal"', page.get_data(as_text=True))
 
         html = self.client.get("/api/deals?km=50").get_data(as_text=True)
-        self.assertIn("/vehicle/WBS8M9C50G5999999", html)
-        self.assertNotIn("/vehicle/WBS8M9C50G5888888", html)  # Kraków: not shown, but part of the market
+        self.assertIn("/vehicle/WBS8M9C50G5999129", html)
+        self.assertNotIn("/vehicle/WBS8M9C50G5888241", html)  # Kraków: not shown, but part of the market
         self.assertIn("-20% od mediany", html)
         self.assertIn("Mediana 300 000 zł z 6 aut (rocznik ±1)", html)
         self.assertIn("2 dni temu", html)

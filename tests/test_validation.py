@@ -48,6 +48,11 @@ class TestVin(unittest.TestCase):
             "XXXXXXXXXXXXXXXXX",   # repeated characters
             "WBS11DM0108E8AGAA",   # must end in 2+ digits
             "WBA1111111111AB11",   # one character 7+ times
+            "WBA85DP090N111111",   # made-up serial: six 1s (an X3 M40i ad, verified by mistake in 2026-09)
+            "WDB4632741X000000",   # made-up serial: six 0s
+            "JTDMF432101234567",   # made-up serial: a run of digits
+            "WP0ZZZ987PPP12345",   # made-up serial: a run of digits
+            "WBA85DP090N154321",   # made-up serial: a falling run
         ]:
             self.assertFalse(is_plausible_vin(vin), vin)
 
@@ -119,18 +124,18 @@ class TestOtherMercedesChassis(unittest.TestCase):
         return is_other_mercedes_chassis(vin, chassis)
 
     def test_european_vin_names_the_chassis(self):
-        self.assertFalse(self.check("WDD2120771A123456", "212"))
-        self.assertTrue(self.check("WDD2120771A123456", "211"))
-        self.assertTrue(self.check("WDB2200751A123456", "140"))
+        self.assertFalse(self.check("WDD2120771A128406", "212"))
+        self.assertTrue(self.check("WDD2120771A128406", "211"))
+        self.assertTrue(self.check("WDB2200751A128406", "140"))
 
     def test_vin_of_another_make_is_ruled_out(self):
-        self.assertTrue(self.check("WBY1Z21000V123456", "460"))
+        self.assertTrue(self.check("WBY1Z21000V128406", "460"))
         self.assertFalse(self.check("VAG46023117104748", "460"))
         self.assertFalse(self.check("VAD46333817104512", "463"))
         self.assertTrue(self.check("VAD46333817104512", "211"))
 
     def test_unknown_chassis_is_never_ruled_out(self):
-        self.assertFalse(self.check("WDDHF7HB0AA123456", "212"))   # US-spec, letters
+        self.assertFalse(self.check("WDDHF7HB0AA128406", "212"))   # US-spec, letters
         self.assertFalse(self.check(None, "212"))
         self.assertFalse(self.check("", "212"))
 
