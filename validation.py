@@ -41,7 +41,14 @@ def is_plausible_vin(vin: str) -> bool:
     # (which contain letters) require at least 2 trailing digits instead of 4
     if not re.search(r"[0-9]{2}$", vin):
         return False
-        
+
+    # RULE 3b: a made-up serial number: the last 6 characters all the same (WBA85DP090N111111,
+    # WDB4632741X000000) or ending in a run of 5 digits (JTDMF432101234567, ...PPP12345, 54321).
+    # A real car with such a serial is about one in 100,000.
+    serial = vin[-6:]
+    if len(set(serial)) == 1 or vin[-5:] in "0123456789" or vin[-5:] in "9876543210":
+        return False
+
     # RULE 4: the WMI (first 3 characters) must match a make in the DB (BMW, Audi, Merc, Porsche, Toyota, Alpina)
     valid_wmi = (
         r"^(WAU|WUA|TRU|WA1|"     # Audi

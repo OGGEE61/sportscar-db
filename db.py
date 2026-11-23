@@ -833,6 +833,17 @@ def init_db():
                            f"AND source = ? AND source_listing_id IN ({','.join('?' for _ in chunk)})", (source, *chunk))
         db.execute("INSERT INTO schema_migrations(version,name) VALUES(26,'import_offers')")
 
+    # Migration v27: Bielik's analysis per car (enrich_with_bielik.py), made from all its ads at once,
+    # so a car seen on several portals gets one summary instead of only its newest ad's. Same fields
+    # as pending_listings' per-ad analysis, plus how many ads it was made from.
+    v_cols = {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}
+    for col, decl in (("ai_suggested_market", "TEXT"), ("ai_conflict", "INTEGER"), ("ai_reasoning", "TEXT"),
+                      ("ai_equipment", "TEXT"), ("ai_interior_color", "TEXT"), ("ai_ad_count", "INTEGER"),
+                      ("ai_processed_at", "TEXT")):
+        if col not in v_cols:
+            db.execute(f"ALTER TABLE vehicles ADD COLUMN {col} {decl}")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(27,'vehicle_ai_analysis')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

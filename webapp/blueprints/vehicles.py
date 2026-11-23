@@ -292,30 +292,25 @@ def vehicle_detail(vin):
     photos = []
     equipment = []
     raw_desc = ""
-    ai_data = {
-        "summary": vehicle["ai_summary"] if "ai_summary" in vehicle.keys() else None,
-        "equipment": [],
-        "reasoning": None,
-        "market": None,
-        "interior": vehicle["color_int"] if "color_int" in vehicle.keys() else None,
-        "has_conflict": False,
-    }
     if orig:
         photos = json.loads(orig["photos"]) if orig["photos"] else []
         equipment = json.loads(orig["equipment"]) if orig["equipment"] else []
         raw_desc = orig["raw_description"]
-        if orig["ai_summary"]:
-            ai_data["summary"] = orig["ai_summary"]
-        if orig["ai_equipment"]:
-            try:
-                ai_data["equipment"] = json.loads(orig["ai_equipment"]) if isinstance(orig["ai_equipment"], str) else orig["ai_equipment"]
-            except Exception:
-                ai_data["equipment"] = []
-        ai_data["reasoning"] = orig["ai_reasoning"]
-        ai_data["market"] = orig["ai_suggested_market"]
-        if orig["ai_interior_color"]:
-            ai_data["interior"] = orig["ai_interior_color"]
-        ai_data["has_conflict"] = bool(orig["ai_conflict"])
+    # Bielik's analysis of the car, made from all its ads (enrich_with_bielik.py); until the car has
+    # one, that of its newest ad
+    source = vehicle if vehicle["ai_processed_at"] else orig
+    ai_data = {"summary": None, "equipment": [], "reasoning": None, "market": None,
+               "interior": vehicle["color_int"], "has_conflict": False,
+               "ad_count": vehicle["ai_ad_count"] if source is vehicle else 1}
+    if source:
+        ai_data.update(summary=source["ai_summary"], reasoning=source["ai_reasoning"],
+                       market=source["ai_suggested_market"], has_conflict=bool(source["ai_conflict"]))
+        try:
+            ai_data["equipment"] = json.loads(source["ai_equipment"] or "[]")
+        except ValueError:
+            pass
+        if source["ai_interior_color"]:
+            ai_data["interior"] = source["ai_interior_color"]
 
     # CEPiK report
     cepik_data = None

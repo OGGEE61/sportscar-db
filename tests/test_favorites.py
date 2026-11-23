@@ -70,7 +70,7 @@ class TestFavorites(unittest.TestCase):
         self.assertEqual(self.stored(), [])
 
     def test_unknown_car(self):
-        self.assertEqual(self.star("WBSJF0C55KB999999").status_code, 404)
+        self.assertEqual(self.star("WBSJF0C55KB999129").status_code, 404)
         self.assertEqual(self.star("").status_code, 404)
         self.assertEqual(self.stored(), [])
 

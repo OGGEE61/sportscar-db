@@ -56,10 +56,10 @@ class TestRecheckDecision(unittest.TestCase):
         return {**base, **kw}
 
     def test_vin_added_since_comes_back(self):
-        d = self.r.decide(self.listing(), "active", {"vin": "WDD1569421J123456", "vin_confidence": "found_in_schema"},
+        d = self.r.decide(self.listing(), "active", {"vin": "WDD1569421J128406", "vin_confidence": "found_in_schema"},
                           self.configs)
         self.assertEqual(d["action"], "restore")
-        self.assertEqual(d["listing"]["vin"], "WDD1569421J123456")
+        self.assertEqual(d["listing"]["vin"], "WDD1569421J128406")
 
     def test_vin_behind_show_vin_comes_back(self):
         d = self.r.decide(self.listing(), "active", {"vin_confidence": "found_in_schema"}, self.configs)
@@ -72,7 +72,7 @@ class TestRecheckDecision(unittest.TestCase):
             self.assertEqual(d["action"], "keep", answer)
             self.assertIn("odmówiło", d["why"])
         refused = self.listing(vin_confidence="not_shown")
-        d = self.r.decide(refused, "active", {"vin": "WDD1569421J123456", "vin_confidence": "found_in_schema"},
+        d = self.r.decide(refused, "active", {"vin": "WDD1569421J128406", "vin_confidence": "found_in_schema"},
                           self.configs)
         self.assertEqual(d["action"], "restore")
 
@@ -80,13 +80,13 @@ class TestRecheckDecision(unittest.TestCase):
         self.assertEqual(self.r.decide(self.listing(), "active", {}, self.configs)["action"], "keep")
 
     def test_broken_rule_stays(self):
-        d = self.r.decide(self.listing(), "active", {"power_hp": 156, "vin": "WDD1569421J123456"}, self.configs)
+        d = self.r.decide(self.listing(), "active", {"power_hp": 156, "vin": "WDD1569421J128406"}, self.configs)
         self.assertEqual(d["action"], "keep")
         self.assertIn("156 HP", d["why"])
 
     def test_rejected_with_a_reason_stays(self):
         d = self.r.decide(self.listing(review_notes="BMW M8 Gran Coupé, nie M5 F90"), "active",
-                          {"vin": "WDD1569421J123456"}, self.configs)
+                          {"vin": "WDD1569421J128406"}, self.configs)
         self.assertEqual(d["action"], "keep")
         self.assertTrue(self.r.restorable_reason("Missing/Invalid VIN - Retroactively Rejected"))
 
@@ -163,11 +163,11 @@ class TestRecheckWrites(DbCase):
         conn.commit()
         a, b = self.row("a"), self.row("b")
         recheck_rejected.write(conn, {"state": "active", "action": "restore", "why": "",
-                                      "listing": dict(a, vin="WDD1569421J123456", vin_confidence="found_in_schema")})
+                                      "listing": dict(a, vin="WDD1569421J128406", vin_confidence="found_in_schema")})
         recheck_rejected.write(conn, {"state": "gone", "action": "gone", "why": "", "listing": b})
         conn.close()
         a, b = self.row("a"), self.row("b")
-        self.assertEqual((a["status"], a["vin"], a["is_listing_active"]), ("pending", "WDD1569421J123456", 1))
+        self.assertEqual((a["status"], a["vin"], a["is_listing_active"]), ("pending", "WDD1569421J128406", 1))
         self.assertEqual((b["status"], b["is_listing_active"]), ("rejected", 0))
 
 

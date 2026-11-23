@@ -146,10 +146,10 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertEqual(self.status("m1"), "rejected")
 
     def test_pending_with_vin_lists_the_listings_reject_novin_would_keep(self):
-        self.add("m1", "otomoto", vin="WBS8M9C59J5K12345")
+        self.add("m1", "otomoto", vin="WBS8M9C59J5K12845")
         self.add("m2", "otomoto")
         self.add("m3", "otomoto", vin="UNVERIFIED-OTOMOTO-m3")
-        self.add("o1", "olx", vin="WBS8M9C59J5K54321")
+        self.add("o1", "olx", vin="WBS8M9C59J5K54871")
         self.add("m4", "otomoto", status="rejected", vin="WBS8M9C59J5K11111")
 
         def listed(query=""):
@@ -167,13 +167,13 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertEqual({self.status("m2"), self.status("m3")}, {"rejected"})
 
     def test_review_page_has_approve_all_with_vin_button(self):
-        self.add("m1", "otomoto", vin="WBS8M9C59J5K12345")
+        self.add("m1", "otomoto", vin="WBS8M9C59J5K12845")
         page = self.client.get("/review?source=otomoto").get_data(as_text=True)
         self.assertIn('id="approve-all-vin-btn"', page)
         self.assertIn("/review/pending_with_vin?source=otomoto", page)
 
     def test_review_row_shows_the_registration_plate(self):
-        self.add("a1", "autoplac", vin="WBS8M9C59J5K12345")
+        self.add("a1", "autoplac", vin="WBS8M9C59J5K12845")
         conn = db.get_db()
         conn.execute("UPDATE pending_listings SET registration_plate='SD3097N' WHERE source_listing_id='a1'")
         conn.commit()
@@ -942,7 +942,7 @@ class TestAlpinaValidator(unittest.TestCase):
             self.assertEqual(validate(detail), expected, detail)
 
     def test_wap_vin_is_kept(self):
-        self.check(True, vin="WAPB350009HE12345", title="BMW-ALPINA B5", power_hp=500)
+        self.check(True, vin="WAPB350009HE12845", title="BMW-ALPINA B5", power_hp=500)
 
     def test_powerful_bmw_vin_goes_to_review(self):
         self.check(True, vin="WBA6D6C58JG745657", title="BMW-ALPINA B6", power_hp=600)
@@ -1392,7 +1392,7 @@ class TestNewModelRules(unittest.TestCase):
     def test_rsq3_f3_skips_8u_vin(self):
         from otomoto.audi_rsq3_f3 import CONFIG
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
-        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
+        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD128406"}))
 
     def test_w124_keeps_3_litre_diesels_and_petrols_from_the_320(self):
         from otomoto.mercedes_e_w124 import CONFIG
@@ -1414,8 +1414,8 @@ class TestNewModelRules(unittest.TestCase):
             self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2597))         # 260E
             self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2298))         # 230E
             self.assertTrue(ok(cfg, fuel_type="petrol"))                           # engine size unknown
-            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB1240321A123456"))
-            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB2100551A123456"))   # a W210
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB1240321A128406"))
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB2100551A128406"))   # a W210
         self.assertFalse(OLX.validator({"fuel_type": "petrol", "engine_cc": 3199}))   # no year: not a car ad
         self.assertEqual(len(CONFIG.list_url), 4)                                  # 2 ways it is filed x diesel, petrol
         for url in CONFIG.list_url:
@@ -1430,8 +1430,8 @@ class TestNewModelRules(unittest.TestCase):
         self.assertTrue(skip("Mercedes-Benz Klasa G 55 AMG"))
         self.assertFalse(skip("Mercedes-Benz Klasa G 550"))
         self.assertFalse(skip("Mercedes-Benz Klasa G AMG 63"))
-        self.assertTrue(CONFIG.validator({"vin": "WDB4632481X123456"}))
-        self.assertFalse(CONFIG.validator({"vin": "WDB2200751A123456"}))
+        self.assertTrue(CONFIG.validator({"vin": "WDB4632481X128406"}))
+        self.assertFalse(CONFIG.validator({"vin": "WDB2200751A128406"}))
 
 
 class TestUrlYearRange(unittest.TestCase):
@@ -1484,9 +1484,9 @@ class TestRevealVin(RevealStateMixin, unittest.TestCase):
         return mock.patch.object(base_scraper.requests, "post", return_value=resp)
 
     def test_reads_the_vin_from_the_viewer_query(self):
-        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": " wdb4632481x123456 "}}}}}
+        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": " wdb4632481x128406 "}}}}}
         with self.reply(body) as post:
-            self.assertEqual(base_scraper.reveal_vin("6151216780", {}), "WDB4632481X123456")
+            self.assertEqual(base_scraper.reveal_vin("6151216780", {}), "WDB4632481X128406")
         sent = post.call_args.kwargs["json"]
         self.assertEqual(sent["operationName"], "AdvertDetails_ViewerAdVin")
         self.assertEqual(sent["variables"], {"adId": "6151216780"})
@@ -1544,7 +1544,7 @@ class TestRevealVinPacing(TestRevealVin):
         self.assertFalse(base_scraper.vin_reveal_allowed())
 
     def test_reveals_are_spaced_and_capped(self):
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
                 base_scraper.reveal_vin(str(i), {})
         self.assertEqual(post.call_count, base_scraper.VIN_REVEALS_PER_RUN)
@@ -1557,8 +1557,8 @@ class TestRevealVinPacing(TestRevealVin):
                 self.assertIsNone(base_scraper.reveal_vin(str(i), {}))
         self.assertEqual(post.call_count, 5)
         self.assertTrue(base_scraper.vin_reveal_allowed())
-        with self.reply(self.vin_body("WDB4632481X123456")):
-            self.assertEqual(base_scraper.reveal_vin("9", {}), "WDB4632481X123456")
+        with self.reply(self.vin_body("WDB4632481X128406")):
+            self.assertEqual(base_scraper.reveal_vin("9", {}), "WDB4632481X128406")
 
 
 class TestRevealBudget(TestRevealVin):
@@ -1573,7 +1573,7 @@ class TestRevealBudget(TestRevealVin):
         with self.reply({}, status=403):
             base_scraper.reveal_vin("1", {})
         self.new_process()
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             self.assertIsNone(base_scraper.reveal_vin("2", {}))
         post.assert_not_called()
         self.assertIn("HTTP 403", base_scraper.reveal_skip_reason("plate"))
@@ -1583,7 +1583,7 @@ class TestRevealBudget(TestRevealVin):
 
     def test_the_daily_limit_counts_every_process(self):
         sent = 0
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             runs = base_scraper.REVEALS_PER_DAY // base_scraper.VIN_REVEALS_PER_RUN + 2   # more than the day allows
             for run in range(runs):
                 self.new_process()
@@ -1606,7 +1606,7 @@ class TestRevealBudget(TestRevealVin):
         self.new_process()
         self.assertTrue(base_scraper.recently_asked("vin", "1"))
         self.assertFalse(base_scraper.recently_asked("plate", "1"))
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             self.assertIsNone(base_scraper.reveal_vin("1", {}))
         post.assert_not_called()
         later = base_scraper.time.time() + base_scraper.VIN_RETRY_AFTER_S + 1
@@ -1676,7 +1676,7 @@ class TestRevealPlate(TestRevealVin):
         self.assertTrue(base_scraper.plate_reveal_allowed())
 
     def test_plates_are_capped_and_paced_with_the_vins(self):
-        with self.reply(TestRevealVinPacing.vin_body("WDB4632481X123456")):
+        with self.reply(TestRevealVinPacing.vin_body("WDB4632481X128406")):
             base_scraper.reveal_vin("0", {})
         with self.get(self.plate_body("WA12345")) as get:
             for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
@@ -2219,7 +2219,7 @@ class TestAuditListings(unittest.TestCase):
     def test_rejected_only_for_a_vin_behind_reveal_can_be_restored(self):
         a = self.audit(self.listing(status="rejected", vin_confidence="found_in_schema"), self.configs)
         self.assertEqual((a["verdict"], a["vin"]), ("restore", "behind_reveal"))
-        a = self.audit(self.listing(status="rejected", raw_description="VIN WDD1569421J123456"), self.configs)
+        a = self.audit(self.listing(status="rejected", raw_description="VIN WDD1569421J128406"), self.configs)
         self.assertEqual((a["verdict"], a["vin"]), ("restore", "in_description"))
         # The seller masked it: nothing to reveal, the rejection stands
         a = self.audit(self.listing(status="rejected", vin_confidence="found_in_schema", vin="WDB4632481X165XXX"), self.configs)
