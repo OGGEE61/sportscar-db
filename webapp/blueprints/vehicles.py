@@ -1,6 +1,7 @@
 import json
 import time
 from datetime import datetime
+from urllib.parse import urlencode
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
 from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, damaged_ad_sql,
@@ -8,6 +9,7 @@ from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WR
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services.photos import store_photo
 from webapp.services.plates import normalize_plate
+from validation import MIN_FIRST_REGISTRATION_YEAR, OVERSEAS_ORIGINS
 
 bp = Blueprint("vehicles", __name__)
 
@@ -17,6 +19,63 @@ bp = Blueprint("vehicles", __name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 PER_PAGE = 50
+
+# "Pochodzenie" choices: the origin markets each leaves out. A car of unknown origin (most) passes.
+ORIGIN_FILTERS = {
+    "no_usa":  ("Bez USA i Kanady", OVERSEAS_ORIGINS),
+    "europe":  ("Bez aut spoza Europy", (*OVERSEAS_ORIGINS, "Japonia", "Zatoka Perska")),
+}
+MILEAGE_MAX = 2_000_000
+# The query string keys of the list's filters and sort, kept by the page links
+LIST_ARGS = ("q", "make", "status", "region", "source", "sort", "fuel", "cc_from", "cc_to",
+             "origin", "km_from", "km_to", "reg_from", "reg_to")
+
+
+def latest_mileage_sql(alias):
+    """SQL expression: the mileage the car's newest sighting gives (what its ad says now), NULL if
+    none gives one. A few index rows per car (idx_obs_vin_observed)."""
+    return (f"(SELECT x.mileage_km FROM listing_observations x WHERE x.vin = {alias}.vin AND x.mileage_km > 0 "
+            "ORDER BY x.observed_at DESC LIMIT 1)")
+
+
+def _bounded_int(args, key, lo, hi):
+    """args[key] as an int within [lo, hi]; None when empty, not a number or outside."""
+    try:
+        value = int(str(args.get(key) or "").replace(" ", ""))
+    except ValueError:
+        return None
+    return value if lo <= value <= hi else None
+
+
+def history_filter(args):
+    """Origin, mileage (km, from / to) and first registration (year, from / to) chosen in the
+    query string. Returns (chosen, sql_conditions, params); chosen holds the valid values for the
+    form. Like the engine filter, a car without the data does not pass a filter on it (except
+    origin, where an unknown one passes: most cars have none)."""
+    origin = args.get("origin", "")
+    origin = origin if origin in ORIGIN_FILTERS else ""
+    year_now = datetime.now().year
+    chosen = {"origin": origin,
+              "km_from": _bounded_int(args, "km_from", 0, MILEAGE_MAX),
+              "km_to": _bounded_int(args, "km_to", 0, MILEAGE_MAX),
+              "reg_from": _bounded_int(args, "reg_from", MIN_FIRST_REGISTRATION_YEAR, year_now),
+              "reg_to": _bounded_int(args, "reg_to", MIN_FIRST_REGISTRATION_YEAR, year_now)}
+    conds, params = [], []
+    if origin:
+        left_out = ORIGIN_FILTERS[origin][1]
+        conds.append(f"COALESCE(v.origin_market, '') NOT IN ({','.join('?' * len(left_out))})")
+        params += left_out
+    mileage = latest_mileage_sql("v")
+    if chosen["km_from"] is not None:
+        conds.append(f"{mileage} >= ?"); params.append(chosen["km_from"])
+    if chosen["km_to"] is not None:
+        conds.append(f"{mileage} <= ?"); params.append(chosen["km_to"])
+    # first_registration_date is YYYY-MM-DD, so years compare as strings
+    if chosen["reg_from"] is not None:
+        conds.append("v.first_registration_date >= ?"); params.append(f"{chosen['reg_from']}-01-01")
+    if chosen["reg_to"] is not None:
+        conds.append("v.first_registration_date < ?"); params.append(f"{chosen['reg_to'] + 1}-01-01")
+    return chosen, conds, params
 
 
 @bp.route("/vehicles")
@@ -61,9 +120,10 @@ def _vehicles_page(favorites_only: bool):
     page   = max(request.args.get("page", 1, type=int) or 1, 1)
 
     fuel, cc_from, cc_to, engine_conds, engine_params = engine_filter(request.args)
+    history, history_conds, history_params = history_filter(request.args)
     # The VIN base lists every car we have. Cars whose sightings are left out of the market data
     # (dealer stock, an import offer, a wrong model) are listed too, marked with the reason.
-    wheres, params = [*engine_conds], [*engine_params]
+    wheres, params = [*engine_conds, *history_conds], [*engine_params, *history_params]
     if favorites_only:
         wheres.append("v.vin IN (SELECT vin FROM favorites)")
     if q:
@@ -103,6 +163,7 @@ def _vehicles_page(favorites_only: bool):
         "power":      ("NULL", "v.power_hp DESC"),
         "obs":        (f"(SELECT COUNT(*) FROM listing_observations x WHERE {usable})", "sort_key DESC"),
         "price":      (f"(SELECT MIN(x.price_pln) FROM listing_observations x WHERE {usable})", "sort_key ASC NULLS LAST"),
+        "mileage":    (latest_mileage_sql("v"), "sort_key ASC NULLS LAST"),
         "fav_added":  ("(SELECT f.created_at FROM favorites f WHERE f.vin = v.vin)", "sort_key DESC NULLS LAST, v.updated_at DESC"),
     }
     sort_key, order_sql = sort_map.get(sort, sort_map["fav_added" if favorites_only else "last_seen"])
@@ -117,6 +178,7 @@ def _vehicles_page(favorites_only: bool):
         )
         SELECT p.*, o.obs_count, o.ad_count, o.min_price, o.max_price, o.last_observed, o.active_ads, o.sources,
                (SELECT GROUP_CONCAT(t.tag) FROM tags t WHERE t.vin = p.vin) AS tags,
+               {latest_mileage_sql("p")} AS mileage,
                -- Why the car is out of the market data: set only when none of its sightings counts
                CASE WHEN NOT EXISTS (SELECT 1 FROM listing_observations u WHERE u.vin = p.vin AND u.excluded_reason IS NULL)
                     THEN (SELECT e.excluded_reason FROM listing_observations e WHERE e.vin = p.vin
@@ -142,11 +204,17 @@ def _vehicles_page(favorites_only: bool):
     """, [*params, PER_PAGE, (page - 1) * PER_PAGE]).fetchall()
     makes    = conn.execute("SELECT DISTINCT make FROM vehicles ORDER BY make").fetchall()
     conn.close()
+    chosen = {k: v for k in LIST_ARGS if (v := request.args.get(k, "").strip())}
     return render_template("vehicles.html",
         vehicles=vehicles, makes=[m["make"] for m in makes],
         q=q, selected_make=make, status=status, sort=sort,
         selected_region=region, regions=REGION_NAMES, source=source,
         fuel=fuel, cc_from=cc_from, cc_to=cc_to, fuels=FUELS, cc_min=CC_MIN, cc_max=CC_MAX, cc_step=CC_STEP,
+        history=history, origin_filters=ORIGIN_FILTERS,
+        reg_years=range(datetime.now().year, MIN_FIRST_REGISTRATION_YEAR - 1, -1),
+        # the filters as a query string, for the page links and (without the region) its ✕
+        filter_qs=urlencode(chosen),
+        clear_region_qs=urlencode({k: v for k, v in chosen.items() if k != "region"}),
         page=page, pages=pages, total=total,
         favorites_only=favorites_only, base_path="/favorites" if favorites_only else "/vehicles")
 

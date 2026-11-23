@@ -58,9 +58,38 @@
       <option value="power"      {% if sort=='power'      %}selected{% endif %}>Moc ↓</option>
       <option value="obs"        {% if sort=='obs'        %}selected{% endif %}>Obserwacje ↓</option>
       <option value="price"      {% if sort=='price'      %}selected{% endif %}>Cena ↑</option>
+      <option value="mileage"    {% if sort=='mileage'    %}selected{% endif %}>Przebieg ↑</option>
     </select>
   </div>
   {{ engine_fields(fuel, cc_from, cc_to, fuels, "col-6 col-md-2", "col-6 col-md-3", cc_min, cc_max, cc_step) }}
+  <div class="col-6 col-md-2">
+    <select name="origin" class="form-select" title="Pochodzenie (auta o nieznanym pochodzeniu zostają na liście)">
+      <option value="">Każde pochodzenie</option>
+      {% for key, (label, _) in origin_filters.items() %}
+      <option value="{{ key }}" {% if key == history.origin %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="input-group" title="Przebieg z najnowszego ogłoszenia, km (auta bez podanego przebiegu znikają, gdy go ograniczysz)">
+      <input name="km_from" type="number" min="0" step="1" inputmode="numeric" class="form-control" placeholder="km od"
+             aria-label="Przebieg od, km" value="{{ history.km_from if history.km_from is not none else '' }}">
+      <input name="km_to" type="number" min="0" step="1" inputmode="numeric" class="form-control" placeholder="km do"
+             aria-label="Przebieg do, km" value="{{ history.km_to if history.km_to is not none else '' }}">
+    </div>
+  </div>
+  <div class="col-12 col-md-2">
+    <div class="input-group" title="Rok pierwszej rejestracji (auta bez podanej daty znikają, gdy ją ograniczysz)">
+      {% for key, label in (("reg_from", "Rej. od"), ("reg_to", "Rej. do")) %}
+      <select name="{{ key }}" class="form-select" aria-label="{{ 'Pierwsza rejestracja od roku' if key == 'reg_from' else 'Pierwsza rejestracja do roku' }}">
+        <option value="">{{ label }}</option>
+        {% for y in reg_years %}
+        <option value="{{ y }}" {% if y == history[key] %}selected{% endif %}>{{ 'od' if key == 'reg_from' else 'do' }} {{ y }}</option>
+        {% endfor %}
+      </select>
+      {% endfor %}
+    </div>
+  </div>
   <div class="col-md-1 d-flex gap-1">
     <button class="btn btn-primary w-100" title="Filtruj"><i class="bi bi-funnel"></i></button>
     <a href="{{ base_path }}" class="btn btn-outline-secondary" title="Wyczyść filtr">↺</a>
@@ -72,7 +101,7 @@
   {% if selected_region %}
   <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
     Województwo: {{ regions.get(selected_region, selected_region) }}
-    <a href="{{ base_path }}?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}&fuel={{ fuel }}&cc_from={{ cc_from if cc_from is not none else '' }}&cc_to={{ cc_to if cc_to is not none else '' }}" class="text-decoration-none text-danger ms-1">✕</a>
+    <a href="{{ base_path }}?{{ clear_region_qs }}" class="text-decoration-none text-danger ms-1">✕</a>
   </span>
   {% endif %}
 </div>
@@ -123,6 +152,7 @@
         <span class="badge bg-warning text-dark" title="Poza statystykami: {{ why | lower }} (ceny tego auta nie liczą się do median ani okazji)">{{ why }}</span>
         {% endif %}
         <span>{{ v.year }}</span>
+        {% if v.mileage %}<span class="border-start ps-2">{{ "{:,}".format(v.mileage).replace(",", " ") }} km</span>{% endif %}
         {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} KM</span>{% endif %}
         {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cm³</span>{% endif %}
         {% if v.fuel_type in fuels %}<span class="border-start ps-2">{{ fuels[v.fuel_type] }}</span>{% endif %}
@@ -146,6 +176,5 @@
   </div>
   {% endfor %}
 </div>
-{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort ~ '&fuel=' ~ fuel ~ '&cc_from=' ~ (cc_from if cc_from is not none else '') ~ '&cc_to=' ~ (cc_to if cc_to is not none else '') %}
-{{ pager(page, pages, base_path ~ '?' ~ qs ~ '&page=', 'Strony listy aut', ids=true) }}
+{{ pager(page, pages, base_path ~ '?' ~ (filter_qs ~ '&' if filter_qs else '') ~ 'page=', 'Strony listy aut', ids=true) }}
 {% endblock %}
