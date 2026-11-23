@@ -91,7 +91,7 @@ class TestEngineFilter(unittest.TestCase):
         self.assertIn('name="cc_to" value=""', html)
         with mock.patch("webapp.blueprints.vehicles.PER_PAGE", 1):    # two diesels, so two pages
             paged = self.client.get("/vehicles?fuel=diesel&cc_from=3000").get_data(as_text=True)
-        self.assertIn("&amp;fuel=diesel&amp;cc_from=3000&amp;cc_to=&amp;page=2", paged)   # the page links keep the filters
+        self.assertIn("?fuel=diesel&amp;cc_from=3000&amp;page=2", paged)   # the page links keep the filters
 
     def test_approving_a_listing_gives_the_car_its_fuel(self):
         conn = db.get_db()
