@@ -70,7 +70,7 @@ def origin_conflicts(conn):
     # Sorting and the status filter are done here: in SQL the planner takes the make/model and
     # status indexes instead, which read the whole tables.
     cars = sorted(conn.execute("""
-        SELECT vin, make, model, variant, year, origin_market, ai_suggested_market, ai_reasoning, ai_ad_count
+        SELECT car_id, vin, make, model, variant, year, origin_market, ai_suggested_market, ai_reasoning, ai_ad_count
         FROM vehicles WHERE ai_conflict = 1
     """).fetchall(), key=lambda c: (c["make"] or "", c["model"] or "", c["vin"]))
     ads = {}

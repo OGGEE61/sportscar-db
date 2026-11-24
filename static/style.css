@@ -704,6 +704,13 @@ body {
 }
 .vin-block .vin-line .vin-code { margin-bottom: 0; }
 .vin-block a.vin-code:hover { color: #1d4ed8; text-decoration: underline; }
+/* The car's ID before its VIN */
+.vin-block .car-id {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Favourite star on the VIN line (templates/_car_flags.html) */
 .fav-toggle {

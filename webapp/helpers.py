@@ -105,7 +105,7 @@ PHOTO_PLATE_TAGS = ("photo extracted", "AI extracted plate")
 
 def car_flags_sql(alias="v"):
     """SELECT columns of the markers every list shows next to a car (templates/_car_flags.html):
-    flag_vin_status, flag_plate, flag_origin, flag_favorite (the star), flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
+    car_id (the car's ID, the number shown before its VIN), flag_vin_status, flag_plate, flag_origin, flag_favorite (the star), flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
     flag_damage_country,
     flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km,
     flag_cepik_mismatch (CEPiK did not find the car by its VIN, plate and first registration date),
@@ -116,7 +116,8 @@ def car_flags_sql(alias="v"):
     is_abroad() reads the "still abroad" marker from them."""
     a = alias
     tags = ", ".join(f"'{t}'" for t in PHOTO_PLATE_TAGS)
-    return f"""{a}.vin_status AS flag_vin_status,
+    return f"""(SELECT cid.car_id FROM vehicles cid WHERE cid.vin = {a}.vin) AS car_id,
+        {a}.vin_status AS flag_vin_status,
         {a}.registration_plate AS flag_plate,
         {a}.origin_market AS flag_origin,
         EXISTS (SELECT 1 FROM favorites ff WHERE ff.vin = {a}.vin) AS flag_favorite,

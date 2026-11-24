@@ -52,6 +52,9 @@ server = MCPServer(
         "yourself), then check_plate_in_cepik with the exact first registration date (ads often give only "
         "the year; an import's date in Poland is not its first registration abroad, CEPiK events say "
         "'Pierwsza rejestracja za granicą'). A confirmed lookup approves the card by itself. "
+        "Name every car by its ID (the 'id' field, written #123, the number shown before the VIN in the "
+        "app and searchable in Baza VIN-ów) together with make and model, e.g. '#512 BMW M2 F87', so the "
+        "user can find exactly which car you mean; a /plates card also by its card number. "
         "The user is the verifier: never change anything (no write tool, CEPiK lookup included) before the "
         "user approved that change in the chat. Propose decisions in batches, one line per car with the "
         "evidence; when unsure, leave the car unchecked and say why. "
@@ -84,7 +87,7 @@ def _pending_card(conn, card_id):
 
 def _summary(card):
     return {
-        "card_id": card["id"], "vin": card["vin"],
+        "id": card["car_id"], "card_id": card["id"], "vin": card["vin"],
         "car": " ".join(str(x) for x in (card["make"], card["model"], card["variant"], card["year"]) if x),
         "photo_reading": card["reading"], "suggested_plate": card["suggested_plate"],
         "plate_in_ad": normalize_plate(card["car_plate"]) or None,
@@ -251,7 +254,7 @@ def list_origin_conflicts(limit: int = 20) -> str:
         conn.close()
     return json.dumps({
         "conflicts": len(cars), "markets": MARKETS + [ORIGIN_UNKNOWN],
-        "cars": [{**{k: c[k] for k in ("vin", "make", "model", "variant", "year", "origin_market",
+        "cars": [{**{"id": c["car_id"]}, **{k: c[k] for k in ("vin", "make", "model", "variant", "year", "origin_market",
                                        "ai_suggested_market", "ai_reasoning")},
                   "ads": [a["source_url"] for a in ads.get(c["vin"], [])]} for c in cars[:max(1, min(limit, 100))]],
     }, ensure_ascii=False, indent=1)
@@ -332,22 +335,26 @@ def list_cars_to_check(limit: int = 10, offset: int = 0) -> str:
             notes.append("oznaczone jako uszkodzone: " + "; ".join(active))
         if vin in history:
             notes.append(f"wpisy o szkodach w historii: {len(history[vin])}")
-        out.append({"vin": vin, "car": _car_name(c), "plate": c["registration_plate"], "first_registration_date": date,
+        out.append({"id": c["car_id"], "vin": vin, "car": _car_name(c), "plate": c["registration_plate"], "first_registration_date": date,
                     "origin_market": c["origin_market"], "added": c["created_at"], "to_look_at": notes})
     return json.dumps({"not_checked": total, "shown_from": offset, "cars": out}, ensure_ascii=False, indent=1)
 
 
 @server.tool(annotations=READ, structured_output=False)
 def show_car(vin: str, photos: int = 4) -> list:
-    """Everything needed to check one car's plate, first registration date, origin and damage: the car's
+    """`vin`: the car's VIN or its ID (123 or #123, the number shown before the VIN in the app).
+    Everything needed to check one car's plate, first registration date, origin and damage: the car's
     stored data, its /plates cards, the CEPiK report with its events (e.g. "Pierwsza rejestracja za
     granicą"), Bielik's view of the origin, damage marks (the portal's or a quote from the ad) and damage
     history, its live ads (up to 5, newest first, with descriptions), and up to `photos` photos (max 10)."""
     conn = _db()
     try:
-        car = conn.execute("SELECT * FROM vehicles WHERE vin = ?", (vin,)).fetchone()
+        key = vin.strip().lstrip("#")
+        car = (conn.execute("SELECT * FROM vehicles WHERE car_id = ?", (int(key),)) if key.isdigit()
+               else conn.execute("SELECT * FROM vehicles WHERE vin = ?", (vin.strip(),))).fetchone()
         if not car:
-            return [f"Nie ma auta z VIN-em {vin}."]
+            return [f"Nie ma auta {vin} (ani takiego VIN-u, ani ID)."]
+        vin = car["vin"]
         ads = conn.execute("""
             SELECT source, source_url, status, scraped_at, raw_title, raw_description, photos, price_pln, mileage_km,
                    location_city, seller_type, registration_plate, first_registration_date
@@ -363,7 +370,7 @@ def show_car(vin: str, photos: int = 4) -> list:
         conn.close()
     car = dict(car)
     info = {
-        "vin": vin, "car": _car_name(car), "data_checked_at": car.get("data_checked_at"),
+        "id": car.get("car_id"), "vin": vin, "car": _car_name(car), "data_checked_at": car.get("data_checked_at"),
         "plate": {"stored": car["registration_plate"],
                   "cards": [{"card_id": c["id"], "status": c["status"], "photo_reading": c["detected_plate"],
                              "reviewed_plate": c["reviewed_plate"]} for c in cards]},

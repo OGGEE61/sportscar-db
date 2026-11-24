@@ -84,6 +84,7 @@ class TestCards(ReviewMcpCase):
         self.assertEqual((listed["pending"], listed["needing_person"]), (2, 1))
         cards = {c["vin"]: c for c in listed["cards"]}
         self.assertEqual((cards[KNOWN]["photo_reading"], cards[KNOWN]["suggested_plate"]), ("KR7VG2Z", "KR7VG22"))
+        self.assertEqual((cards[KNOWN]["id"], cards[FOREIGN]["id"]), (1, 2))   # the car's ID, to name it to the user
         self.assertGreater(cards[KNOWN]["cepik_lookups_left"], 0)
         self.assertTrue(any("nie pasuje do polskiej tablicy" in h for h in cards[FOREIGN]["hints"]))
         only = json.loads(mcp_server.list_plate_cards(only_needing_person=True))["cards"]
@@ -155,7 +156,7 @@ class TestDecisions(ReviewMcpCase):
         conn.commit()
         conn.close()
         listed = json.loads(mcp_server.list_origin_conflicts())
-        self.assertEqual([(c["vin"], c["ai_suggested_market"]) for c in listed["cars"]], [(KNOWN, "USA")])
+        self.assertEqual([(c["id"], c["vin"], c["ai_suggested_market"]) for c in listed["cars"]], [(1, KNOWN, "USA")])
         self.assertEqual(mcp_server.set_origin_market(KNOWN, "Mars"), "Nieznany rynek")
         self.assertEqual(mcp_server.set_origin_market(KNOWN, "USA"), "Zapisano rynek: USA.")
         self.assertEqual(json.loads(mcp_server.list_origin_conflicts())["conflicts"], 0)
@@ -202,6 +203,9 @@ class TestCarChecks(ReviewMcpCase):
         self.assertTrue(info["ads"][0]["description"].startswith("Pierwsza rejestracja"))
         self.assertEqual(sum(isinstance(c, Image) for c in content), 1)
         self.assertIn("Nie ma auta", mcp_server.show_car("NOPE")[0])
+        by_id = json.loads(mcp_server.show_car(f"#{info['id']}", photos=0)[0])
+        self.assertEqual((by_id["vin"], by_id["id"]), (KNOWN, info["id"]))
+        self.assertIn("Nie ma auta", mcp_server.show_car("999", photos=0)[0])
 
     def test_date_damage_and_history_are_stored(self):
         self.assertIn("Niepoprawna", mcp_server.set_first_registration_date(FOREIGN, "2023"))
