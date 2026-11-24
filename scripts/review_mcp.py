@@ -52,6 +52,9 @@ server = MCPServer(
         "yourself), then check_plate_in_cepik with the exact first registration date (ads often give only "
         "the year; an import's date in Poland is not its first registration abroad, CEPiK events say "
         "'Pierwsza rejestracja za granicą'). A confirmed lookup approves the card by itself. "
+        "Name every car by its ID (the 'id' field, written #123, the number shown before the VIN in the "
+        "app and searchable in Baza VIN-ów) together with make and model, e.g. '#512 BMW M2 F87', so the "
+        "user can find exactly which car you mean; a /plates card also by its card number. "
         "The user is the verifier: never change anything (no write tool, CEPiK lookup included) before the "
         "user approved that change in the chat. Propose decisions in batches, one line per car with the "
         "evidence; when unsure, leave the car unchecked and say why. "
@@ -84,7 +87,7 @@ def _pending_card(conn, card_id):
 
 def _summary(card):
     return {
-        "card_id": card["id"], "vin": card["vin"],
+        "id": card["car_id"], "card_id": card["id"], "vin": card["vin"],
         "car": " ".join(str(x) for x in (card["make"], card["model"], card["variant"], card["year"]) if x),
         "photo_reading": card["reading"], "suggested_plate": card["suggested_plate"],
         "plate_in_ad": normalize_plate(card["car_plate"]) or None,
@@ -251,7 +254,7 @@ def list_origin_conflicts(limit: int = 20) -> str:
         conn.close()
     return json.dumps({
         "conflicts": len(cars), "markets": MARKETS + [ORIGIN_UNKNOWN],
-        "cars": [{**{k: c[k] for k in ("vin", "make", "model", "variant", "year", "origin_market",
+        "cars": [{**{"id": c["car_id"]}, **{k: c[k] for k in ("vin", "make", "model", "variant", "year", "origin_market",
                                        "ai_suggested_market", "ai_reasoning")},
                   "ads": [a["source_url"] for a in ads.get(c["vin"], [])]} for c in cars[:max(1, min(limit, 100))]],
     }, ensure_ascii=False, indent=1)

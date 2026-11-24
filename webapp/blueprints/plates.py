@@ -33,7 +33,7 @@ def plate_cards(conn, status_filter):
     car and how many automatic CEPiK lookups are left; the cards those lookups are done with come first,
     since they need a person. Also used by the review MCP server (scripts/review_mcp.py)."""
     cards = conn.execute("""
-        SELECT q.id, q.listing_id, q.vin, q.source_url, q.photo_url, q.crop_path, 
+        SELECT q.id, q.listing_id, q.vin, v.car_id, q.source_url, q.photo_url, q.crop_path, 
                q.detected_plate, q.confidence, q.status, q.reviewed_plate, q.reviewed_at, q.created_at,
                COALESCE(v.make, p.make) as make,
                COALESCE(v.model, p.model) as model,
