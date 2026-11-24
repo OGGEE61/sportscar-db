@@ -46,6 +46,7 @@ How a listing becomes data:
 | **Okazje** (`/deals`) | Newest ads around Poznań, each compared with the median of similar cars |
 | **Ulubione** (`/favorites`) | Cars you starred (the star sits next to every VIN) |
 | **Kolejka** (`/review`) | New listings to approve or reject |
+| **Do sprawdzenia** (`/review/notes`) | Cars a review left uncertain: what is known, what is missing, links to the car and its ad |
 | **Tablice** (`/plates`) | Registration plates read from photos, to confirm |
 | **CEPiK** (`/cepik`) | Reports from the state vehicle register: insurance, inspection, odometer history |
 | Car page (`/vehicle/<vin>`) | Everything about one car: ads, price timeline, damage history, tags |

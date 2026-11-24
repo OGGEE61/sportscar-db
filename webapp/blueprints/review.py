@@ -3,6 +3,7 @@ import json
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from db import get_db, make_placeholder_vin
 from webapp.helpers import damage_reason_sql, is_plausible_vin
+from webapp.services import verification
 from webapp.services.listings import _approve_listing
 from validation import MARKETS
 
@@ -129,6 +130,29 @@ def review_origin_decide(vin):
         return f'<span id="origin-conflict-count" hx-swap-oob="true">{left}</span>'
     flash(f"Zapisano rynek: {market}.", "success")
     return redirect(url_for("review.review_origins"))
+
+
+@bp.route("/review/notes")
+def review_notes():
+    """"Do sprawdzenia": cars a review left uncertain (?status=resolved: the latest ticked off)."""
+    resolved = request.args.get("status") == "resolved"
+    conn = get_db()
+    notes = verification.review_notes(conn, resolved=resolved)
+    conn.close()
+    return render_template("review_notes.html", notes=notes, resolved=resolved, topics=verification.NOTE_TOPICS)
+
+
+@bp.route("/review/notes/<int:note_id>", methods=["POST"])
+def review_note_resolve(note_id):
+    """Form field resolved=1: the note is checked and leaves the list; 0 puts it back."""
+    conn = get_db()
+    error = verification.set_note_resolved(conn, note_id, request.form.get("resolved") == "1")
+    conn.close()
+    if error:
+        return error, 409
+    if request.headers.get("HX-Request"):
+        return ""   # the card is swapped out
+    return redirect(url_for("review.review_notes"))
 
 
 @bp.route("/review/<int:pid>")
