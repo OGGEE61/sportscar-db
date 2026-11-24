@@ -27,6 +27,51 @@ def _photo_list(photos_json):
     return photos if isinstance(photos, list) else []
 
 
+def plate_cards(conn, status_filter):
+    """The /plates cards of one status, newest first, each with its car, its listing and photos. Pending
+    cards also get what the Polish plate rules make of the reading, the hints why CEPiK may not know the
+    car and how many automatic CEPiK lookups are left; the cards those lookups are done with come first,
+    since they need a person. Also used by the review MCP server (scripts/review_mcp.py)."""
+    cards = conn.execute("""
+        SELECT q.id, q.listing_id, q.vin, q.source_url, q.photo_url, q.crop_path, 
+               q.detected_plate, q.confidence, q.status, q.reviewed_plate, q.reviewed_at, q.created_at,
+               COALESCE(v.make, p.make) as make,
+               COALESCE(v.model, p.model) as model,
+               COALESCE(v.variant, p.variant) as variant,
+               COALESCE(v.year, p.year) as year,
+               p.price_pln, p.location_city, p.raw_title,
+               v.registration_plate AS car_plate,
+               COALESCE(NULLIF(v.first_registration_date, ''), p.first_registration_date) AS first_reg,
+               p.photos AS photos_json,
+               p.source AS listing_source
+        FROM plate_review_queue q
+        LEFT JOIN vehicles v ON v.vin = q.vin
+        -- The queue entry's listing, else the newest listing of its VIN. An OR in the join made
+        -- SQLite scan every listing for every entry (hundreds of thousands of rows a page).
+        LEFT JOIN pending_listings p ON p.id = COALESCE(q.listing_id,
+            (SELECT p2.id FROM pending_listings p2 WHERE p2.vin = q.vin ORDER BY p2.id DESC LIMIT 1))
+        WHERE q.status = ?
+          AND q.vin IS NOT NULL 
+          AND q.vin != '' 
+          AND q.vin NOT LIKE 'PLH%'
+          AND (p.status IS NULL OR p.status != 'rejected')
+        GROUP BY q.id
+        ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
+    """, (status_filter,)).fetchall()
+    cards = [{**dict(c), "photos": _photo_list(c["photos_json"])} for c in cards]
+    if status_filter == "pending":
+        plan = plate_check_plan(conn)
+        for c in cards:
+            card = plan.get(c["id"])
+            c["hints"] = plate_card_hints(card) if card else []
+            c["checks_left"] = len(card["todo"]) if card else 0
+            c["dates"], c["cepik_asked"] = (card["dates"], card["asked"]) if card else ([], [])
+            reading = normalize_plate(c["detected_plate"])
+            c["reading"], c["suggested_plate"] = reading, (plate_candidates(reading)[:1] or [reading])[0]
+        cards.sort(key=lambda c: c["checks_left"] > 0)
+    return cards
+
+
 # ── Plates Review (Human-in-the-Loop for CV License Plate Recognition) ───────
 
 @bp.route("/plates")
@@ -55,44 +100,7 @@ def plates_review():
     """)
     conn.commit()
 
-    candidates = conn.execute("""
-        SELECT q.id, q.listing_id, q.vin, q.source_url, q.photo_url, q.crop_path, 
-               q.detected_plate, q.confidence, q.status, q.reviewed_plate, q.reviewed_at, q.created_at,
-               COALESCE(v.make, p.make) as make,
-               COALESCE(v.model, p.model) as model,
-               COALESCE(v.variant, p.variant) as variant,
-               COALESCE(v.year, p.year) as year,
-               p.price_pln, p.location_city, p.raw_title,
-               v.registration_plate AS car_plate,
-               COALESCE(NULLIF(v.first_registration_date, ''), p.first_registration_date) AS first_reg,
-               p.photos AS photos_json,
-               p.source AS listing_source
-        FROM plate_review_queue q
-        LEFT JOIN vehicles v ON v.vin = q.vin
-        -- The queue entry's listing, else the newest listing of its VIN. An OR in the join made
-        -- SQLite scan every listing for every entry (hundreds of thousands of rows a page).
-        LEFT JOIN pending_listings p ON p.id = COALESCE(q.listing_id,
-            (SELECT p2.id FROM pending_listings p2 WHERE p2.vin = q.vin ORDER BY p2.id DESC LIMIT 1))
-        WHERE q.status = ?
-          AND q.vin IS NOT NULL 
-          AND q.vin != '' 
-          AND q.vin NOT LIKE 'PLH%'
-          AND (p.status IS NULL OR p.status != 'rejected')
-        GROUP BY q.id
-        ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
-    """, (status_filter,)).fetchall()
-    candidates = [{**dict(c), "photos": _photo_list(c["photos_json"])} for c in candidates]
-    if status_filter == "pending":
-        # What the Polish plate rules make of the reading, why CEPiK may not know the car, and how far
-        # the automatic CEPiK checks got. Cards those checks are done with come first: they need a person.
-        plan = plate_check_plan(conn)
-        for c in candidates:
-            card = plan.get(c["id"])
-            c["hints"] = plate_card_hints(card) if card else []
-            c["checks_left"] = len(card["todo"]) if card else 0
-            reading = normalize_plate(c["detected_plate"])
-            c["reading"], c["suggested_plate"] = reading, (plate_candidates(reading)[:1] or [reading])[0]
-        candidates.sort(key=lambda c: c["checks_left"] > 0)
+    candidates = plate_cards(conn, status_filter)
 
     stats = {
         "pending": conn.execute("""
@@ -131,18 +139,24 @@ def plates_review():
 @bp.route("/api/plates/review", methods=["POST"])
 def api_plates_review():
     data = request.get_json(silent=True) or request.form
-    cid = data.get("id")
-    action = data.get("action")  # 'approve', 'reject', or 'revert'
-    plate = (data.get("plate") or "").strip().upper()
-
-    if not cid or action not in ("approve", "reject", "revert"):
-        return jsonify({"status": "error", "message": "Niepoprawne parametry"}), 400
-
     conn = get_db()
+    try:
+        payload, status = review_card(conn, data.get("id"), data.get("action"), data.get("plate"), data.get("force"))
+    finally:
+        conn.close()
+    return jsonify(payload), status
+
+
+def review_card(conn, cid, action, plate=None, force=False):
+    """Approve (with the given plate, else the reading), reject or revert one /plates card. Returns
+    the JSON answer and its HTTP status. Also used by the review MCP server (scripts/review_mcp.py)."""
+    plate = (plate or "").strip().upper()
+    if not cid or action not in ("approve", "reject", "revert"):
+        return {"status": "error", "message": "Niepoprawne parametry"}, 400
+
     cand = conn.execute("SELECT * FROM plate_review_queue WHERE id=?", (cid,)).fetchone()
     if not cand:
-        conn.close()
-        return jsonify({"status": "error", "message": "Nie znaleziono pozycji"}), 404
+        return {"status": "error", "message": "Nie znaleziono pozycji"}, 404
 
     vin = cand["vin"]
     lid = cand["listing_id"]
@@ -153,32 +167,20 @@ def api_plates_review():
         raw_plate = (plate or cand["detected_plate"] or "").upper()
         # Separators are dropped; any other symbol (e.g. a Polish letter) would silently change the plate
         if re.search(r"[^A-Z0-9\s\-.]", raw_plate):
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": "Tablica może zawierać tylko litery A-Z i cyfry."
-            }), 400
+            return {"status": "error", "message": "Tablica może zawierać tylko litery A-Z i cyfry."}, 400
         final_plate = normalize_plate(raw_plate)
-        clean_plate = final_plate
-        if len(clean_plate) < 3:
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": "Tablica rejestracyjna musi mieć co najmniej 3 znaki."
-            }), 400
-        if len(clean_plate) > 8 and not data.get("force"):
-            conn.close()
-            return jsonify({
+        if len(final_plate) < 3:
+            return {"status": "error", "message": "Tablica rejestracyjna musi mieć co najmniej 3 znaki."}, 400
+        if len(final_plate) > 8 and not force:
+            return {
                 "status": "needs_confirmation",
-                "message": f"Wpisany numer ma {len(clean_plate)} znaków (w Polsce standard to max 8). Jeśli na pewno chcesz zatwierdzić w tej formie, potwierdź."
-            }), 400
-
+                "message": f"Wpisany numer ma {len(final_plate)} znaków (w Polsce standard to max 8). Jeśli na pewno chcesz zatwierdzić w tej formie, potwierdź."
+            }, 400
         approve_plate(conn, cid, vin, lid, final_plate)
         conn.commit()
-        conn.close()
-        return jsonify({"status": "ok", "id": cid, "action": action, "plate": final_plate})
+        return {"status": "ok", "id": cid, "action": action, "plate": final_plate}, 200
 
-    elif action == "reject":
+    if action == "reject":
         # The number is missing or wrong, so the car must not keep it. Remembering it in
         # reviewed_plate allows undo and stops the next scrape of the listing from putting
         # it back (see /api/ingest_pending).
@@ -191,23 +193,19 @@ def api_plates_review():
         """, (removed, cid))
         clear_plate(conn, vin, lid, removed)
         conn.commit()
-        conn.close()
-        return jsonify({"status": "ok", "id": cid, "action": action, "removed": removed})
+        return {"status": "ok", "id": cid, "action": action, "removed": removed}, 200
 
-    elif action == "revert":
-        conn.execute("""
-            UPDATE plate_review_queue
-            SET status='pending', reviewed_plate=NULL, reviewed_at=NULL
-            WHERE id=?
-        """, (cid,))
-
-        if prev_status == "approved":
-            clear_plate(conn, vin, lid, old_plate)
-        elif prev_status == "rejected" and cand["reviewed_plate"]:
-            restore_plate(conn, vin, cand["reviewed_plate"])
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "ok", "id": cid, "action": action})
+    conn.execute("""
+        UPDATE plate_review_queue
+        SET status='pending', reviewed_plate=NULL, reviewed_at=NULL
+        WHERE id=?
+    """, (cid,))
+    if prev_status == "approved":
+        clear_plate(conn, vin, lid, old_plate)
+    elif prev_status == "rejected" and cand["reviewed_plate"]:
+        restore_plate(conn, vin, cand["reviewed_plate"])
+    conn.commit()
+    return {"status": "ok", "id": cid, "action": action}, 200
 
 
 @bp.route("/api/plates/scan_batch", methods=["POST"])

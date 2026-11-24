@@ -63,12 +63,12 @@ def _origin_conflict_count(conn):
     return conn.execute("SELECT COUNT(*) FROM vehicles WHERE ai_conflict = 1").fetchone()[0]
 
 
-@bp.route("/review/origins")
-def review_origins():
+def origin_conflicts(conn):
+    """The cars where Bielik and the stored origin market disagree, by make and model, and each car's
+    live ads (pending or approved, newest first). Also used by the review MCP server (scripts/review_mcp.py)."""
     # Both queries read only the flagged cars through idx_vehicles_ai_conflict and idx_pending_vin.
     # Sorting and the status filter are done here: in SQL the planner takes the make/model and
     # status indexes instead, which read the whole tables.
-    conn = get_db()
     cars = sorted(conn.execute("""
         SELECT vin, make, model, variant, year, origin_market, ai_suggested_market, ai_reasoning, ai_ad_count
         FROM vehicles WHERE ai_conflict = 1
@@ -80,25 +80,20 @@ def review_origins():
     """):
         if ad["status"] in ("approved", "pending"):
             ads.setdefault(ad["vin"], []).append(ad)
-    conn.close()
     for car_ads in ads.values():
         car_ads.sort(key=lambda a: a["scraped_at"] or "", reverse=True)
-    return render_template("review_origins.html", cars=cars, ads=ads, markets=MARKETS, unknown=ORIGIN_UNKNOWN)
+    return cars, ads
 
 
-@bp.route("/review/origins/<vin>", methods=["POST"])
-def review_origin_decide(vin):
-    """Form field market: the car's origin market as decided (one of MARKETS, the stored one, or
-    "nieznany"). It is kept from then on: scraping does not overwrite it and Bielik does not flag
-    the car again. Agreeing with Bielik also takes his interior colour, held back over the conflict."""
-    market = request.form.get("market", "")
-    conn = get_db()
+def decide_origin(conn, vin, market):
+    """Store the car's origin market as decided: one of MARKETS, the stored one, or "nieznany". It is
+    kept from then on: scraping does not overwrite it and Bielik does not flag the car again. Agreeing
+    with Bielik also takes his interior colour, held back over the conflict. Returns an error message
+    and HTTP status, or (None, 200)."""
     car = conn.execute("SELECT origin_market FROM vehicles WHERE vin = ?", (vin,)).fetchone()
     if not car:
-        conn.close()
         return "Nie znaleziono auta", 404
     if market not in MARKETS and market != ORIGIN_UNKNOWN and market != car["origin_market"]:
-        conn.close()
         return "Nieznany rynek", 400
     chosen = None if market == ORIGIN_UNKNOWN else market
     conn.execute("""
@@ -108,12 +103,31 @@ def review_origin_decide(vin):
         WHERE vin = ?
     """, (chosen, chosen, vin))
     conn.commit()
-    left = _origin_conflict_count(conn)
+    return None, 200
+
+
+@bp.route("/review/origins")
+def review_origins():
+    conn = get_db()
+    cars, ads = origin_conflicts(conn)
     conn.close()
+    return render_template("review_origins.html", cars=cars, ads=ads, markets=MARKETS, unknown=ORIGIN_UNKNOWN)
+
+
+@bp.route("/review/origins/<vin>", methods=["POST"])
+def review_origin_decide(vin):
+    """Form field market: the car's origin market as decided (see decide_origin)."""
+    market = request.form.get("market", "")
+    conn = get_db()
+    error, status = decide_origin(conn, vin, market)
+    left = _origin_conflict_count(conn) if not error else None
+    conn.close()
+    if error:
+        return error, status
     if request.headers.get("HX-Request"):
         # The card is swapped out; the counter is updated out of band
         return f'<span id="origin-conflict-count" hx-swap-oob="true">{left}</span>'
-    flash(f"Zapisano rynek: {chosen or ORIGIN_UNKNOWN}.", "success")
+    flash(f"Zapisano rynek: {market}.", "success")
     return redirect(url_for("review.review_origins"))
 
 
