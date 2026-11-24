@@ -51,9 +51,15 @@ server = MCPServer(
         "list_plate_cards (only_needing_person first), show_plate_card (plate crop and photos: read the plate "
         "yourself), then check_plate_in_cepik with the exact first registration date (ads often give only "
         "the year; an import's date in Poland is not its first registration abroad, CEPiK events say "
-        "'Pierwsza rejestracja za granicą'). A confirmed lookup approves the card by itself. Every other "
-        "decision only when the user agrees; when unsure, leave the car unchecked and say why. Polish plates "
-        "only: CEPiK does not know cars on foreign plates. Talk to the user in Polish."
+        "'Pierwsza rejestracja za granicą'). A confirmed lookup approves the card by itself. "
+        "The user is the verifier: never change anything (no write tool, CEPiK lookup included) before the "
+        "user approved that change in the chat. Propose decisions in batches, one line per car with the "
+        "evidence; when unsure, leave the car unchecked and say why. "
+        "Damage: check it several ways, not only the ad's word. A car imported from North America (USA, "
+        "Canada) is almost certainly damaged even when the ad says 'bezwypadkowy': look for the auction "
+        "(Copart, IAAI), repair photos, the ad's history and the CEPiK events, and propose a damage history "
+        "entry with what you found. Polish plates only: CEPiK does not know cars on foreign plates. Talk to "
+        "the user in Polish."
     ),
 )
 
