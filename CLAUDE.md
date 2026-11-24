@@ -27,6 +27,11 @@ Hobby limits Functions Storage to 10 GB per rolling 30 days, and every deploymen
 - Production reads Cloudflare D1 over HTTP (each query is a round trip). D1 runs in EEUR, so the function is pinned to `fra1` in [vercel.json](vercel.json); keep them close together.
 - Keep pages as a fast shell and load data sections via `/api/...` endpoints (see the dashboard), and avoid sequential queries in a route.
 
+## Review MCP server
+
+- [scripts/review_mcp.py](scripts/review_mcp.py) (registered in [.mcp.json](.mcp.json)) lets Claude review /plates cards with their photos, run CEPiK lookups and decide origin conflicts. It runs locally on the database `.env` points at (`DB_BACKEND=d1` is production), through the same functions as the screens. Needs `.venv/bin/pip install -r requirements-mcp.txt`.
+- Its write tools (approve, reject, CEPiK lookup, origin) change production: use them when the user asks for a review, and confirm decisions made without CEPiK.
+
 ## Pull requests
 
 - Titles, descriptions and commit messages are in English (the app's UI stays Polish).

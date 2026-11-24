@@ -18,3 +18,6 @@ requirements-cv.txt
 __pycache__/
 deploy/
 .dockerignore
+requirements-mcp.txt
+scripts/review_mcp.py
+.mcp.json
