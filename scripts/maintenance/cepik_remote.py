@@ -6,12 +6,17 @@ app (/api/cepik_queue), CEPiK (moj.gov.pl) is asked from here, and each answer g
 app (/api/cepik_result), which saves the report, or sends the plate back to /plates when CEPiK
 does not know the VIN + plate, or notes a failed lookup for the next run.
 
+Then the pending /plates cards: the plates the Polish plate rules make of each card's photo
+reading and ad plate, with the car's first registration dates (/api/plate_check_queue); a pair
+CEPiK confirms approves the card (/api/plate_check_result), so it never reaches a human.
+
 moj.gov.pl has hours when every request times out: after STOP_AFTER_FAILED lookups in a row
 that got no answer the run stops, and the next run takes those cars up again.
 
 Runs nightly (deploy/scrapers/crontab). Writes one line to the run log.
 
-Usage: python scripts/maintenance/cepik_remote.py [--limit N]   (default 60 cars)
+Usage: python scripts/maintenance/cepik_remote.py [--limit N] [--plate-limit M]
+       (default 60 cars, 80 plate lookups)
 """
 import argparse
 import os
@@ -45,10 +50,22 @@ def send_result(car: dict, report, http_status) -> str:
         return "not_stored"
 
 
-def run(limit: int, client=None, pause: float = PAUSE_S) -> dict:
+def post(path: str, payload: dict) -> dict:
+    r = _API_SESSION.post(f"{API_BASE}{path}", json=payload, headers=API_HEADERS, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def no_answer(report, client) -> bool:
+    """No HTTP status at all: moj.gov.pl did not answer (a timeout), unlike a 404 or a bad date."""
+    return report is None and getattr(client, "last_status", None) is None
+
+
+def run(limit: int, client=None, pause: float = PAUSE_S, plate_limit: int = 0) -> dict:
     client = client or CepikClient()
     cars = fetch_queue(limit)
-    counts = {"cars": len(cars), "saved": 0, "not_found": 0, "failed": 0, "stopped": False}
+    counts = {"cars": len(cars), "saved": 0, "not_found": 0, "failed": 0, "stopped": False,
+              "plate_checks": 0, "plates_confirmed": 0}
     print(f"CEPiK: {len(cars)} cars to check")
     in_a_row = 0
     for i, car in enumerate(cars, 1):
@@ -62,24 +79,49 @@ def run(limit: int, client=None, pause: float = PAUSE_S) -> dict:
             counts["not_found"] += 1
         else:
             counts["failed"] += 1
-        # No HTTP status at all: moj.gov.pl did not answer (a timeout), unlike a 404 or a bad date
-        in_a_row = in_a_row + 1 if (report is None and status is None) else 0
+        in_a_row = in_a_row + 1 if no_answer(report, client) else 0
         print(f"    {outcome}")
         if in_a_row >= STOP_AFTER_FAILED:
             counts["stopped"] = True
             print(f"moj.gov.pl did not answer {in_a_row} times in a row: stopping, the next run continues")
+            return counts
+        time.sleep(pause)
+
+    checks = post("/api/plate_check_queue", {"limit": plate_limit})["checks"] if plate_limit else []
+    print(f"CEPiK: {len(checks)} plate lookups for /plates cards")
+    confirmed_cards = set()
+    for check in checks:
+        if check["card_id"] in confirmed_cards:
+            continue
+        report = client.fetch_vehicle_data(check["vin"], check["plate"], check["first_registration_date"])
+        try:
+            outcome = post("/api/plate_check_result", {**check, "report": report,
+                                                       "http_status": getattr(client, "last_status", None)})["outcome"]
+        except Exception as e:
+            print(f"    [api] result not stored: {_safe(str(e))[:120]}")
+            outcome = "not_stored"
+        counts["plate_checks"] += 1
+        if outcome == "confirmed":
+            counts["plates_confirmed"] += 1
+            confirmed_cards.add(check["card_id"])
+        print(f"  {check['vin']} {check['plate']} {check['first_registration_date']}: {outcome}")
+        in_a_row = in_a_row + 1 if no_answer(report, client) else 0
+        if in_a_row >= STOP_AFTER_FAILED:
+            counts["stopped"] = True
+            print(f"moj.gov.pl did not answer {in_a_row} times in a row: stopping, the next run continues")
             break
-        if i < len(cars):
-            time.sleep(pause)
+        time.sleep(pause)
     return counts
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CEPiK reports for cars without one, through the app's API")
     parser.add_argument("--limit", type=int, default=60)
-    c = run(parser.parse_args().limit)
+    parser.add_argument("--plate-limit", type=int, default=80)
+    args = parser.parse_args()
+    c = run(args.limit, plate_limit=args.plate_limit)
     message = (f"CEPiK: {c['saved']} raportów zapisanych, {c['not_found']} nieznanych w CEPiK (tablice do /plates), "
-               f"{c['failed']} bez odpowiedzi" + (", przerwano: moj.gov.pl nie odpowiada" if c["stopped"] else "")
-               + f" (z {c['cars']} w kolejce)")
+               f"{c['failed']} bez odpowiedzi (z {c['cars']} w kolejce); /plates: {c['plates_confirmed']} tablic "
+               f"potwierdzonych w {c['plate_checks']} zapytaniach" + (", przerwano: moj.gov.pl nie odpowiada" if c["stopped"] else ""))
     print(message)
     _log_run("partial" if c["stopped"] else "success", message, processed=c["saved"], source="cepik")

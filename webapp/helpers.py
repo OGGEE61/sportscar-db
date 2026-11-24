@@ -108,6 +108,7 @@ def car_flags_sql(alias="v"):
     flag_vin_status, flag_plate, flag_origin, flag_favorite (the star), flag_plate_from_photo, flag_sold_damaged, flag_damage_history,
     flag_damage_country,
     flag_cepik ('ok' | 'rollback' | 'stolen' | NULL without a report), flag_rollback_km,
+    flag_cepik_mismatch (CEPiK did not find the car by its VIN, plate and first registration date),
     flag_ad ('active' while an ad is up, else when the last one disappeared; NULL without ads) and
     flag_tags (the car's other tags, '|'-separated; plate-from-photo, 'missing plates' and CEPiK tags are
     markers already).
@@ -127,6 +128,7 @@ def car_flags_sql(alias="v"):
         (SELECT CASE WHEN fc.is_stolen = 1 THEN 'stolen' WHEN fc.odometer_rollback = 1 THEN 'rollback' ELSE 'ok' END
            FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_cepik,
         (SELECT fc.rollback_diff_km FROM cepik_reports fc WHERE fc.vin = {a}.vin) AS flag_rollback_km,
+        EXISTS (SELECT 1 FROM cepik_sync_log fl WHERE fl.vin = {a}.vin AND fl.status = 'not_found') AS flag_cepik_mismatch,
         CASE WHEN EXISTS (SELECT 1 FROM listing_observations fa WHERE fa.vin = {a}.vin
                             AND fa.excluded_reason IS NULL AND fa.removed_at IS NULL) THEN 'active'
              ELSE (SELECT MAX(fa.removed_at) FROM listing_observations fa

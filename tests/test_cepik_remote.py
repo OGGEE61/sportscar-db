@@ -128,7 +128,8 @@ class TestCepikJob(unittest.TestCase):
         counts, sent = self.run_job([self.car(A), self.car(B), self.car(C)],
                                     {A: (report(A), 200), B: (None, 404), C: (None, None)},
                                     {A: "saved", B: "reverted", C: "error"})
-        self.assertEqual(counts, {"cars": 3, "saved": 1, "not_found": 1, "failed": 1, "stopped": False})
+        self.assertEqual(counts, {"cars": 3, "saved": 1, "not_found": 1, "failed": 1, "stopped": False,
+                                  "plate_checks": 0, "plates_confirmed": 0})
         self.assertEqual(sent, [(A, True, 200), (B, False, 404), (C, False, None)])
 
     def test_stops_when_cepik_does_not_answer(self):

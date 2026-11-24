@@ -12,7 +12,7 @@ bp = Blueprint("auth", __name__)
 TOKEN_API_PATHS = {
     "/api/ingest", "/api/ingest_pending", "/api/mark_removed", "/api/log_run",
     "/api/known_listings", "/api/next_scrapers", "/api/reveal_queue", "/api/reveal_result",
-    "/api/cepik_queue", "/api/cepik_result",
+    "/api/cepik_queue", "/api/cepik_result", "/api/plate_check_queue", "/api/plate_check_result",
 }
 
 

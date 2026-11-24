@@ -4,7 +4,9 @@ import re
 from flask import Blueprint, jsonify, render_template, request
 from db import get_db
 from webapp import invalidate_notifications
-from webapp.services.plates import approve_plate, clear_plate, normalize_plate, restore_plate
+from webapp.services.plate_rules import plate_candidates
+from webapp.services.plates import (approve_plate, clear_plate, normalize_plate, plate_card_hints, plate_check_plan,
+                                    restore_plate)
 
 bp = Blueprint("plates", __name__)
 
@@ -80,6 +82,17 @@ def plates_review():
         ORDER BY COALESCE(q.reviewed_at, q.created_at) DESC, q.id DESC
     """, (status_filter,)).fetchall()
     candidates = [{**dict(c), "photos": _photo_list(c["photos_json"])} for c in candidates]
+    if status_filter == "pending":
+        # What the Polish plate rules make of the reading, why CEPiK may not know the car, and how far
+        # the automatic CEPiK checks got. Cards those checks are done with come first: they need a person.
+        plan = plate_check_plan(conn)
+        for c in candidates:
+            card = plan.get(c["id"])
+            c["hints"] = plate_card_hints(card) if card else []
+            c["checks_left"] = len(card["todo"]) if card else 0
+            reading = normalize_plate(c["detected_plate"])
+            c["reading"], c["suggested_plate"] = reading, (plate_candidates(reading)[:1] or [reading])[0]
+        candidates.sort(key=lambda c: c["checks_left"] > 0)
 
     stats = {
         "pending": conn.execute("""

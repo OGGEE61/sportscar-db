@@ -287,6 +287,10 @@ def record_cepik_failure(conn, client, vin: str, plate: str) -> str:
         conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) "
                      "VALUES (?, 'not_found', ?, datetime('now'))",
                      (vin, f"Pojazd nie odnaleziony w CEPiK (tablica {normalize_plate(plate)})"))
+        # The /plates checks then skip this pair (webapp.services.plates.plate_check_plan)
+        conn.execute("""INSERT OR IGNORE INTO cepik_plate_checks (vin, plate, first_registration_date, found)
+                        SELECT vin, ?, first_registration_date, 0 FROM vehicles
+                        WHERE vin = ? AND COALESCE(first_registration_date, '') <> ''""", (normalize_plate(plate), vin))
         conn.commit()
         return requeue_for_plate_check(conn, vin, plate)
     conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) "
@@ -577,76 +581,65 @@ def is_same_car(report: Dict[str, Any], vin: str, make: Optional[str], year: Opt
     return not (their_year and year and abs(int(their_year) - int(year)) > 1)
 
 
-def confirm_queue_with_cepik(limit: int = 0) -> Dict[str, int]:
-    """Check every number on pending review cards with CEPiK and approve the ones it confirms.
+def record_plate_check(conn, check: dict, report, http_status) -> str:
+    """Store CEPiK's answer to one lookup of plate_check_tasks ({card_id, vin, plate,
+    first_registration_date}). A report for this same car approves the card with that plate, saves
+    the report and, when the answer came for another of the car's dates, takes that date. A 404 (or
+    another car) is remembered, so the pair is not asked again; other failures are retried later.
+    Returns "confirmed", "not_found", "other_car", "error" or "gone" (the card was reviewed meanwhile)."""
+    from webapp.services.plates import approve_plate
+    vin, plate, date_str = check["vin"], check["plate"], check["first_registration_date"]
+    card = conn.execute("""
+        SELECT q.id, q.listing_id, q.status, v.make, v.year FROM plate_review_queue q JOIN vehicles v ON v.vin = q.vin
+        WHERE q.id = ? AND q.vin = ?
+    """, (check["card_id"], vin)).fetchone()
+    if not card or card["status"] != "pending":
+        return "gone"
+    outcome = "confirmed" if report else "not_found"
+    if report and not is_same_car(report, vin, card["make"], card["year"]):
+        print(f"  ⚠️ {vin} / {plate}: CEPiK zwrócił inne auto ({report.get('make')}, {report.get('year_of_manufacture')}), bez zatwierdzenia")
+        report, outcome = None, "other_car"
+    elif not report and http_status != 404:
+        return "error"
+    conn.execute("""INSERT OR REPLACE INTO cepik_plate_checks (vin, plate, first_registration_date, found)
+                    VALUES (?, ?, ?, ?)""", (vin, plate, date_str, 1 if report else 0))
+    if report:
+        save_cepik_report(report, conn)
+        approve_plate(conn, card["id"], vin, card["listing_id"], plate, tag="cepik confirmed")
+        conn.execute("UPDATE vehicles SET first_registration_date = ?, updated_at = datetime('now') "
+                     "WHERE vin = ? AND COALESCE(first_registration_date, '') <> ?", (date_str, vin, date_str))
+        conn.execute("""INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at)
+                        VALUES (?, 'success', 'Tablica potwierdzona przez CEPiK', datetime('now'))""", (vin,))
+        print(f"  ✓ {vin}: {plate} / {date_str} potwierdzone przez CEPiK")
+    conn.commit()
+    return outcome
 
-    A plate that matches the VIN and first registration date, on a report for the same car, needs
-    no human review. Misses are remembered per VIN + plate + date, so each number is asked once;
-    they don't touch the card, because a wrong OCR guess says nothing about the car's plate.
-    """
-    from validation import is_valid_registration_plate
-    from webapp.services.plates import approve_plate, normalize_plate
+
+def confirm_queue_with_cepik(limit: int = 0) -> Dict[str, int]:
+    """Ask CEPiK about the pending /plates cards and approve the plates it confirms, without a human.
+
+    Each card's plates are the Polish plate rules' readings of the photo and of the ad
+    (webapp/services/plate_rules.py), each tried with the car's first registration date and the
+    other dates its ads give, likeliest pair first (webapp.services.plates.plate_check_tasks). The
+    nightly VPS job does the same through the app's API (scripts/maintenance/cepik_remote.py)."""
+    from webapp.services.plates import plate_check_plan, plate_check_tasks
 
     conn = db.get_db()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS cepik_plate_checks (
-            vin TEXT NOT NULL,
-            plate TEXT NOT NULL,
-            first_registration_date TEXT NOT NULL,
-            found INTEGER NOT NULL,
-            checked_at TEXT DEFAULT (datetime('now')),
-            PRIMARY KEY (vin, plate, first_registration_date)
-        )
-    """)
-    conn.commit()
-    done = {(r["vin"], r["plate"], r["first_registration_date"])
-            for r in conn.execute("SELECT vin, plate, first_registration_date FROM cepik_plate_checks").fetchall()}
-    cards = conn.execute("""
-        SELECT q.id, q.vin, q.listing_id, q.detected_plate, v.registration_plate AS car_plate, v.make, v.year,
-               COALESCE(NULLIF(v.first_registration_date, ''),
-                        (SELECT p.first_registration_date FROM pending_listings p
-                         WHERE p.vin = q.vin AND p.first_registration_date != '' ORDER BY p.id DESC LIMIT 1)) AS first_reg
-        FROM plate_review_queue q
-        JOIN vehicles v ON v.vin = q.vin
-        WHERE q.status = 'pending' AND q.vin NOT LIKE 'PLH%' AND q.vin NOT LIKE 'UNVERIFIED%'
-        ORDER BY q.id
-    """).fetchall()
-
+    plan = plate_check_plan(conn)
+    tasks = plate_check_tasks(conn, limit or 10 ** 6)
     client = CepikClient()
-    stats = {"cards": len(cards), "no_date": 0, "lookups": 0, "confirmed": 0, "not_same_car": 0, "errors": 0}
-    for card in cards:
-        vin, date_str = card["vin"], card["first_reg"]
-        if not date_str:
-            stats["no_date"] += 1
-            continue
-        plates = {normalize_plate(card["detected_plate"]), normalize_plate(card["car_plate"])}
-        for plate in sorted(p for p in plates if is_valid_registration_plate(p) and (vin, p, date_str) not in done):
-            if limit and stats["lookups"] >= limit:
-                break
-            stats["lookups"] += 1
-            report = client.fetch_vehicle_data(vin, plate, date_str)
-            if report and not is_same_car(report, vin, card["make"], card["year"]):
-                stats["not_same_car"] += 1
-                print(f"  ⚠️ {vin} / {plate}: CEPiK zwrócił inne auto ({report.get('make')}, {report.get('year_of_manufacture')}), bez zatwierdzenia")
-                report = None
-            elif not report and client.last_status != 404:
-                stats["errors"] += 1  # transient: ask again next time
-                time.sleep(2.0)
-                continue
-            conn.execute("""INSERT OR REPLACE INTO cepik_plate_checks (vin, plate, first_registration_date, found)
-                            VALUES (?, ?, ?, ?)""", (vin, plate, date_str, 1 if report else 0))
-            if report:
-                save_cepik_report(report, conn)
-                approve_plate(conn, card["id"], vin, card["listing_id"], plate, tag="cepik confirmed")
-                conn.execute("""INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at)
-                                VALUES (?, 'success', 'Tablica potwierdzona przez CEPiK', datetime('now'))""", (vin,))
-                stats["confirmed"] += 1
-                print(f"  ✓ {vin}: {plate} potwierdzona przez CEPiK")
-            conn.commit()
-            time.sleep(2.0)
-            if report:
-                break
-
+    stats = {"cards": len(plan), "no_date": sum(not card["dates"] for card in plan.values()), "lookups": 0,
+             "confirmed": 0, "not_same_car": 0, "errors": 0}
+    for check in tasks:
+        if conn.execute("SELECT status FROM plate_review_queue WHERE id = ?", (check["card_id"],)).fetchone()["status"] != "pending":
+            continue  # confirmed by an earlier pair
+        stats["lookups"] += 1
+        report = client.fetch_vehicle_data(check["vin"], check["plate"], check["first_registration_date"])
+        outcome = record_plate_check(conn, check, report, client.last_status)
+        stats["confirmed"] += outcome == "confirmed"
+        stats["not_same_car"] += outcome == "other_car"
+        stats["errors"] += outcome == "error"
+        time.sleep(2.0)
     conn.close()
     print(f"=== CEPiK przed przeglądem: {stats} ===")
     return stats

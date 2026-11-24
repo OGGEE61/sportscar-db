@@ -1083,20 +1083,21 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         conn.close()
 
     def test_confirmed_ocr_reading_is_approved_and_replaces_the_listing_number(self):
-        self.card(proposal="CD99999")
-        stats, _ = self.run_confirm({"CD99999": self.report(plate="CD99999")})
+        self.card(proposal="CB99999")
+        stats, _ = self.run_confirm({"CB99999": self.report(plate="CB99999")})
         self.assertEqual(stats["confirmed"], 1)
         rows, plate = self.queue()
-        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("approved", "CD99999"))
-        self.assertEqual(plate, "CD99999")
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("approved", "CB99999"))
+        self.assertEqual(plate, "CB99999")
         conn = db.get_db()
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_reports WHERE vin=?", (self.VIN,)).fetchone()[0], 1)
         conn.close()
 
     def test_miss_leaves_the_card_for_a_human_and_is_not_asked_twice(self):
-        self.card(proposal="CD99999")
+        self.card(proposal="CB99999")
         _, client = self.run_confirm({})
-        self.assertEqual(client.fetch_vehicle_data.call_count, 2)  # the proposal and the listing number
+        # the proposal, the listing number, and the listing number's S/5 guess (AB1234S)
+        self.assertEqual([c.args[1] for c in client.fetch_vehicle_data.call_args_list], ["CB99999", "AB12345", "AB1234S"])
         rows, plate = self.queue()
         self.assertEqual(rows[0]["status"], "pending")
         self.assertEqual(plate, "AB12345")
@@ -1125,9 +1126,9 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         client = mock.Mock(last_status=500)
         client.fetch_vehicle_data.return_value = None
         with mock.patch.object(fetch_cepik, "CepikClient", return_value=client), mock.patch.object(fetch_cepik.time, "sleep"):
-            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 1)
+            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 2)   # AB12345 and its guess AB1234S
         _, client = self.run_confirm({})
-        self.assertEqual(client.fetch_vehicle_data.call_count, 1)
+        self.assertEqual(client.fetch_vehicle_data.call_count, 2)
 
     def test_card_without_a_date_is_skipped(self):
         self.card()
