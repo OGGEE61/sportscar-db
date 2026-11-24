@@ -30,7 +30,7 @@ Hobby limits Functions Storage to 10 GB per rolling 30 days, and every deploymen
 ## Review MCP server
 
 - [scripts/review_mcp.py](scripts/review_mcp.py) (registered in [.mcp.json](.mcp.json)) lets Claude review /plates cards with their photos, run CEPiK lookups and decide origin conflicts. It runs locally on the database `.env` points at (`DB_BACKEND=d1` is production), through the same functions as the screens. Needs `.venv/bin/pip install -r requirements-mcp.txt`.
-- Its write tools (approve, reject, CEPiK lookup, origin) change production: use them when the user asks for a review, and confirm decisions made without CEPiK.
+- Its write tools (approve, reject, CEPiK lookup, date, origin, damage, "Dane sprawdzone") change production. The user is the verifier: propose changes in batches with the evidence, and make each one only after the user has approved it.
 
 ## Pull requests
 
