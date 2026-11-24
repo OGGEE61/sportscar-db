@@ -202,6 +202,9 @@ class TestCarChecks(ReviewMcpCase):
         self.assertTrue(info["ads"][0]["description"].startswith("Pierwsza rejestracja"))
         self.assertEqual(sum(isinstance(c, Image) for c in content), 1)
         self.assertIn("Nie ma auta", mcp_server.show_car("NOPE")[0])
+        by_id = json.loads(mcp_server.show_car(f"#{info['id']}", photos=0)[0])
+        self.assertEqual((by_id["vin"], by_id["id"]), (KNOWN, info["id"]))
+        self.assertIn("Nie ma auta", mcp_server.show_car("999", photos=0)[0])
 
     def test_date_damage_and_history_are_stored(self):
         self.assertIn("Niepoprawna", mcp_server.set_first_registration_date(FOREIGN, "2023"))

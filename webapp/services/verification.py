@@ -68,7 +68,7 @@ def cars_to_check(conn, limit, offset=0):
     Both read through idx_vehicles_unchecked, so a page costs about `limit` rows plus the count."""
     total = conn.execute("SELECT COUNT(*) FROM vehicles WHERE data_checked_at IS NULL").fetchone()[0]
     cars = conn.execute("""
-        SELECT v.vin, v.make, v.model, v.variant, v.year, v.registration_plate, v.first_registration_date,
+        SELECT v.car_id, v.vin, v.make, v.model, v.variant, v.year, v.registration_plate, v.first_registration_date,
                v.origin_market, v.ai_suggested_market, v.ai_conflict, v.created_at
         FROM vehicles v
         WHERE v.data_checked_at IS NULL AND v.vin NOT LIKE 'PLH%' AND v.vin NOT LIKE 'UNVERIFIED%'
