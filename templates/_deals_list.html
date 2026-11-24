@@ -7,7 +7,7 @@
     wystawionych w ostatnich {{ period_key }} dniach.
   </span>
   {% if range_key != "woj" and unknown_place %}
-  <a href="/deals?km=woj&days={{ period_key }}&sort={{ sort }}" class="text-muted">
+  <a href="/poznan?km=woj&days={{ period_key }}&sort={{ sort }}" class="text-muted">
     {{ unknown_place }} z Wielkopolski bez znanej odległości: pokaż całe województwo
   </a>
   {% endif %}
@@ -32,22 +32,12 @@
           {{ d.year or '—' }}{% if d.power_hp %} · {{ d.power_hp }} KM{% endif %}{% if d.mileage_km %} · {{ "{:,}".format(d.mileage_km).replace(",", " ") }} km{% endif %}
         </div>
 
-        <div class="d-flex align-items-baseline flex-wrap gap-2">
-          <span class="fs-4 fw-bold" style="color: #1d4ed8;">{{ "{:,.0f}".format(d.price_pln).replace(",", " ") }} zł</span>
-          {% if d.cmp %}
-            {% set pct = (d.cmp.diff * 100)|round|int %}
-            {% if d.verdict == 'deal' %}
-            <span class="badge bg-success">{{ pct }}% od mediany</span>
-            {% elif d.verdict == 'pricey' %}
-            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">+{{ pct }}% od mediany</span>
-            {% else %}
-            <span class="badge bg-light text-dark border">{{ "+" if pct > 0 else "" }}{{ pct }}% od mediany</span>
-            {% endif %}
-          {% endif %}
-        </div>
+        <div class="fs-4 fw-bold" style="color: #1d4ed8;">{{ "{:,.0f}".format(d.price_pln).replace(",", " ") }} zł</div>
         <div class="small text-muted mb-2">
           {% if d.cmp %}
-          Mediana {{ "{:,.0f}".format(d.cmp.median).replace(",", " ") }} zł z {{ d.cmp.count }} aut ({{ d.cmp.basis }})
+          {% set pct = (d.cmp.diff * 100)|round|int %}
+          <span class="{{ 'text-success fw-semibold' if d.verdict == 'deal' else 'text-body' }}">{{ "+" if pct > 0 else "" }}{{ pct }}% wobec mediany</span>
+          · mediana {{ "{:,.0f}".format(d.cmp.median).replace(",", " ") }} zł z {{ d.cmp.count }} aut ({{ d.cmp.basis }})
           {% elif d.damage_history %}
           Szkoda w historii auta: bez porównania z rynkiem
           {% elif d.damaged %}
@@ -82,8 +72,8 @@
 {% endif %}
 
 <p class="small text-muted mt-4 mb-0">
-  Okazja to cena co najmniej {{ deal_below }}% poniżej mediany tego samego modelu i wersji z roczników
-  ±1 (gdy jest ich mniej niż 5: ±2, potem ±3; dalej nie porównujemy). Mediana liczona z ogłoszeń z ostatnich
+  Mediana to środkowa cena tego samego modelu i wersji z roczników ±1 (gdy jest ich mniej niż 5: ±2, potem ±3;
+  dalej nie porównujemy), liczona z ogłoszeń z ostatnich
   {{ compare_days }} dni, także sprzedanych, jedno ogłoszenie na auto. Aut uszkodzonych lub ze szkodą w historii nie porównujemy.
   Odległość w linii prostej od centrum Poznania.
 </p>

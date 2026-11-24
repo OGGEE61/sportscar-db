@@ -17,7 +17,7 @@ PLAIN = "WBSJF0C55KB000002"     # unverified, no plate, no CEPiK report, ad mark
 
 OVERSEAS = "WBSJF0C55KB000003"  # from the USA, ad marked damaged, no plate: still abroad
 
-PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/deals?km=50&days=30")
+PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/poznan?km=50&days=30")
 
 
 class TestSameFlagsEverywhere(unittest.TestCase):

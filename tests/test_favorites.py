@@ -14,7 +14,7 @@ from app import app
 
 LIKED = "WBSJF0C55KB000001"
 OTHER = "WBSJF0C55KB000002"
-PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/deals?km=50&days=30", f"/vehicle/{LIKED}")
+PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/poznan?km=50&days=30", f"/vehicle/{LIKED}")
 
 
 class TestFavorites(unittest.TestCase):

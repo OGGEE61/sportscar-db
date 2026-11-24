@@ -1,4 +1,4 @@
-"""The deals page: distance from Poznań, price against the market, and the /deals routes."""
+"""The Poznań page: distance from Poznań, price against the market, and the /poznan routes."""
 import os
 import sys
 import unittest
@@ -182,7 +182,7 @@ class TestDealsRoutes(unittest.TestCase):
 
     def test_htmx_is_served_by_the_app(self):
         # Data sections load through htmx; a CDN that does not answer leaves them empty
-        page = self.client.get("/deals").get_data(as_text=True)
+        page = self.client.get("/poznan").get_data(as_text=True)
         self.assertIn('src="/static/vendor/htmx-1.9.12.min.js"', page)
         self.assertNotIn("unpkg.com", page)
         js = self.client.get("/static/vendor/htmx-1.9.12.min.js")
@@ -196,16 +196,16 @@ class TestDealsRoutes(unittest.TestCase):
         self.add("WBS8M9C50G5999129", 240_000, "Poznań, Wielkopolskie", "p1", days_ago=2)
         self.add("WBS8M9C50G5888241", 240_000, "Kraków", "k1", days_ago=2)
 
-        page = self.client.get("/deals?km=25&sort=deal")
+        page = self.client.get("/poznan?km=25&sort=deal")
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Okazje: Poznań i okolice", page.get_data(as_text=True))
-        self.assertIn('hx-get="/api/deals?km=25&days=30&sort=deal"', page.get_data(as_text=True))
+        self.assertIn("Poznań i okolice", page.get_data(as_text=True))
+        self.assertIn('hx-get="/api/poznan?km=25&days=30&sort=deal"', page.get_data(as_text=True))
 
-        html = self.client.get("/api/deals?km=50").get_data(as_text=True)
+        html = self.client.get("/api/poznan?km=50").get_data(as_text=True)
         self.assertIn("/vehicle/WBS8M9C50G5999129", html)
         self.assertNotIn("/vehicle/WBS8M9C50G5888241", html)  # Kraków: not shown, but part of the market
-        self.assertIn("-20% od mediany", html)
-        self.assertIn("Mediana 300 000 zł z 6 aut (rocznik ±1)", html)
+        self.assertIn("-20% wobec mediany", html)
+        self.assertIn("mediana 300 000 zł z 6 aut (rocznik ±1)", html)
         self.assertIn("2 dni temu", html)
 
     def test_damage_history_shown_on_the_card(self):
@@ -215,14 +215,26 @@ class TestDealsRoutes(unittest.TestCase):
                      "VALUES ('WBATS31020LF51925', '2020-10-11', 0, 'Belgia')")
         conn.commit()
         conn.close()
-        html = self.client.get("/api/deals?km=50").get_data(as_text=True)
+        html = self.client.get("/api/poznan?km=50").get_data(as_text=True)
         self.assertIn("Historia szkody", html)
         self.assertIn("Szkoda w historii auta: bez porównania z rynkiem", html)
 
     def test_bad_choices_fall_back_to_defaults(self):
-        html = self.client.get("/api/deals?km=9999&days=x&sort=evil").get_data(as_text=True)
+        html = self.client.get("/api/poznan?km=9999&days=x&sort=evil").get_data(as_text=True)
         self.assertIn("w promieniu 50 km od Poznania", html)
         self.assertIn("w ostatnich 30 dniach", html)
+
+    def test_an_expensive_car_stays_on_the_list(self):
+        for i in range(5):
+            self.add(f"WBS8M9C50G5{i:06d}", 300_000, "Warszawa", f"w{i}", days_ago=60)
+        self.add("WBS8M9C50G5777111", 420_000, "Poznań, Wielkopolskie", "p2", days_ago=1)
+        html = self.client.get("/api/poznan?km=50").get_data(as_text=True)
+        self.assertIn("/vehicle/WBS8M9C50G5777111", html)
+        self.assertIn("+40% wobec mediany", html)
+
+    def test_the_old_address_redirects(self):
+        res = self.client.get("/deals?km=25&sort=deal")
+        self.assertEqual((res.status_code, res.headers["Location"]), (301, "/poznan?km=25&sort=deal"))
 
 
 if __name__ == "__main__":

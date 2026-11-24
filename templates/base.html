@@ -38,7 +38,7 @@
         {{ nav_item("/", "bi-grid-1x2", "Pulpit", request.path == "/") }}
         {{ nav_item("/models", "bi-graph-up", "Modele", request.path.startswith("/models")) }}
         {{ nav_item("/vehicles", "bi-car-front", "Baza VIN-ów", request.path.startswith("/vehicle")) }}
-        {{ nav_item("/deals", "bi-tag", "Okazje", request.path.startswith("/deals")) }}
+        {{ nav_item("/poznan", "bi-geo-alt", "Poznań", request.path.startswith("/poznan")) }}
         {{ nav_item("/favorites", "bi-star", "Ulubione", request.path.startswith("/favorites")) }}
         {{ nav_item("/review", "bi-inbox", "Kolejka", request.path.startswith("/review") and not request.path.startswith("/review/notes")) }}
         {{ nav_item("/review/notes", "bi-clipboard-check", "Do sprawdzenia", request.path.startswith("/review/notes")) }}

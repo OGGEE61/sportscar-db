@@ -163,7 +163,7 @@ def location(city, region=None):
 
 
 # ── Distance from Poznań ────────────────────────────────────────────────────
-# Listings carry a place name only, so the deals page (/deals) measures distance with this table
+# Listings carry a place name only, so the Poznań page (/poznan) measures distance with this table
 # of approximate coordinates (lat, lon) of places around Poznań and in the rest of Wielkopolska.
 # A place missing here has an unknown distance; it shows up only when the whole voivodeship is
 # chosen. Names that several villages share (Piotrowice, Kościelna Wieś, Lipka) are left out on

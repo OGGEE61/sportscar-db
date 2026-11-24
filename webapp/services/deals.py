@@ -1,4 +1,4 @@
-"""The newest listings around Poznań, each priced against the market (the /deals page).
+"""The newest listings around Poznań, each priced against the market (the /poznan page).
 
 One query loads the latest sighting of every listing seen in the last COMPARE_DAYS days. Those
 listings, sold ones included, are the market: a listing's price is compared with the median price
