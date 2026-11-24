@@ -161,5 +161,90 @@ class TestDecisions(ReviewMcpCase):
         self.assertEqual(json.loads(mcp_server.list_origin_conflicts())["conflicts"], 0)
 
 
+class TestCarChecks(ReviewMcpCase):
+    """KNOWN: a Polish car whose ad says it was damaged (a text mark), with a CEPiK report.
+    FOREIGN: an import with no damage."""
+
+    def setUp(self):
+        super().setUp()
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET created_at = '2026-11-01' WHERE vin = ?", (KNOWN,))
+        conn.execute("UPDATE vehicles SET created_at = '2026-11-20' WHERE vin = ?", (FOREIGN,))
+        conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, price_pln) VALUES (?, 'otomoto', ?, 300000)",
+                     (KNOWN, KNOWN[-3:]))
+        conn.execute("INSERT INTO damaged_listings (source, source_listing_id, reason) VALUES ('otomoto', ?, 'text: uszkodzony przód')",
+                     (KNOWN[-3:],))
+        conn.execute("INSERT INTO cepik_reports (vin, registration_plate, first_registration_date, events_json) VALUES (?, 'KR7VG22', "
+                     "'2018-05-10', ?)", (KNOWN, json.dumps([{"date": "2018-05-10", "name": "Pierwsza rejestracja za granicą"}])))
+        conn.commit()
+        conn.close()
+
+    def queue(self):
+        return json.loads(mcp_server.list_cars_to_check())
+
+    def test_the_queue_is_the_unchecked_cars_newest_first_with_what_stands_out(self):
+        listed = self.queue()
+        self.assertEqual(listed["not_checked"], 2)
+        self.assertEqual([c["vin"] for c in listed["cars"]], [FOREIGN, KNOWN])
+        notes = {c["vin"]: " | ".join(c["to_look_at"]) for c in listed["cars"]}
+        self.assertIn(f"karta {self.known}", notes[KNOWN])
+        self.assertIn("uszkodzony przód", notes[KNOWN])
+        self.assertNotIn("uszkodzon", notes[FOREIGN])
+
+    def test_show_car_gives_cepik_events_damage_and_the_ads(self):
+        with mock.patch.object(mcp_server.requests, "get", return_value=mock.Mock(content=jpeg(), raise_for_status=lambda: None)):
+            content = mcp_server.show_car(KNOWN, photos=1)
+        info = json.loads(content[0])
+        self.assertEqual(info["cepik"]["events"], [{"date": "2018-05-10", "event": "Pierwsza rejestracja za granicą"}])
+        self.assertEqual(info["damage"]["marks"], [{"source": "otomoto", "reason": "text: uszkodzony przód", "dismissed": False}])
+        self.assertEqual(info["plate"]["cards"][0]["card_id"], self.known)
+        self.assertEqual(info["first_registration_date"]["in_ads"], ["2018-05-10"])
+        self.assertTrue(info["ads"][0]["description"].startswith("Pierwsza rejestracja"))
+        self.assertEqual(sum(isinstance(c, Image) for c in content), 1)
+        self.assertIn("Nie ma auta", mcp_server.show_car("NOPE")[0])
+
+    def test_date_damage_and_history_are_stored(self):
+        self.assertIn("Niepoprawna", mcp_server.set_first_registration_date(FOREIGN, "2023"))
+        mcp_server.set_first_registration_date(FOREIGN, "2016-04-02")
+        mcp_server.set_damage_mark(KNOWN, damaged=False)
+        self.assertIn("nie mają oznaczenia", mcp_server.set_damage_mark(FOREIGN, damaged=False))
+        mcp_server.add_damage_history(FOREIGN, "  uszkodzony tył,  aukcja Copart ", country="USA", report_date="2022-03-01",
+                                      source="https://copart")
+        conn = db.get_db()
+        date = conn.execute("SELECT first_registration_date FROM vehicles WHERE vin = ?", (FOREIGN,)).fetchone()[0]
+        dismissed = conn.execute("SELECT dismissed FROM damaged_listings").fetchone()[0]
+        report = conn.execute("SELECT accident_free, notes, country, report_date, inspection_by FROM condition_reports "
+                              "WHERE vin = ?", (FOREIGN,)).fetchone()
+        conn.close()
+        self.assertEqual((date, dismissed), ("2016-04-02", 1))
+        self.assertEqual(tuple(report), (0, "uszkodzony tył, aukcja Copart", "USA", "2022-03-01", "https://copart"))
+        self.assertIn("wpisy o szkodach w historii: 1", " ".join(self.queue()["cars"][0]["to_look_at"]))
+
+    def test_a_checked_car_leaves_the_queue_but_not_while_its_plate_is_pending(self):
+        self.assertIn("czeka jeszcze", mcp_server.mark_car_checked(KNOWN))
+        self.assertEqual(mcp_server.mark_car_checked(FOREIGN.replace("9", "8")), f"Nie ma auta z VIN-em {FOREIGN.replace('9', '8')}.")
+        mcp_server.reject_plate(self.foreign)
+        mcp_server.mark_car_checked(FOREIGN)
+        self.assertEqual([c["vin"] for c in self.queue()["cars"]], [KNOWN])
+        mcp_server.mark_car_checked(FOREIGN, checked=False)
+        self.assertEqual(self.queue()["not_checked"], 2)
+
+
+class TestCarPage(ReviewMcpCase):
+    def test_the_car_page_marks_and_unmarks_the_data_as_checked(self):
+        from app import app
+        app.config["TESTING"] = True
+        client = app.test_client()
+        with mock.patch.dict(os.environ):
+            os.environ.pop("ADMIN_PASSWORD", None)
+            self.assertIn("Oznacz dane jako sprawdzone", client.get(f"/vehicle/{KNOWN}").get_data(as_text=True))
+            client.post(f"/vehicle/{KNOWN}/data_checked", data={"checked": "1"})
+            self.assertIn("Dane sprawdzone", client.get(f"/vehicle/{KNOWN}").get_data(as_text=True))
+            self.assertEqual(json.loads(mcp_server.list_cars_to_check())["not_checked"], 1)
+            client.post(f"/vehicle/{KNOWN}/data_checked", data={"checked": "0"})
+            self.assertEqual(json.loads(mcp_server.list_cars_to_check())["not_checked"], 2)
+            self.assertEqual(client.post("/vehicle/NOPE/data_checked", data={"checked": "1"}).status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()
