@@ -465,6 +465,51 @@ def api_cepik_result():
         conn.close()
 
 
+@bp.route("/api/plate_check_queue", methods=["POST"])
+def api_plate_check_queue():
+    """CEPiK lookups for the pending /plates cards, for scripts/maintenance/cepik_remote.py on the VPS.
+
+    Body: {"limit": N} (default 60, at most 300). Returns {"checks": [{"card_id", "vin", "plate",
+    "first_registration_date"}]}: every card's likeliest plate and date pair not asked yet first
+    (webapp.services.plates.plate_check_tasks). Each answer goes to /api/plate_check_result.
+    """
+    if err := check_api_token(): return err
+    from webapp.services.plates import plate_check_tasks
+    limit = min(max(safe_int((request.get_json(force=True, silent=True) or {}).get("limit")) or 60, 1), 300)
+    conn = get_db()
+    checks = plate_check_tasks(conn, limit)
+    conn.close()
+    return jsonify({"checks": checks})
+
+
+@bp.route("/api/plate_check_result", methods=["POST"])
+def api_plate_check_result():
+    """Store CEPiK's answer to one lookup of /api/plate_check_queue.
+
+    Body: {"card_id", "vin", "plate", "first_registration_date", "report": {...} or null,
+    "http_status": int or null}. A report for this car approves the card (scripts.fetch_cepik.
+    record_plate_check). Returns {"outcome": "confirmed" | "not_found" | "other_car" | "error" | "gone"}.
+    """
+    if err := check_api_token(): return err
+    from scripts.fetch_cepik import record_plate_check
+    from webapp.services.plate_rules import plate_kind
+    p = request.get_json(force=True, silent=True) or {}
+    check = {"card_id": safe_int(p.get("card_id")), "vin": (p.get("vin") or "").strip().upper(),
+             "plate": normalize_plate(p.get("plate")), "first_registration_date": (p.get("first_registration_date") or "").strip()}
+    report = p.get("report")
+    if not check["card_id"] or not plate_kind(check["plate"]) or not is_valid_first_registration_date(check["first_registration_date"]):
+        return jsonify({"error": "bad card_id, plate or first_registration_date"}), 400
+    if report and (not isinstance(report, dict) or (report.get("vin") or "").strip().upper() != check["vin"]):
+        return jsonify({"error": "report is not for this vin"}), 400
+    conn = get_db()
+    try:
+        return jsonify({"outcome": record_plate_check(conn, check, report, safe_int(p.get("http_status")))})
+    except KeyError as e:
+        return jsonify({"error": f"report lacks {e}"}), 400
+    finally:
+        conn.close()
+
+
 @bp.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
     if err := check_api_token(): return err

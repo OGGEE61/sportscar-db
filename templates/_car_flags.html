@@ -37,6 +37,8 @@
   <span class="badge flag flag-bad" title="CEPiK: przebieg w ogłoszeniu niższy od odczytu na badaniu{% if c.flag_rollback_km %} o {{ '{:,}'.format(c.flag_rollback_km).replace(',', ' ') }} km{% endif %}">Cofnięty licznik</span>
   {%- elif c.flag_cepik == 'ok' -%}
   <span class="badge flag flag-ok" title="Raport CEPiK pobrany, bez zastrzeżeń">CEPiK ✓</span>
+  {%- elif c.flag_cepik_mismatch -%}
+  <span class="badge flag flag-bad" title="CEPiK nie znalazł auta po VIN-ie, tablicy i dacie pierwszej rejestracji: któraś z tych danych jest błędna albo auto nie jest zarejestrowane w Polsce. Do wyjaśnienia w Tablicach.">Niezgodne z CEPiK</span>
   {%- elif not is_abroad(c) -%}
   <span class="badge flag flag-muted" title="Brak raportu CEPiK">bez CEPiK</span>
   {%- endif -%}

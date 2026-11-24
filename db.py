@@ -853,6 +853,28 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_ai_conflict ON vehicles(vin) WHERE ai_conflict = 1")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(28,'origin_checked')")
 
+    # Migration v29: the CEPiK lookup tables, so far created on first use (scripts/fetch_cepik.py).
+    # Every car list now reads cepik_sync_log (the "Niezgodne z CEPiK" marker), so it must exist.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_sync_log (
+            vin TEXT PRIMARY KEY,
+            status TEXT,
+            message TEXT,
+            attempted_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_plate_checks (
+            vin TEXT NOT NULL,
+            plate TEXT NOT NULL,
+            first_registration_date TEXT NOT NULL,
+            found INTEGER NOT NULL,
+            checked_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (vin, plate, first_registration_date)
+        )
+    """)
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(29,'cepik_tables')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
