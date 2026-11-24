@@ -28,7 +28,7 @@ ORIGIN_FILTERS = {
 }
 MILEAGE_MAX = 2_000_000
 # The query string keys of the list's filters and sort, kept by the page links
-LIST_ARGS = ("q", "make", "status", "region", "source", "sort", "fuel", "cc_from", "cc_to",
+LIST_ARGS = ("id", "q", "make", "status", "region", "source", "sort", "fuel", "cc_from", "cc_to",
              "origin", "km_from", "km_to", "reg_from", "reg_to")
 
 
@@ -112,6 +112,8 @@ def api_favorite():
 def _vehicles_page(favorites_only: bool):
     conn   = get_db()
     q      = request.args.get("q", "").strip()
+    # The car's ID (shown as #123 before the VIN); a leading # is allowed
+    car_id = request.args.get("id", "").strip().lstrip("#").strip()
     make   = request.args.get("make", "")
     status = request.args.get("status", "")
     region = request.args.get("region", "").strip()
@@ -127,6 +129,9 @@ def _vehicles_page(favorites_only: bool):
     wheres, params = [*engine_conds, *history_conds], [*engine_params, *history_params]
     if favorites_only:
         wheres.append("v.vin IN (SELECT vin FROM favorites)")
+    if car_id:
+        # Not a number: no car has that ID, so the list is empty rather than unfiltered
+        wheres.append("v.car_id = ?"); params.append(int(car_id) if car_id.isdigit() else -1)
     if q:
         wheres.append("(v.make LIKE ? OR v.model LIKE ? OR v.vin LIKE ? OR v.variant LIKE ?)")
         params += [f"%{q}%"] * 4
@@ -208,7 +213,7 @@ def _vehicles_page(favorites_only: bool):
     chosen = {k: v for k in LIST_ARGS if (v := request.args.get(k, "").strip())}
     return render_template("vehicles.html",
         vehicles=vehicles, makes=[m["make"] for m in makes],
-        q=q, selected_make=make, status=status, sort=sort,
+        q=q, car_id=car_id, selected_make=make, status=status, sort=sort,
         selected_region=region, regions=REGION_NAMES, source=source,
         fuel=fuel, cc_from=cc_from, cc_to=cc_to, fuels=FUELS, cc_min=CC_MIN, cc_max=CC_MAX, cc_step=CC_STEP,
         history=history, origin_filters=ORIGIN_FILTERS,

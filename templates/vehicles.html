@@ -13,7 +13,11 @@
 
 <!-- Filters -->
 <form class="row g-2 mb-4" method="get">
-  <div class="col-md-2">
+  <div class="col-4 col-md-1">
+    <input name="id" class="form-control" inputmode="numeric" placeholder="ID auta" value="{{ car_id }}"
+           title="ID auta w bazie: numer #… przed VIN-em">
+  </div>
+  <div class="col-8 col-md-2">
     <input name="q" class="form-control" placeholder="Szukaj: VIN / marka / model…" value="{{ q }}">
   </div>
   <div class="col-md-2">

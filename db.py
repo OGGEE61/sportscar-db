@@ -28,6 +28,9 @@ except ImportError:
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "sportscar_market.db")
 
+# A car whose VIN is real, not a placeholder standing in for one (PLH…, UNVERIFIED…)
+REAL_VIN_SQL = "vin NOT LIKE 'PLH%' AND vin NOT LIKE 'UNVERIFIED%'"
+
 # Shared keep-alive session: avoids a new TLS handshake for every D1 query
 _D1_SESSION = _http.Session()
 
@@ -884,6 +887,32 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_unchecked ON vehicles(created_at) WHERE data_checked_at IS NULL")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(30,'data_checked')")
 
+    # ── Migration 31: the car's ID ───────────────────────────────────────────
+    # A short number to find a car by (the VIN base's search, the review MCP server). Only cars
+    # with a real VIN get one: a placeholder (PLH…, UNVERIFIED…) gets it once resolved. The trigger
+    # numbers every new car whichever path inserts it; resolve_placeholder() carries the number over
+    # to the corrected VIN. The UPDATE numbers the cars that have none, oldest first; it runs on
+    # every init_db, so a car left without an ID is caught there too.
+    if "car_id" not in {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}:
+        db.execute("ALTER TABLE vehicles ADD COLUMN car_id INTEGER")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicles_car_id ON vehicles(car_id)")
+    db.execute(f"""
+        UPDATE vehicles SET car_id = n.car_id
+        FROM (SELECT vin, (SELECT COALESCE(MAX(car_id), 0) FROM vehicles)
+                          + ROW_NUMBER() OVER (ORDER BY created_at, vin) AS car_id
+              FROM vehicles WHERE car_id IS NULL AND {REAL_VIN_SQL}) AS n
+        WHERE vehicles.vin = n.vin
+    """)
+    db.execute("DROP TRIGGER IF EXISTS trg_vehicles_car_id")
+    db.execute("""
+        CREATE TRIGGER trg_vehicles_car_id
+        AFTER INSERT ON vehicles
+        WHEN NEW.car_id IS NULL AND NEW.vin NOT LIKE 'PLH%' AND NEW.vin NOT LIKE 'UNVERIFIED%'
+        BEGIN
+            UPDATE vehicles SET car_id = (SELECT COALESCE(MAX(car_id), 0) + 1 FROM vehicles) WHERE vin = NEW.vin;
+        END""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(31,'car_id')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
@@ -915,8 +944,11 @@ def resolve_placeholder(old_vin: str, new_vin: str,
             raise ValueError(f"VIN not found: {old_vin}")
         # Copy every column except the identity/status ones, so nothing set on
         # the placeholder (photo, plate, equipment, AI summary, ...) is lost.
-        skip = {"vin", "vin_status", "vin_verified_at", "vin_verified_by", "source_method", "updated_at"}
+        # The ID is not copied: two rows cannot share it (and INSERT OR IGNORE would then drop the
+        # new row). It is moved over once the old row is gone, below.
+        skip = {"vin", "vin_status", "vin_verified_at", "vin_verified_by", "source_method", "updated_at", "car_id"}
         cols = [k for k in row.keys() if k not in skip]
+        new_existed = db.execute("SELECT 1 FROM vehicles WHERE vin=?", (new_vin,)).fetchone() is not None
         db.execute(f"""
             INSERT OR IGNORE INTO vehicles (vin, vin_status, source_method, {', '.join(cols)})
             VALUES (?, 'unverified', ?, {', '.join('?' * len(cols))})
@@ -944,6 +976,10 @@ def resolve_placeholder(old_vin: str, new_vin: str,
         """, (new_vin, old_vin, new_vin))
         db.execute("DELETE FROM cepik_reports WHERE vin=?", (old_vin,))
         db.execute("DELETE FROM vehicles WHERE vin=?", (old_vin,))
+        # A corrected VIN keeps the car's ID (a resolved placeholder had none, and keeps the one the
+        # trigger gave it); a car that already existed under the new VIN keeps its own
+        if not new_existed and row["car_id"] is not None:
+            db.execute("UPDATE vehicles SET car_id=? WHERE vin=?", (row["car_id"], new_vin))
         db.execute("""
             INSERT INTO vin_correction_log(old_vin,new_vin,reason,corrected_by,source_method)
             VALUES(?,?,?,?,?)
