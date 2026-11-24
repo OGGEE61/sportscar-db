@@ -7,6 +7,7 @@ from db import get_db, resolve_placeholder
 from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, damaged_ad_sql,
                             engine_filter, safe_float, safe_int, script_json)
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
+from webapp.services import verification
 from webapp.services.photos import store_photo
 from webapp.services.plates import normalize_plate
 from validation import MIN_FIRST_REGISTRATION_YEAR, OVERSEAS_ORIGINS
@@ -243,11 +244,7 @@ def vehicle_detail(vin):
         wrong_model = (note["review_notes"][len(WRONG_MODEL_NOTE):] if note else "") or "bez opisu"
     # Why the car is marked damaged (the portal's mark, or a quote from the ad), for the card
     # that lets the user dismiss a wrong one
-    damage_marks = conn.execute("""
-        SELECT DISTINCT d.source, d.source_listing_id, d.reason, d.dismissed
-        FROM damaged_listings d JOIN listing_observations o
-          ON o.source = d.source AND o.source_listing_id = d.source_listing_id
-        WHERE o.vin = ?""", (vin,)).fetchall()
+    damage_marks = verification.damage_marks(conn, vin)
     sold_damaged = conn.execute(
         "SELECT 1 FROM listing_observations x WHERE x.vin = ? AND " + damaged_ad_sql("x") + " LIMIT 1", (vin,)).fetchone() is not None
 
@@ -489,25 +486,18 @@ def add_condition(vin):
             flash("Nie udało się odczytać zdjęcia (obsługiwane: JPG, PNG, WebP). Wpis nie został dodany.", "danger")
             return redirect(url_for("vehicles.vehicle_detail", vin=vin))
     conn = get_db()
-    conn.execute("""
-        INSERT INTO condition_reports
-          (vin,report_date,mileage_km,accident_free,service_history,
-           condition_score,inspection_by,notes,country,photo,source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    """, (
-        vin,
-        data.get("report_date") or datetime.today().strftime("%Y-%m-%d"),
-        safe_int(data.get("mileage_km")),
-        1 if af == "yes" else (0 if af == "no" else None),
-        (data.get("service_history") or "").strip() or None,
-        safe_int(data.get("condition_score")),
-        (data.get("inspection_by") or "").strip() or None,
-        (data.get("notes") or "").strip() or None,
-        (data.get("country") or "").strip() or None,
-        photo,
-        "manual",
-    ))
-    conn.commit()
+    verification.add_condition_report(
+        conn, vin,
+        report_date=data.get("report_date") or None,
+        mileage_km=safe_int(data.get("mileage_km")),
+        accident_free=1 if af == "yes" else (0 if af == "no" else None),
+        service_history=(data.get("service_history") or "").strip() or None,
+        condition_score=safe_int(data.get("condition_score")),
+        inspection_by=(data.get("inspection_by") or "").strip() or None,
+        notes=(data.get("notes") or "").strip() or None,
+        country=(data.get("country") or "").strip() or None,
+        photo=photo,
+    )
     conn.close()
     flash("Dodano wpis do historii auta.", "success")
     return redirect(url_for("vehicles.vehicle_detail", vin=vin) + "#history")
@@ -634,17 +624,24 @@ def set_damage_mark(vin):
     """Form field dismissed=1: the car's ads are not damaged after all (a wrong match in the ad's
     text, a seller's mistake); 0 brings the marks back. The rows stay, so a later scrape of the
     same ad does not mark it again."""
-    dismissed = 1 if request.form.get("dismissed") == "1" else 0
+    dismissed = request.form.get("dismissed") == "1"
     conn = get_db()
-    conn.execute("""
-        UPDATE damaged_listings SET dismissed = ?
-        WHERE EXISTS (SELECT 1 FROM listing_observations o WHERE o.vin = ?
-                        AND o.source = damaged_listings.source
-                        AND o.source_listing_id = damaged_listings.source_listing_id)""", (dismissed, vin))
-    conn.commit()
+    verification.set_damage_dismissed(conn, vin, dismissed)
     conn.close()
     flash("Oznaczenie „Uszkodzony” zdjęte: auto wraca do statystyk cen." if dismissed
           else "Oznaczenie „Uszkodzony” przywrócone.", "success")
+    return redirect(url_for("vehicles.vehicle_detail", vin=vin))
+
+
+@bp.route("/vehicle/<path:vin>/data_checked", methods=["POST"])
+def set_data_checked(vin):
+    """Form field checked=1: the car's plate, first registration date, origin and damage are checked
+    ("Dane sprawdzone"); 0 takes the mark back."""
+    conn = get_db()
+    found = verification.set_data_checked(conn, vin, request.form.get("checked") == "1")
+    conn.close()
+    if not found:
+        return "Nie znaleziono VIN-u", 404
     return redirect(url_for("vehicles.vehicle_detail", vin=vin))
 
 

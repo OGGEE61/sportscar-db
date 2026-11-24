@@ -875,6 +875,15 @@ def init_db():
     """)
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(29,'cepik_tables')")
 
+    # ── Migration 30: "Dane sprawdzone" ──────────────────────────────────────
+    # When the user (alone or with the review MCP server) checked the car's plate, first
+    # registration date, origin and damage. The partial index serves the queue of cars not
+    # checked yet, newest first, without reading the checked ones.
+    if "data_checked_at" not in {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}:
+        db.execute("ALTER TABLE vehicles ADD COLUMN data_checked_at TEXT")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_unchecked ON vehicles(created_at) WHERE data_checked_at IS NULL")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(30,'data_checked')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
