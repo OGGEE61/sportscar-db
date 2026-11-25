@@ -114,13 +114,13 @@ class TestVinSearch(VehiclePageCase):
         self.assertNotIn("Auto z Ameryki Północnej", other)
         self.assertIn("Sprawdź VIN w sieci", other)
 
-    def test_a_vin_built_in_the_usa_counts_too(self):
-        vin = "5UX83DP08P9S24709"
+    def test_a_vin_built_in_the_usa_alone_does_not_count(self):
+        vin = "5UX83DP08P9S24709"     # every X3 is built in the USA, also the European ones
         conn = db.get_db()
         conn.execute("INSERT INTO vehicles (vin, make, model, year) VALUES (?, 'BMW', 'X3', 2023)", (vin,))
         conn.commit()
         conn.close()
-        self.assertIn("Auto z Ameryki Północnej", self.client.get(f"/vehicle/{vin}").get_data(as_text=True))
+        self.assertNotIn("Auto z Ameryki Północnej", self.client.get(f"/vehicle/{vin}").get_data(as_text=True))
 
 
 class TestAdsAndDescription(VehiclePageCase):
