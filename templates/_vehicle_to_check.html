@@ -1,7 +1,8 @@
+{% from "_origin_decision.html" import origin_decision %}
 {# "Do sprawdzenia" panel of the car's page (vehicles.to_check_context): its pending /plates card
    and its open notes. Empty when nothing waits for a person. #}
 <div id="to-check">
-{% if card or notes or message %}
+{% if card or notes or origin or message %}
 <div class="card mb-4 to-check-card">
   <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <span><i class="bi bi-clipboard-check me-1"></i>Do sprawdzenia</span>
@@ -39,6 +40,10 @@
             {% if needs_force %}<input type="hidden" name="force" value="1">{% endif %}
             <input name="plate" value="{{ card.suggested }}" placeholder="np. WE1234A" class="form-control form-control-sm font-monospace plate-input"
                    aria-label="Tablica" autocomplete="off">
+            <input type="date" name="first_registration_date" value="{{ card.date }}" class="form-control form-control-sm w-auto"
+                   aria-label="Data pierwszej rejestracji (pole B)" title="Data pierwszej rejestracji z pola B dowodu">
+            <button name="action" value="cepik" class="btn btn-sm btn-outline-primary" title="Zapytaj CEPiK o tę tablicę i datę; trafienie zatwierdza tablicę">
+              <i class="bi bi-shield-check"></i> Sprawdź w CEPiK</button>
             <button name="action" value="approve" class="btn btn-sm btn-success">
               <i class="bi bi-check-lg"></i> {{ 'Zatwierdź mimo to' if needs_force else 'Zatwierdź' }}</button>
             <button name="action" value="reject" class="btn btn-sm btn-outline-danger" formnovalidate
@@ -46,7 +51,7 @@
                     hx-confirm="Tablicy nie widać? Odczyt zniknie z auta, a auto zostanie w bazie z VIN-em, oznaczone „Brak tablicy”. Gdy kolejne ogłoszenie pokaże tablicę, wróci tu nowa karta.">
               <i class="bi bi-x-lg"></i> Brak tablicy</button>
           </form>
-          <div class="small text-muted mt-1">Widać tablicę: wpisz ją i zatwierdź. Nie widać (plakietka dealera, zamazana): „Brak tablicy”.</div>
+          <div class="small text-muted mt-1">Widać tablicę: wpisz ją i sprawdź w CEPiK z datą z pola B (albo zatwierdź bez CEPiK). Nie widać (plakietka dealera, zamazana): „Brak tablicy”.</div>
           {% if card.hints %}
           <ul class="small text-muted mb-0 mt-2 ps-3">
             {% for hint in card.hints %}<li>{{ hint }}</li>{% endfor %}
@@ -54,6 +59,13 @@
           {% endif %}
         </div>
       </div>
+    </div>
+    {% endif %}
+
+    {% if origin %}
+    <div class="to-check-item">
+      <div class="fw-semibold mb-2">Rynek pochodzenia</div>
+      {{ origin_decision(origin, markets, unknown) }}
     </div>
     {% endif %}
 

@@ -5,7 +5,7 @@ from collections import defaultdict
 from itertools import chain, zip_longest
 
 from validation import is_valid_first_registration_date
-from webapp.services.plate_rules import plate_candidates
+from webapp.services.plate_rules import plate_candidates, plate_kind
 
 # Lookups CEPiK may get for one card: its likeliest plate and date pairs
 MAX_LOOKUPS_PER_CARD = 6
@@ -213,6 +213,32 @@ def plate_check_tasks(conn, limit: int) -> list:
                 tasks.append({"card_id": card["id"], "vin": card["vin"], "plate": plate,
                               "first_registration_date": date})
     return tasks
+
+
+def check_card_in_cepik(conn, card_id, plate, first_registration_date, get_client):
+    """Ask CEPiK about a pending /plates card's car with this plate and first registration date (the
+    car page, the review MCP server). A confirmed lookup approves the card, saves the report and gives
+    the car that date; a miss is remembered so the pair is not asked again (scripts.fetch_cepik.
+    record_plate_check). `get_client` makes the CEPiK client, only once the input is valid. Returns
+    (outcome, report): outcome is bad_plate, bad_date, not_pending or asked without asking, else
+    confirmed, not_found, other_car, error or gone."""
+    from scripts.fetch_cepik import record_plate_check
+    plate = normalize_plate(plate)
+    if not plate_kind(plate):
+        return "bad_plate", None
+    if not is_valid_first_registration_date(first_registration_date):
+        return "bad_date", None
+    card = conn.execute("SELECT vin, status FROM plate_review_queue WHERE id = ?", (card_id,)).fetchone()
+    if not card or card["status"] != "pending":
+        return "not_pending", None
+    if conn.execute("SELECT 1 FROM cepik_plate_checks WHERE vin = ? AND plate = ? AND first_registration_date = ?",
+                    (card["vin"], plate, first_registration_date)).fetchone():
+        return "asked", None
+    client = get_client()
+    report = client.fetch_vehicle_data(card["vin"], plate, first_registration_date)
+    return record_plate_check(conn, {"card_id": card_id, "vin": card["vin"], "plate": plate,
+                                     "first_registration_date": first_registration_date},
+                              report, client.last_status), report
 
 
 def plate_card_hints(card: dict) -> list:

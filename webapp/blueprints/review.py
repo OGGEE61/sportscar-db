@@ -5,7 +5,7 @@ from db import get_db, make_placeholder_vin
 from webapp.helpers import damage_reason_sql, is_plausible_vin
 from webapp.services import verification
 from webapp.services.listings import _approve_listing
-from validation import MARKETS
+from validation import MARKETS, ORIGIN_UNKNOWN
 
 bp = Blueprint("review", __name__)
 
@@ -57,7 +57,6 @@ def review_queue():
 # ORIGIN REVIEW: cars whose stored origin market and Bielik's disagree
 # ─────────────────────────────────────────────────────────────────────────────
 
-ORIGIN_UNKNOWN = "nieznany"
 
 
 def _origin_conflict_count(conn):

@@ -30,8 +30,7 @@ from validation import MARKETS, is_valid_first_registration_date
 from webapp.blueprints.plates import plate_cards, review_card
 from webapp.blueprints.review import ORIGIN_UNKNOWN, decide_origin, origin_conflicts
 from webapp.services import verification
-from webapp.services.plate_rules import plate_kind
-from webapp.services.plates import normalize_plate
+from webapp.services.plates import check_card_in_cepik, normalize_plate
 
 MAX_PHOTOS = 10
 PHOTO_SIDE = 1280          # px, longer side: enough to read a plate, small enough for the model
@@ -178,29 +177,27 @@ def check_plate_in_cepik(card_id: int, plate: str, first_registration_date: str)
     the plate, the report is saved and the car takes that date. A miss is remembered, so the same pair
     is not asked again; it means the plate, the date or both are wrong (or the car is not registered in
     Poland)."""
-    global _cepik
-    from scripts.fetch_cepik import CepikClient, record_plate_check
+    from scripts.fetch_cepik import CepikClient
+
+    def client():
+        global _cepik
+        _cepik = _cepik or CepikClient()
+        return _cepik
 
     plate = normalize_plate(plate)
-    if not plate_kind(plate):
-        return f"{plate} nie jest polską tablicą: CEPiK zna tylko auta zarejestrowane w Polsce."
-    if not is_valid_first_registration_date(first_registration_date):
-        return "Niepoprawna data: RRRR-MM-DD, od 1980, nie z przyszłości."
     conn = _db()
     try:
-        card = conn.execute("SELECT id, vin, status FROM plate_review_queue WHERE id = ?", (card_id,)).fetchone()
-        if not card or card["status"] != "pending":
-            return f"Karta {card_id} nie czeka na weryfikację."
-        if conn.execute("SELECT 1 FROM cepik_plate_checks WHERE vin = ? AND plate = ? AND first_registration_date = ?",
-                        (card["vin"], plate, first_registration_date)).fetchone():
-            return f"{plate} z datą {first_registration_date} było już sprawdzane dla tego auta: CEPiK go nie znalazł."
-        _cepik = _cepik or CepikClient()
-        report = _cepik.fetch_vehicle_data(card["vin"], plate, first_registration_date)
-        outcome = record_plate_check(conn, {"card_id": card_id, "vin": card["vin"], "plate": plate,
-                                            "first_registration_date": first_registration_date},
-                                     report, _cepik.last_status)
+        outcome, report = check_card_in_cepik(conn, card_id, plate, first_registration_date, client)
     finally:
         conn.close()
+    if outcome == "bad_plate":
+        return f"{plate} nie jest polską tablicą: CEPiK zna tylko auta zarejestrowane w Polsce."
+    if outcome == "bad_date":
+        return "Niepoprawna data: RRRR-MM-DD, od 1980, nie z przyszłości."
+    if outcome == "not_pending":
+        return f"Karta {card_id} nie czeka na weryfikację."
+    if outcome == "asked":
+        return f"{plate} z datą {first_registration_date} było już sprawdzane dla tego auta: CEPiK go nie znalazł."
     if outcome == "confirmed":
         return json.dumps({"outcome": "Potwierdzone przez CEPiK: karta zatwierdzona, raport zapisany.",
                            "report": {k: report.get(k) for k in (
