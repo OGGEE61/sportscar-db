@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% from "_car_flags.html" import vin_block %}
+{% from "_origin_decision.html" import origin_decision %}
+{% from "_pagination.html" import pager %}
+{% block title %}Weryfikacja – SportsCar DB{% endblock %}
+{% block head %}
+<style>
+  .verify-row + .verify-row { border-top: 1px solid var(--border-subtle); }
+  .verify-row { padding: 1rem 1.25rem; }
+  .verify-title { font-weight: 600; }
+  .verify-title .car-id { color: var(--primary); font-weight: 700; }
+  .issue-badge { font-size: .72rem; font-weight: 600; }
+  .verify-detail { margin-top: .75rem; padding: .6rem .75rem; background: var(--bg-app); border-radius: 8px; }
+  .verify-detail + .verify-detail { margin-top: .5rem; }
+  .verify-crop { max-height: 44px; max-width: 160px; object-fit: contain; border-radius: 4px; border: 1px solid var(--border-default); background: #fff; }
+  .issue-pills .nav-link { padding: .3rem .75rem; font-size: .85rem; }
+  .issue-pills .nav-link .badge { font-size: .7rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+  <h2 class="mb-0">Weryfikacja</h2>
+  <a href="/review/notes?status=resolved" class="small">Sprawdzone notatki</a>
+</div>
+<p class="text-muted small mb-3">
+  Auta, przy których coś zostało do sprawdzenia: tablica, CEPiK, rynek pochodzenia, notatki z przeglądów.
+  Proste rzeczy załatwisz w wierszu, resztę na stronie auta. Gdy wszystko jest zamknięte, oznacz tam dane jako sprawdzone.
+</p>
+
+<form method="get" action="/verify" class="d-flex gap-2 mb-3" style="max-width: 460px;">
+  <input type="hidden" name="issue" value="{{ issue }}">
+  <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="ID auta (#123), VIN albo tablica" aria-label="Szukaj">
+  <button class="btn btn-sm btn-outline-secondary" aria-label="Szukaj"><i class="bi bi-search"></i></button>
+  {% if q %}<a href="/verify?issue={{ issue }}" class="btn btn-sm btn-link">wyczyść</a>{% endif %}
+</form>
+
+{% set q_part = ('&q=' ~ q|urlencode) if q else '' %}
+<ul class="nav nav-pills issue-pills flex-wrap gap-1 mb-3">
+  <li class="nav-item"><a class="nav-link {{ 'active' if issue == 'open' }}" href="/verify?issue=open{{ q_part }}">
+    Do zrobienia <span class="badge bg-secondary">{{ counts.open }}</span></a></li>
+  {% for key, (label, _) in issues.items() %}
+  {% if key == 'damage' %}<li class="nav-item text-muted small align-self-center px-1">·</li>{% endif %}
+  <li class="nav-item"><a class="nav-link {{ 'active' if issue == key }}" href="/verify?issue={{ key }}{{ q_part }}">
+    {{ label }} <span class="badge {{ 'bg-warning text-dark' if key == 'origin' else 'bg-secondary' }}"{% if key == 'origin' %} id="origin-conflict-count"{% endif %}>{{ counts[key] }}</span></a></li>
+  {% endfor %}
+</ul>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{{ 'Do zrobienia' if issue == 'open' else issues[issue][0] }}</span>
+    <span class="small fw-normal text-muted">{{ total }} {{ 'auto' if total == 1 else 'aut' if total >= 5 or total == 0 else 'auta' }}</span>
+  </div>
+  {% for c in cars %}
+  <div class="verify-row" id="car-{{ c.vin }}">
+    <div class="d-flex flex-wrap justify-content-between gap-2">
+      <div class="min-w-0">
+        <a href="/vehicle/{{ c.vin }}" class="verify-title text-decoration-none">
+          {% if c.car_id %}<span class="car-id">#{{ c.car_id }}</span> {% endif %}{{ c.make }} {{ c.model }}{% if c.variant %} <span class="text-muted fw-normal">{{ c.variant }}</span>{% endif %}
+        </a>
+        {% if c.year %}<span class="text-muted small">{{ c.year }}</span>{% endif %}
+        {% if c.ad_url %}<a href="{{ c.ad_url }}" target="_blank" rel="noopener" class="small ms-1">ogłoszenie <i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+        {{ vin_block(c, c.vin, with_id=False) }}
+      </div>
+      <div class="d-flex flex-wrap gap-1 align-items-start">
+        {% if c.card_id %}<span class="badge issue-badge bg-primary-subtle text-primary-emphasis border border-primary-subtle"><i class="bi bi-camera"></i> Tablica</span>{% endif %}
+        {% if c.has_cepik %}<span class="badge issue-badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">CEPiK nie zna</span>{% endif %}
+        {% if c.has_origin %}<span class="badge issue-badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Rynek</span>{% endif %}
+        {% if c.notes %}<span class="badge issue-badge bg-secondary-subtle text-secondary-emphasis border">{{ c.notes|length }} {{ 'notatka' if c.notes|length == 1 else 'notatki' if c.notes|length < 5 else 'notatek' }}</span>{% endif %}
+        {% if c.has_damage %}<span class="badge issue-badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"><i class="bi bi-airplane"></i> Bez wpisu o szkodzie</span>{% endif %}
+        <a href="/vehicle/{{ c.vin }}" class="btn btn-sm btn-outline-primary py-0 ms-1">Strona auta <i class="bi bi-arrow-right"></i></a>
+      </div>
+    </div>
+
+    {% if c.card_id %}
+    <div class="verify-detail d-flex flex-wrap align-items-center gap-3 small">
+      {% if c.card_crop %}<img src="{{ c.card_crop }}" alt="Wycinek tablicy" class="verify-crop" loading="lazy">{% endif %}
+      <span>Odczyt ze zdjęcia: <span class="font-monospace">{{ c.card_reading or '—' }}</span></span>
+      <span class="text-muted">karta {{ c.card_id }}: zatwierdź, sprawdź w CEPiK albo „Brak tablicy” na stronie auta</span>
+      <a href="/plates?q={{ c.car_id }}" class="ms-auto">w Tablicach</a>
+    </div>
+    {% endif %}
+
+    {% if c.has_origin %}
+    <div class="verify-detail">{{ origin_decision(c, markets, unknown) }}</div>
+    {% endif %}
+
+    {% for n in c.notes %}
+    <div class="verify-detail note-card">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <span class="badge bg-secondary">{{ topics.get(n.topic, n.topic) }}</span>
+        <form hx-post="/review/notes/{{ n.id }}" hx-target="closest .note-card" hx-swap="outerHTML">
+          <button name="resolved" value="1" class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i> Sprawdzone</button>
+        </form>
+      </div>
+      <div class="mt-1 small" style="white-space: pre-line;">{{ n.note }}</div>
+      <div class="small text-muted mt-1">dodane {{ (n.created_at or '')[:10] }}{% if n.ad_url %} · <a href="{{ n.ad_url }}" target="_blank" rel="noopener">ogłoszenie</a>{% endif %}</div>
+    </div>
+    {% endfor %}
+
+    {% if c.has_damage and issue == 'damage' %}
+    <div class="verify-detail small d-flex flex-wrap align-items-center gap-2">
+      <span class="text-muted">Auto z Ameryki Północnej bez wpisu o szkodzie.</span>
+      <a class="btn btn-sm btn-warning py-0" target="_blank" rel="noopener noreferrer"
+         href="https://www.google.com/search?q={{ ('"' ~ c.vin ~ '" (bid.cars OR copart OR iaai OR stat.vin OR autoastat)')|urlencode }}">
+        <i class="bi bi-search"></i> Aukcje USA</a>
+      <a href="/vehicle/{{ c.vin }}#history">dodaj wpis</a>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-clipboard-check fs-2 d-block mb-2"></i>
+    {% if q %}Brak aut pasujących do „{{ q }}”.{% else %}Nic tu nie czeka.{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{{ pager(page, pages, '/verify?issue=' ~ issue ~ q_part ~ '&page=', 'Strony weryfikacji') }}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.body.addEventListener("htmx:responseError", () => alert("Nie udało się zapisać. Spróbuj ponownie."));
+</script>
+{% endblock %}

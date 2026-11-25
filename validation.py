@@ -116,6 +116,8 @@ OVERSEAS_ORIGINS = ("USA", "USA/Kanada", "Kanada")
 
 # The markets a car's origin is told as, by Bielik (enrich_with_bielik.py) and on the origin review page
 MARKETS = ["Polska", "Europa", "USA", "Kanada", "Japonia", "Szwajcaria", "Zatoka Perska"]
+# The origin market a reviewer sets when no market can be told (the Weryfikacja page, the car page)
+ORIGIN_UNKNOWN = "nieznany"
 
 
 # Nearly new cars are dealer stock ("salonówki"), not the used-car market this project

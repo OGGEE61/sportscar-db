@@ -74,6 +74,11 @@ class TestToCheckPanel(VehiclePageCase):
         self.assertIn("Plakietka dealera zamiast tablicy.", panel)
         self.assertNotIn("Do sprawdzenia", self.panel(OTHER))     # nothing waits for a person
 
+    def test_a_reading_that_cannot_be_polish_is_not_offered(self):
+        panel = self.panel()
+        self.assertIn('name="plate" value=""', panel)          # MXY1265 is a configurator's sample plate
+        self.assertIn("Brak tablicy</button>", panel)
+
     def test_rejecting_the_card_on_the_page_clears_the_plate(self):
         r = self.client.post(f"/vehicle/{CAR}/plate_card", data={"card_id": self.card_id, "action": "reject"})
         self.assertIn("tablica MXY1265 usunięta z auta", r.get_data(as_text=True))
@@ -89,6 +94,85 @@ class TestToCheckPanel(VehiclePageCase):
         r = self.client.post(f"/vehicle/{OTHER}/plate_card", data={"card_id": self.card_id, "action": "reject"})
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.card()[0], "pending")
+
+
+def cepik_report(vin):
+    return {"vin": vin, "identifying_feature": vin, "registration_plate": "SK1K663", "first_registration_date": "2025-12-18",
+            "make": "BMW", "model": "Seria 3", "year_of_manufacture": 2025, "type": "", "subtype": "",
+            "registration_status": "zarejestrowany", "tech_inspection_status": "Aktualne", "tech_inspection_until": "2028-12-18",
+            "has_current_oc": 1, "insurance_expiry_date": "2027-01-01", "is_stolen": 0, "total_owners": 1,
+            "last_odometer_km": 25000, "last_odometer_date": "2026-05-01", "odometer_history_json": "[]", "events_json": "[]"}
+
+
+class TestPanelActions(VehiclePageCase):
+    def check(self, answer, status=200, plate="SK1K663", date="2025-12-18"):
+        client = mock.Mock(last_status=status)
+        client.fetch_vehicle_data.return_value = answer
+        with mock.patch("scripts.fetch_cepik.CepikClient", return_value=client):
+            r = self.client.post(f"/vehicle/{CAR}/plate_card", data={
+                "card_id": self.card_id, "action": "cepik", "plate": plate, "first_registration_date": date})
+        return r.get_data(as_text=True), client
+
+    def test_a_cepik_hit_approves_the_card_from_the_car_page(self):
+        page, client = self.check(cepik_report(CAR))
+        client.fetch_vehicle_data.assert_called_once_with(CAR, "SK1K663", "2025-12-18")
+        self.assertIn("CEPiK potwierdził auto", page)
+        self.assertEqual(self.card(), ("approved", "SK1K663", "SK1K663"))
+
+    def test_a_miss_says_so_and_is_not_asked_twice(self):
+        page, _ = self.check(None, status=404)
+        self.assertIn("CEPiK nie zna auta", page)
+        page, client = self.check(None, status=404)
+        self.assertIn("była już sprawdzana", page)
+        client.fetch_vehicle_data.assert_not_called()
+        self.assertEqual(self.card()[0], "pending")
+
+    def test_a_foreign_plate_is_not_asked(self):
+        page, client = self.check(None, plate="MXY1265")
+        self.assertIn("To nie jest polska tablica", page)
+        client.fetch_vehicle_data.assert_not_called()
+
+    def test_the_origin_market_is_decided_on_the_car_page(self):
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET ai_conflict = 1, origin_market = 'Polska', ai_suggested_market = 'USA', "
+                     "ai_reasoning = 'radio satelitarne' WHERE vin = ?", (CAR,))
+        conn.commit()
+        conn.close()
+        self.assertIn("Bielik ma rację: USA", self.panel())
+        self.client.post(f"/review/origins/{CAR}", data={"market": "USA"}, headers={"HX-Request": "true"})
+        self.assertNotIn("Bielik ma rację", self.panel())
+
+
+class TestHeader(VehiclePageCase):
+    def test_the_title_starts_with_the_cars_id(self):
+        conn = db.get_db()
+        car_id = conn.execute("SELECT car_id FROM vehicles WHERE vin = ?", (CAR,)).fetchone()[0]
+        conn.close()
+        page = self.client.get(f"/vehicle/{CAR}").get_data(as_text=True)
+        title = page[page.index('class="vehicle-title"'):page.index("</h1>")]
+        self.assertIn(f"#{car_id}", title)
+
+
+class TestVinSearch(VehiclePageCase):
+    def test_a_north_american_car_points_to_the_auctions(self):
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET origin_market = 'USA' WHERE vin = ?", (CAR,))
+        conn.commit()
+        conn.close()
+        page = self.client.get(f"/vehicle/{CAR}").get_data(as_text=True)
+        self.assertIn("Auto z Ameryki Północnej", page)
+        self.assertIn(f"q=%22{CAR}%22%20%28bid.cars", page)
+        other = self.client.get(f"/vehicle/{OTHER}").get_data(as_text=True)
+        self.assertNotIn("Auto z Ameryki Północnej", other)
+        self.assertIn("Sprawdź VIN w sieci", other)
+
+    def test_a_vin_built_in_the_usa_alone_does_not_count(self):
+        vin = "5UX83DP08P9S24709"     # every X3 is built in the USA, also the European ones
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, year) VALUES (?, 'BMW', 'X3', 2023)", (vin,))
+        conn.commit()
+        conn.close()
+        self.assertNotIn("Auto z Ameryki Północnej", self.client.get(f"/vehicle/{vin}").get_data(as_text=True))
 
 
 class TestAdsAndDescription(VehiclePageCase):

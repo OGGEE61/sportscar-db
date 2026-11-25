@@ -72,6 +72,18 @@ def plate_cards(conn, status_filter):
     return cards
 
 
+def card_matches(card, q):
+    """The /plates search: a car ID (#123 or 123), else part of the VIN or of a plate (reading, stored or
+    reviewed)."""
+    q = q.strip().lstrip("#").strip().upper()
+    if not q:
+        return True
+    if q.isdigit():
+        return str(card.get("car_id") or "") == q
+    plates = (card.get("detected_plate"), card.get("car_plate"), card.get("reviewed_plate"))
+    return q in (card.get("vin") or "") or any(q.replace(" ", "") in normalize_plate(p) for p in plates if p)
+
+
 # ── Plates Review (Human-in-the-Loop for CV License Plate Recognition) ───────
 
 @bp.route("/plates")
@@ -100,7 +112,8 @@ def plates_review():
     """)
     conn.commit()
 
-    candidates = plate_cards(conn, status_filter)
+    q = request.args.get("q", "").strip()
+    candidates = [c for c in plate_cards(conn, status_filter) if card_matches(c, q)]
 
     stats = {
         "pending": conn.execute("""
@@ -133,7 +146,7 @@ def plates_review():
         """).fetchone()[0],
     }
     conn.close()
-    return render_template("plates.html", candidates=candidates, stats=stats, status_filter=status_filter)
+    return render_template("plates.html", candidates=candidates, stats=stats, status_filter=status_filter, q=q)
 
 
 @bp.route("/api/plates/review", methods=["POST"])

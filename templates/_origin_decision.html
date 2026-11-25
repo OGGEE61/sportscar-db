@@ -1,0 +1,30 @@
+{# Deciding a car's origin market when Bielik disagrees with the stored one: the Weryfikacja page and
+   the car page. Posts to /review/origins/<vin> (review.decide_origin); the block is swapped out. #}
+{% macro origin_decision(c, markets, unknown) -%}
+<div class="origin-decision">
+  <div class="small">
+    <span class="text-muted">Rynek w bazie</span> <span class="badge bg-secondary">{{ c.origin_market or '—' }}</span>
+    <i class="bi bi-arrow-right mx-1 text-muted"></i>
+    <span class="text-muted">Bielik</span> <span class="badge bg-primary">{{ c.ai_suggested_market }}</span>
+  </div>
+  {% if c.ai_reasoning %}<div class="mt-1 small"><i class="bi bi-stars text-primary me-1"></i>{{ c.ai_reasoning }}</div>{% endif %}
+  <div class="d-flex flex-wrap gap-2 mt-2">
+    <form method="post" action="/review/origins/{{ c.vin }}" class="d-flex flex-wrap gap-2"
+          hx-post="/review/origins/{{ c.vin }}" hx-target="closest .origin-decision" hx-swap="outerHTML">
+      <button name="market" value="{{ c.ai_suggested_market }}" class="btn btn-sm btn-primary">
+        <i class="bi bi-check-lg"></i> Bielik ma rację: {{ c.ai_suggested_market }}</button>
+      {% if c.origin_market %}
+      <button name="market" value="{{ c.origin_market }}" class="btn btn-sm btn-outline-secondary">Zostaw: {{ c.origin_market }}</button>
+      {% endif %}
+    </form>
+    <form method="post" action="/review/origins/{{ c.vin }}" class="d-flex gap-1"
+          hx-post="/review/origins/{{ c.vin }}" hx-target="closest .origin-decision" hx-swap="outerHTML">
+      <select name="market" class="form-select form-select-sm w-auto" aria-label="Inny rynek">
+        {% for m in markets %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        <option value="{{ unknown }}">{{ unknown }}</option>
+      </select>
+      <button class="btn btn-sm btn-outline-secondary">Inny rynek</button>
+    </form>
+  </div>
+</div>
+{%- endmacro %}

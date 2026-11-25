@@ -6,26 +6,38 @@
 {% block title %}{% if vehicle.car_id %}#{{ vehicle.car_id }} {% endif %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
 {% block head %}
 <style>
-  .vehicle-hero { display:flex; gap:1.5rem; flex-wrap:wrap; background:var(--bg-surface);
-                  border:1px solid var(--border-default); border-radius:14px; padding:1.25rem; box-shadow:var(--shadow-sm); }
-  .vehicle-hero-photo { width:300px; max-width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:10px;
-                        flex-shrink:0; background:var(--bg-subtle); cursor:zoom-in; }
-  .vehicle-hero-body { flex:1 1 360px; min-width:0; display:flex; flex-direction:column; gap:.75rem; }
-  .vehicle-eyebrow { font-size:.8rem; color:var(--text-muted); font-weight:500; }
-  .vehicle-eyebrow .car-id { font-weight:700; color:var(--text-primary); }
-  .vehicle-title { font-size:1.75rem; font-weight:700; margin:0; letter-spacing:-.01em; }
-  .vehicle-title .variant { color:var(--text-muted); font-weight:500; font-size:1.25rem; }
-  .spec-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.5rem; }
+  /* Header: photo | title, specs, VIN | price, then the actions under the text; one column on phones */
+  .vehicle-hero { display:grid; grid-template-columns:200px minmax(0,1fr) auto;
+                  grid-template-areas:"photo main price" "photo actions actions"; gap:.4rem 1.25rem;
+                  background:var(--bg-surface); border:1px solid var(--border-default); border-radius:14px;
+                  padding:1rem 1.25rem; box-shadow:var(--shadow-sm); }
+  .vehicle-hero.no-photo { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"main price" "actions actions"; }
+  .vehicle-hero-photo { grid-area:photo; width:100%; height:100%; min-height:130px; object-fit:cover; border-radius:10px;
+                        background:var(--bg-subtle); cursor:zoom-in; }
+  .vehicle-hero-main { grid-area:main; min-width:0; display:flex; flex-direction:column; gap:.4rem; }
+  .vehicle-eyebrow { font-size:.8rem; color:var(--text-muted); font-weight:500; line-height:1.2; }
+  .vehicle-title { font-size:1.6rem; font-weight:700; margin:0; letter-spacing:-.01em; line-height:1.15; }
+  .vehicle-title .vehicle-id { color:var(--primary); font-variant-numeric:tabular-nums; }
+  .vehicle-title .variant { color:var(--text-muted); font-weight:500; font-size:1.15rem; }
+  .spec-chips { display:flex; flex-wrap:wrap; gap:.3rem; }
   .spec-chip { background:var(--bg-subtle); border:1px solid var(--border-default); border-radius:999px;
-               padding:.15rem .6rem; font-size:.78rem; color:var(--text-secondary); white-space:nowrap; }
+               padding:.1rem .55rem; font-size:.76rem; color:var(--text-secondary); white-space:nowrap; }
   .spec-chip i { color:var(--text-faint); margin-right:.25rem; }
-  .vehicle-price { text-align:right; }
-  .vehicle-price .price { font-size:1.6rem; font-weight:700; line-height:1.1; }
-  .vehicle-price .price-was { font-size:.8rem; color:var(--text-muted); }
-  .vehicle-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-top:auto;
-                     padding-top:.75rem; border-top:1px solid var(--border-subtle); }
+  .vehicle-hero-main .vin-block .vin-line { margin-bottom:.15rem; }
+  .vehicle-price { grid-area:price; text-align:right; font-size:.85rem; line-height:1.35; }
+  .vehicle-price .price { font-size:1.5rem; font-weight:700; line-height:1.1; }
+  .vehicle-price .price-was { font-size:.78rem; color:var(--text-muted); }
+  .vehicle-actions { grid-area:actions; display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; align-self:end;
+                     padding-top:.5rem; border-top:1px solid var(--border-subtle); }
   .vehicle-actions .status-select { padding:.15rem 1.8rem .15rem .6rem; font-size:.8rem; font-weight:600; border:none; width:auto; }
-  @media (max-width: 767px) { .vehicle-price { text-align:left; } .vehicle-hero-photo { width:100%; } }
+  @media (max-width: 767px) {
+    .vehicle-hero, .vehicle-hero.no-photo { grid-template-columns:minmax(0,1fr); grid-template-areas:"photo" "main" "price" "actions";
+                                            padding:.75rem; }
+    .vehicle-hero-photo, .vehicle-actions .back-link { display:none; }   /* the gallery right below shows the photo */
+    .vehicle-title { font-size:1.3rem; }
+    .vehicle-price { text-align:left; display:flex; flex-wrap:wrap; align-items:baseline; gap:.15rem .6rem; }
+    .vehicle-price > * { margin:0 !important; }
+  }
 
   .gallery-main { width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:10px; cursor:zoom-in; background:var(--bg-subtle); }
   .gallery-thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px; margin-top:6px; }
@@ -61,84 +73,81 @@
   .more-actions > summary::-webkit-details-marker { display:none; }
   .more-actions[open] > summary .bi-chevron-down { transform:rotate(180deg); }
   .danger-zone .card-header { color:var(--danger-text); }
+  .vin-search { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem;
+                padding:.6rem 1.25rem; font-size:.85rem; border-bottom:1px solid var(--border-subtle); }
+  .vin-search-na { background:var(--warning-light); color:var(--warning-text); }
 </style>
 {% endblock %}
 
 {% block content %}
 {% set cur = ads[0] if ads else None %}
 {% set hero_photo = media_url(vehicle.photo) if vehicle.photo else (photos[0] if photos else None) %}
-<div class="vehicle-hero mb-3">
+<div class="vehicle-hero mb-3 {{ '' if hero_photo else 'no-photo' }}">
   {% if hero_photo %}
   <img src="{{ hero_photo }}" alt="Zdjęcie auta" class="vehicle-hero-photo" onclick="window.open(this.src, '_blank')"
        onerror="this.style.display='none'">
   {% endif %}
-  <div class="vehicle-hero-body">
-    <div class="d-flex flex-wrap justify-content-between gap-3">
-      <div class="min-w-0">
-        <div class="vehicle-eyebrow">
-          {{ vehicle.year or 'rocznik ?' }}{% if vehicle.body_type %} · {{ vehicle.body_type }}{% endif %}
-        </div>
-        <h1 class="vehicle-title">{{ vehicle.make }} {{ vehicle.model }}{% if vehicle.variant %} <span class="variant">{{ vehicle.variant }}</span>{% endif %}</h1>
-        <div class="spec-chips">
-          {% if vehicle.power_hp %}<span class="spec-chip"><i class="bi bi-speedometer2"></i>{{ vehicle.power_hp }} KM</span>{% endif %}
-          {% if vehicle.engine_cc %}<span class="spec-chip"><i class="bi bi-gear-wide-connected"></i>{{ num(vehicle.engine_cc) }} cm³{% if vehicle.engine_cyl %} · {{ vehicle.engine_cyl }} cyl.{% endif %}</span>{% endif %}
-          {% if vehicle.transmission %}<span class="spec-chip"><i class="bi bi-diagram-3"></i>{{ {'automatic': 'automat', 'manual': 'manual'}.get(vehicle.transmission, vehicle.transmission) }}</span>{% endif %}
-          {% if vehicle.drivetrain %}<span class="spec-chip"><i class="bi bi-arrows-move"></i>{{ vehicle.drivetrain }}</span>{% endif %}
-          {% if vehicle.color_ext %}<span class="spec-chip"><i class="bi bi-palette"></i>{{ vehicle.color_ext }}</span>{% endif %}
-          {% if vehicle.first_registration_date %}<span class="spec-chip" title="Pierwsza rejestracja"><i class="bi bi-calendar-event"></i>{{ vehicle.first_registration_date }}</span>{% endif %}
-        </div>
-      </div>
-      {% if cur and cur.price %}
-      <div class="vehicle-price">
-        <div class="price">{{ num(cur.price) }} zł</div>
-        {% if cur.first_price and cur.first_price != cur.price %}
-        <div class="price-was">na początku {{ num(cur.first_price) }} zł
-          ({{ "{:+.1f}".format((cur.price - cur.first_price) / cur.first_price * 100) }}%)</div>
-        {% endif %}
-        <div class="small text-muted mt-1">
-          {% if cur.newest.mileage_km %}{{ num(cur.newest.mileage_km) }} km{% endif %}
-          {% if cur.newest.location_city %} · {{ cur.newest.location_city }}{% endif %}
-        </div>
-        <div class="small mt-1">
-          {{ source_badge(cur.source) }}
-          {% if cur.url %}<a href="{{ cur.url }}" target="_blank" rel="noopener">ogłoszenie <i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
-          <div class="text-muted">{% if cur.removed_at %}zniknęło {{ cur.removed_at }}{% else %}aktywne od {{ cur.first_seen }}{% endif %}</div>
-        </div>
-      </div>
-      {% endif %}
+  <div class="vehicle-hero-main">
+    <div class="vehicle-eyebrow">{{ vehicle.year or 'rocznik ?' }}{% if vehicle.body_type %} · {{ vehicle.body_type }}{% endif %}</div>
+    <h1 class="vehicle-title">{% if vehicle.car_id %}<span class="vehicle-id" title="ID auta w bazie (do wyszukiwania w Bazie VIN-ów)">#{{ vehicle.car_id }}</span> {% endif %}{{ vehicle.make }} {{ vehicle.model }}{% if vehicle.variant %} <span class="variant">{{ vehicle.variant }}</span>{% endif %}</h1>
+    <div class="spec-chips">
+      {% if vehicle.power_hp %}<span class="spec-chip"><i class="bi bi-speedometer2"></i>{{ vehicle.power_hp }} KM</span>{% endif %}
+      {% if vehicle.engine_cc %}<span class="spec-chip"><i class="bi bi-gear-wide-connected"></i>{{ num(vehicle.engine_cc) }} cm³{% if vehicle.engine_cyl %} · {{ vehicle.engine_cyl }} cyl.{% endif %}</span>{% endif %}
+      {% if vehicle.transmission %}<span class="spec-chip"><i class="bi bi-diagram-3"></i>{{ {'automatic': 'automat', 'manual': 'manual'}.get(vehicle.transmission, vehicle.transmission) }}</span>{% endif %}
+      {% if vehicle.drivetrain %}<span class="spec-chip"><i class="bi bi-arrows-move"></i>{{ vehicle.drivetrain }}</span>{% endif %}
+      {% if vehicle.color_ext %}<span class="spec-chip"><i class="bi bi-palette"></i>{{ vehicle.color_ext }}</span>{% endif %}
+      {% if vehicle.first_registration_date %}<span class="spec-chip" title="Pierwsza rejestracja"><i class="bi bi-calendar-event"></i>{{ vehicle.first_registration_date }}</span>{% endif %}
     </div>
     <div class="d-flex flex-wrap align-items-end gap-2">
-      {{ vin_block(vehicle, vehicle.vin, link=False) }}
+      {{ vin_block(vehicle, vehicle.vin, link=False, with_id=False) }}
       {% if damage_reports %}<a href="#history" class="small mb-1 text-danger">szczegóły szkody</a>{% endif %}
     </div>
-    <div class="vehicle-actions">
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status">
-        <select name="vin_status" aria-label="Status VIN-u" class="form-select form-select-sm status-select
-            {% if vehicle.vin_status == 'verified' %}bg-success text-white
-            {% elif vehicle.vin_status == 'placeholder' %}bg-warning text-dark
-            {% else %}bg-secondary text-white{% endif %}"
-            onchange="this.form.submit()">
-          <option value="unverified" class="bg-white text-dark" {% if vehicle.vin_status == 'unverified' %}selected{% endif %}>VIN niezweryfikowany</option>
-          <option value="verified" class="bg-white text-dark" {% if vehicle.vin_status == 'verified' %}selected{% endif %}>VIN zweryfikowany</option>
-          <option value="placeholder" class="bg-white text-dark" {% if vehicle.vin_status == 'placeholder' %}selected{% endif %}>VIN tymczasowy</option>
-        </select>
-      </form>
-      {# Plate, first registration date, origin and damage checked by hand (or with the review MCP server) #}
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/data_checked">
-        {% if vehicle.data_checked_at %}
-        <input type="hidden" name="checked" value="0">
-        <span class="badge bg-success" title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia sprawdzone {{ vehicle.data_checked_at[:10] }}">
-          <i class="bi bi-check2-all me-1"></i>Dane sprawdzone</span>
-        <button type="submit" class="btn btn-link btn-sm p-0 ms-1 small">cofnij</button>
-        {% else %}
-        <input type="hidden" name="checked" value="1">
-        <button type="submit" class="btn btn-outline-success btn-sm py-0"
-                title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia są sprawdzone">
-          <i class="bi bi-check2 me-1"></i>Oznacz dane jako sprawdzone</button>
-        {% endif %}
-      </form>
-      <a href="/vehicles" class="btn btn-outline-secondary btn-sm ms-auto"><i class="bi bi-arrow-left"></i> Baza VIN-ów</a>
+  </div>
+  {% if cur and cur.price %}
+  <div class="vehicle-price">
+    <div class="price">{{ num(cur.price) }} zł</div>
+    {% if cur.first_price and cur.first_price != cur.price %}
+    <div class="price-was">na początku {{ num(cur.first_price) }} zł
+      ({{ "{:+.1f}".format((cur.price - cur.first_price) / cur.first_price * 100) }}%)</div>
+    {% endif %}
+    <div class="text-muted">
+      {% if cur.newest.mileage_km %}{{ num(cur.newest.mileage_km) }} km{% endif %}
+      {% if cur.newest.location_city %} · {{ cur.newest.location_city }}{% endif %}
     </div>
+    <div>
+      {{ source_badge(cur.source) }}
+      {% if cur.url %}<a href="{{ cur.url }}" target="_blank" rel="noopener">ogłoszenie <i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+    </div>
+    <div class="text-muted">{% if cur.removed_at %}zniknęło {{ cur.removed_at }}{% else %}aktywne od {{ cur.first_seen }}{% endif %}</div>
+  </div>
+  {% endif %}
+  <div class="vehicle-actions">
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status">
+      <select name="vin_status" aria-label="Status VIN-u" class="form-select form-select-sm status-select
+          {% if vehicle.vin_status == 'verified' %}bg-success text-white
+          {% elif vehicle.vin_status == 'placeholder' %}bg-warning text-dark
+          {% else %}bg-secondary text-white{% endif %}"
+          onchange="this.form.submit()">
+        <option value="unverified" class="bg-white text-dark" {% if vehicle.vin_status == 'unverified' %}selected{% endif %}>VIN niezweryfikowany</option>
+        <option value="verified" class="bg-white text-dark" {% if vehicle.vin_status == 'verified' %}selected{% endif %}>VIN zweryfikowany</option>
+        <option value="placeholder" class="bg-white text-dark" {% if vehicle.vin_status == 'placeholder' %}selected{% endif %}>VIN tymczasowy</option>
+      </select>
+    </form>
+    {# Plate, first registration date, origin and damage checked by hand (or with the review MCP server) #}
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/data_checked">
+      {% if vehicle.data_checked_at %}
+      <input type="hidden" name="checked" value="0">
+      <span class="badge bg-success" title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia sprawdzone {{ vehicle.data_checked_at[:10] }}">
+        <i class="bi bi-check2-all me-1"></i>Dane sprawdzone</span>
+      <button type="submit" class="btn btn-link btn-sm p-0 ms-1 small">cofnij</button>
+      {% else %}
+      <input type="hidden" name="checked" value="1">
+      <button type="submit" class="btn btn-outline-success btn-sm py-0"
+              title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia są sprawdzone">
+        <i class="bi bi-check2 me-1"></i>Oznacz dane jako sprawdzone</button>
+      {% endif %}
+    </form>
+    <a href="/vehicles" class="btn btn-outline-secondary btn-sm ms-auto back-link"><i class="bi bi-arrow-left"></i> Baza VIN-ów</a>
   </div>
 </div>
 {% if wrong_model %}
@@ -147,6 +156,8 @@
   <a href="#wrong-model" class="alert-link ms-1">Przywróć</a>
 </div>
 {% endif %}
+
+<div id="to-check" hx-get="/vehicle/{{ vehicle.vin }}/to_check" hx-trigger="load" hx-swap="outerHTML"></div>
 
 <div class="row g-4">
   <div class="col-lg-5">
@@ -238,7 +249,7 @@
         <div class="alert alert-warning py-2 small mb-2">
           <i class="bi bi-exclamation-triangle me-1"></i>
           W bazie rynek <strong>{{ vehicle.origin_market }}</strong>, a Bielik wskazuje <strong>{{ vehicle.ai_suggested_market }}</strong>.
-          <a href="/review/origins#car-{{ vehicle.vin }}" class="alert-link">Rozstrzygnij</a>
+          <a href="#to-check" class="alert-link">Rozstrzygnij</a>
         </div>
         {% endif %}
 
@@ -276,7 +287,6 @@
 
   <div class="col-lg-7">
 
-<div id="to-check" hx-get="/vehicle/{{ vehicle.vin }}/to_check" hx-trigger="load" hx-swap="outerHTML"></div>
 
 <!-- Vehicle details -->
 <div class="card mb-4">
@@ -509,6 +519,24 @@
     <span>Historia i szkody</span>
     {% if damage_reports %}<span class="badge bg-danger">{{ damage_reports|length }} {{ "szkoda" if damage_reports|length == 1 else "szkody" }}</span>{% endif %}
   </div>
+  {# Auction sites block automatic lookups, so the search opens in the browser; a lot found goes in as the entry's source #}
+  {% if vehicle.vin is plausible_vin %}
+  <div class="vin-search {{ 'vin-search-na' if north_american else '' }}">
+    {% if north_american %}
+    <span><i class="bi bi-exclamation-triangle me-1"></i>Auto z Ameryki Północnej: prawie zawsze po szkodzie. Poszukaj VIN-u na aukcjach i wklej link do lotu jako źródło wpisu.</span>
+    {% else %}
+    <span class="text-muted">Sprawdź VIN w sieci:</span>
+    {% endif %}
+    <span class="d-flex gap-2">
+      <a class="btn btn-sm {{ 'btn-warning' if north_american else 'btn-outline-secondary' }}" target="_blank" rel="noopener noreferrer"
+         href="https://www.google.com/search?q={{ ('"' ~ vehicle.vin ~ '" (bid.cars OR copart OR iaai OR stat.vin OR autoastat)')|urlencode }}">
+        <i class="bi bi-search"></i> Aukcje USA</a>
+      <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer"
+         href="https://www.google.com/search?q={{ ('"' ~ vehicle.vin ~ '"')|urlencode }}">
+        <i class="bi bi-google"></i> Google</a>
+    </span>
+  </div>
+  {% endif %}
   <div class="table-responsive">
     <table class="table table-sm mb-0 align-middle">
       <thead class="table-light"><tr>
