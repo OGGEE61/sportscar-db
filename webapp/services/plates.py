@@ -156,31 +156,34 @@ def swapped_date(date: str):
     return swapped if is_valid_first_registration_date(swapped) else None
 
 
-def plate_check_plan(conn) -> dict:
+def plate_check_plan(conn, vin=None) -> dict:
     """For every pending /plates card ({card id: plan}): its car, the plates and first registration
     dates to try (the car's date first, then other dates its ads give), the pairs already asked and
     those still to ask, likeliest first, at most MAX_LOOKUPS_PER_CARD pairs in all. After the ads'
-    dates come the same dates with day and month swapped, as the last guesses."""
-    cards = conn.execute("""
+    dates come the same dates with day and month swapped, as the last guesses. With `vin`, only that
+    car's cards (the car's page)."""
+    pending = "SELECT vin FROM plate_review_queue WHERE status = 'pending'" + (" AND vin = ?" if vin else "")
+    args = (vin,) if vin else ()
+    cards = conn.execute(f"""
         SELECT q.id, q.vin, q.listing_id, q.detected_plate, v.registration_plate AS car_plate, v.make, v.year,
                v.origin_market, v.first_registration_date AS car_date
         FROM plate_review_queue q JOIN vehicles v ON v.vin = q.vin
-        WHERE q.status = 'pending' AND q.vin NOT LIKE 'PLH%' AND q.vin NOT LIKE 'UNVERIFIED%'
+        WHERE q.status = 'pending' AND q.vin NOT LIKE 'PLH%' AND q.vin NOT LIKE 'UNVERIFIED%' {"AND q.vin = ?" if vin else ""}
         ORDER BY q.id
-    """).fetchall()
+    """, args).fetchall()
     ad_dates = defaultdict(list)
-    for r in conn.execute("""
+    for r in conn.execute(f"""
         SELECT vin, first_registration_date FROM pending_listings
-        WHERE vin IN (SELECT vin FROM plate_review_queue WHERE status = 'pending') AND first_registration_date <> ''
+        WHERE vin IN ({pending}) AND first_registration_date <> ''
         ORDER BY id DESC
-    """):
+    """, args):
         if is_valid_first_registration_date(r["first_registration_date"]) and r["first_registration_date"] not in ad_dates[r["vin"]]:
             ad_dates[r["vin"]].append(r["first_registration_date"])
     asked = defaultdict(set)
-    for r in conn.execute("""
+    for r in conn.execute(f"""
         SELECT vin, plate, first_registration_date FROM cepik_plate_checks
-        WHERE vin IN (SELECT vin FROM plate_review_queue WHERE status = 'pending')
-    """):
+        WHERE vin IN ({pending})
+    """, args):
         asked[r["vin"]].add((r["plate"], r["first_registration_date"]))
 
     plan = {}
