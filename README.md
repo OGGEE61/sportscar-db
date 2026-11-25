@@ -43,9 +43,10 @@ How a listing becomes data:
 | **Pulpit** (`/`) | Totals, charts (makes, price ranges, weekly volume, map), newest sightings |
 | **Modele** (`/models`) | One model: median and average price, price vs mileage, table of its cars |
 | **Auta** (`/vehicles`) | Every car, with filters and sorting |
-| **Okazje** (`/deals`) | Newest ads around Poznań, each compared with the median of similar cars |
+| **Poznań** (`/poznan`) | Newest ads around Poznań, each with its price against the median of similar cars |
 | **Ulubione** (`/favorites`) | Cars you starred (the star sits next to every VIN) |
 | **Kolejka** (`/review`) | New listings to approve or reject |
+| **Do sprawdzenia** (`/review/notes`) | Cars a review left uncertain: what is known, what is missing, links to the car and its ad |
 | **Tablice** (`/plates`) | Registration plates read from photos, to confirm |
 | **CEPiK** (`/cepik`) | Reports from the state vehicle register: insurance, inspection, odometer history |
 | Car page (`/vehicle/<vin>`) | Everything about one car: ads, price timeline, damage history, tags |

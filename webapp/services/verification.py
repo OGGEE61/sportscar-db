@@ -77,3 +77,59 @@ def cars_to_check(conn, limit, offset=0):
         LIMIT ? OFFSET ?
     """, (limit, offset)).fetchall()
     return cars, total
+
+
+# ── "Do sprawdzenia": cars a review left uncertain, for the user to check by hand ──
+
+# What a note is about, as shown on the page
+NOTE_TOPICS = {"plate": "Tablica", "date": "Data rejestracji", "damage": "Szkoda", "origin": "Pochodzenie",
+               "vin": "VIN", "other": "Inne"}
+
+
+def add_review_note(conn, vin, topic, note, ad_url=None):
+    """Note what is known about a car and what is missing. A car has one open note per topic: a second
+    one replaces its text (and its ad link, when one is given). Returns an error message or None."""
+    note = (note or "").strip()
+    if topic not in NOTE_TOPICS:
+        return f"Nieznany temat: {topic} (dozwolone: {', '.join(NOTE_TOPICS)})."
+    if not note:
+        return "Opisz, co wiadomo i czego brakuje."
+    if not conn.execute("SELECT 1 FROM vehicles WHERE vin = ?", (vin,)).fetchone():
+        return f"Nie ma auta z VIN-em {vin}."
+    conn.execute("""
+        INSERT INTO review_notes (vin, topic, note, ad_url) VALUES (?, ?, ?, ?)
+        ON CONFLICT (vin, topic) WHERE resolved_at IS NULL
+        DO UPDATE SET note = excluded.note, ad_url = COALESCE(excluded.ad_url, ad_url), updated_at = datetime('now')
+    """, (vin, topic, note, (ad_url or "").strip() or None))
+    conn.commit()
+    return None
+
+
+def review_notes(conn, resolved=False, limit=200):
+    """Open notes, oldest first (or the latest resolved ones), each with its car (one query)."""
+    order = "n.resolved_at DESC" if resolved else "n.created_at, n.id"
+    return [dict(r) for r in conn.execute(f"""
+        SELECT n.id, n.vin, n.topic, n.note, n.ad_url, n.created_at, n.updated_at, n.resolved_at,
+               v.car_id, v.make, v.model, v.variant, v.year, v.registration_plate
+        FROM review_notes n JOIN vehicles v ON v.vin = n.vin
+        WHERE n.resolved_at IS {'NOT ' if resolved else ''}NULL
+        ORDER BY {order}
+        LIMIT ?
+    """, (limit,)).fetchall()]
+
+
+def open_note_count(conn):
+    return conn.execute("SELECT COUNT(*) FROM review_notes WHERE resolved_at IS NULL").fetchone()[0]
+
+
+def set_note_resolved(conn, note_id, resolved):
+    """Tick a note off (or open it again). Returns an error message, or None when done."""
+    try:
+        cur = conn.execute("UPDATE review_notes SET resolved_at = CASE WHEN ? THEN datetime('now') END WHERE id = ?",
+                           (1 if resolved else 0, note_id))
+    except Exception as exc:   # the unique index of open notes (sqlite3.IntegrityError, or D1's error)
+        if "UNIQUE" not in str(exc).upper():
+            raise
+        return "To auto ma już otwartą notatkę w tym temacie."
+    conn.commit()
+    return None if cur.rowcount else "Nie ma takiej notatki."

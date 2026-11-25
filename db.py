@@ -913,6 +913,25 @@ def init_db():
         END""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(31,'car_id')")
 
+    # ── Migration 32: "Do sprawdzenia" ───────────────────────────────────────
+    # Cars a review left uncertain (a plate nobody could read, a date CEPiK did not confirm, a damage
+    # to look for), each with what is known and what is missing, for the user to check by hand.
+    # A car has at most one open note per topic; resolved notes stay as a record.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS review_notes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            vin         TEXT NOT NULL,
+            topic       TEXT NOT NULL,
+            note        TEXT NOT NULL,
+            ad_url      TEXT,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT
+        )""")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_review_notes_open ON review_notes(vin, topic) WHERE resolved_at IS NULL")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_review_notes_resolved ON review_notes(resolved_at)")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(32,'review_notes')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
@@ -960,13 +979,15 @@ def resolve_placeholder(old_vin: str, new_vin: str,
                 UPDATE vehicles SET {', '.join(f'{c} = COALESCE({c}, ?)' for c in fill)}
                 WHERE vin = ?
             """, (*[row[c] for c in fill], new_vin))
-        for tbl in ("listing_observations", "condition_reports", "tags", "plate_review_queue"):
+        for tbl in ("listing_observations", "condition_reports", "tags", "plate_review_queue", "review_notes"):
             if tbl == "tags":
                 # tags has UNIQUE(vin, tag): drop duplicates the real VIN already has
                 db.execute("""
                     DELETE FROM tags WHERE vin=? AND tag IN (SELECT tag FROM tags WHERE vin=?)
                 """, (old_vin, new_vin))
-            db.execute(f"UPDATE {tbl} SET vin=? WHERE vin=?", (new_vin, old_vin))
+            # review_notes allows one open note per car and topic: one the real VIN already has wins
+            verb = "UPDATE OR IGNORE" if tbl == "review_notes" else "UPDATE"
+            db.execute(f"{verb} {tbl} SET vin=? WHERE vin=?", (new_vin, old_vin))
         db.execute("UPDATE pending_listings SET vin=? WHERE vin=?", (new_vin, old_vin))
         db.execute("UPDATE OR IGNORE favorites SET vin=? WHERE vin=?", (new_vin, old_vin))
         db.execute("DELETE FROM favorites WHERE vin=?", (old_vin,))

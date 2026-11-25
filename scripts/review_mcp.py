@@ -61,8 +61,10 @@ server = MCPServer(
         "Damage: check it several ways, not only the ad's word. A car imported from North America (USA, "
         "Canada) is almost certainly damaged even when the ad says 'bezwypadkowy': look for the auction "
         "(Copart, IAAI), repair photos, the ad's history and the CEPiK events, and propose a damage history "
-        "entry with what you found. Polish plates only: CEPiK does not know cars on foreign plates. Talk to "
-        "the user in Polish."
+        "entry with what you found. Polish plates only: CEPiK does not know cars on foreign plates. "
+        "Every car left uncertain gets a note on the 'Do sprawdzenia' page (add_review_note): what is known, "
+        "what is missing, where to look; propose them with the batch like any other change, and check "
+        "list_review_notes first so as not to repeat one. Talk to the user in Polish."
     ),
 )
 
@@ -481,6 +483,46 @@ def mark_car_checked(vin: str, checked: bool = True) -> str:
     if not found:
         return f"Nie ma auta z VIN-em {vin}."
     return "Oznaczono: dane sprawdzone." if checked else "Cofnięto oznaczenie „Dane sprawdzone”."
+
+
+def _car_vin(conn, key):
+    """The VIN of the car named by its VIN or its ID (123 or #123), or None."""
+    key = (key or "").strip().lstrip("#")
+    row = (conn.execute("SELECT vin FROM vehicles WHERE car_id = ?", (int(key),)) if key.isdigit()
+           else conn.execute("SELECT vin FROM vehicles WHERE vin = ?", (key,))).fetchone()
+    return row["vin"] if row else None
+
+
+@server.tool(annotations=READ)
+def list_review_notes(resolved: bool = False) -> str:
+    """The notes on the 'Do sprawdzenia' page (/review/notes): open ones oldest first, or with
+    resolved=true the latest the user ticked off."""
+    conn = _db()
+    try:
+        notes = verification.review_notes(conn, resolved=resolved)
+    finally:
+        conn.close()
+    return json.dumps([{"note_id": n["id"], "id": n["car_id"], "vin": n["vin"], "car": _car_name(n),
+                        "topic": n["topic"], "note": n["note"], "ad_url": n["ad_url"], "created_at": n["created_at"],
+                        "resolved_at": n["resolved_at"]} for n in notes], ensure_ascii=False, indent=1)
+
+
+@server.tool(annotations=WRITE)
+def add_review_note(car: str, topic: str, note: str, ad_url: str = "") -> str:
+    """Put a car the review left uncertain on the 'Do sprawdzenia' page for the user to check by hand.
+    `car`: its VIN or ID (#123). `topic`: plate, date, damage, origin, vin or other. `note`, in Polish:
+    what is known (what the photos show, what CEPiK answered and when), what is missing and where to look.
+    `ad_url`: the ad that shows it. A car has one open note per topic: a new one replaces its text.
+    Changes no car data, but like every write, only when the user agrees."""
+    conn = _db()
+    try:
+        vin = _car_vin(conn, car)
+        if not vin:
+            return f"Nie ma auta {car} (ani takiego VIN-u, ani ID)."
+        error = verification.add_review_note(conn, vin, topic, note, ad_url)
+    finally:
+        conn.close()
+    return error or "Zapisano na stronie „Do sprawdzenia”."
 
 
 if __name__ == "__main__":

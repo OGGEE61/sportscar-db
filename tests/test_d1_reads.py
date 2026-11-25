@@ -208,7 +208,7 @@ class TestPagesReadOnlyWhatTheyShow(LocalDbCase):
         return [p for p in plans if re.search(r"SCAN (listing_observations|o|x|f)\b", p)]
 
     def test_no_full_scan_of_sightings(self):
-        for path in ("/models?model=m5_f90", "/api/deals?km=50&days=30", "/vehicles"):
+        for path in ("/models?model=m5_f90", "/api/poznan?km=50&days=30", "/vehicles"):
             self.assertEqual(self.plans_of(path), [], path)
 
     def test_models_page_takes_each_cars_newest_sighting(self):

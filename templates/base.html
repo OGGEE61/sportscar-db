@@ -38,18 +38,43 @@
         {{ nav_item("/", "bi-grid-1x2", "Pulpit", request.path == "/") }}
         {{ nav_item("/models", "bi-graph-up", "Modele", request.path.startswith("/models")) }}
         {{ nav_item("/vehicles", "bi-car-front", "Baza VIN-ów", request.path.startswith("/vehicle")) }}
-        {{ nav_item("/deals", "bi-tag", "Okazje", request.path.startswith("/deals")) }}
-        {{ nav_item("/favorites", "bi-star", "Ulubione", request.path.startswith("/favorites")) }}
-        {{ nav_item("/review", "bi-inbox", "Kolejka", request.path.startswith("/review")) }}
-        {{ nav_item("/plates", "bi-camera", "Tablice", request.path.startswith("/plates"),
-                    '<span id="badge-plates" class="badge rounded-pill bg-primary nav-count d-none"></span>') }}
-        {{ nav_item("/cepik", "bi-shield-check", "CEPiK", request.path.startswith("/cepik")) }}
+        {{ nav_item("/poznan", "bi-geo-alt", "Poznań", request.path.startswith("/poznan")) }}
+        {#- The work pages (approving ads, checking cars, plates, CEPiK) share one menu -#}
+        {%- set review_pages = [
+              ("/review", "bi-inbox", "Kolejka", request.path.startswith("/review") and not request.path.startswith("/review/notes"), ""),
+              ("/review/notes", "bi-clipboard-check", "Do sprawdzenia", request.path.startswith("/review/notes"), ""),
+              ("/plates", "bi-camera", "Tablice", request.path.startswith("/plates"), "plates"),
+              ("/cepik", "bi-shield-check", "CEPiK", request.path.startswith("/cepik"), "")] %}
+        {%- set review_active = review_pages|selectattr(3)|list|length > 0 %}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if review_active %}active{% endif %}" href="#" role="button"
+             data-bs-toggle="dropdown" aria-expanded="false" title="Przegląd">
+            <i class="bi bi-ui-checks"></i><span class="nav-label">Przegląd</span>
+            <span data-badge="plates" class="badge rounded-pill bg-primary nav-count d-none"></span>
+          </a>
+          <ul class="dropdown-menu">
+            {%- for href, icon, label, active, badge in review_pages %}
+            <li>
+              <a class="dropdown-item {% if active %}active{% endif %}" href="{{ href }}"{% if active %} aria-current="page"{% endif %}>
+                <i class="bi {{ icon }}"></i>{{ label }}
+                {%- if badge %}<span data-badge="{{ badge }}" class="badge rounded-pill bg-primary nav-count ms-auto d-none"></span>{% endif %}
+              </a>
+            </li>
+            {%- endfor %}
+          </ul>
+        </li>
       </ul>
       <ul class="navbar-nav ms-auto align-items-lg-center">
         <li class="nav-item">
+          <a class="nav-link {% if request.path.startswith('/favorites') %}active{% endif %}" href="/favorites" title="Ulubione"
+             {%- if request.path.startswith('/favorites') %} aria-current="page"{% endif %}>
+            <i class="bi bi-star"></i><span class="nav-label d-lg-none">Ulubione</span>
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link position-relative {% if request.path.startswith('/logs') %}active{% endif %}" href="/logs" title="Logi systemu">
             <i class="bi bi-bell"></i><span class="nav-label d-lg-none">Logi systemu</span>
-            <span id="badge-logs" class="badge rounded-pill bg-danger nav-count d-none"></span>
+            <span data-badge="logs" class="badge rounded-pill bg-danger nav-count d-none"></span>
           </a>
         </li>
         {% if session.get('logged_in') %}
@@ -119,9 +144,10 @@ document.addEventListener("click", e => {
 // Navbar counters load after paint so no page waits on the database for them
 fetch('/api/badges').then(r => r.ok ? r.json() : null).then(d => {
   if (!d) return;
-  [['badge-plates', d.pending_plates_count], ['badge-logs', d.unread_notifications_count]].forEach(([id, n]) => {
-    const el = document.getElementById(id);
-    if (el && n > 0) { el.textContent = n; el.classList.remove('d-none'); }
+  [['plates', d.pending_plates_count], ['logs', d.unread_notifications_count]].forEach(([name, n]) => {
+    if (n > 0) document.querySelectorAll(`[data-badge="${name}"]`).forEach(el => {
+      el.textContent = n; el.classList.remove('d-none');
+    });
   });
 }).catch(() => {});
 </script>
