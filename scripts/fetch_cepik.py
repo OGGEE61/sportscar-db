@@ -183,7 +183,7 @@ class CepikClient:
         oc_expiry = timeline.get("insuranceExpiryDate")
 
         # Technical inspection
-        tech_status = basic.get("technicalInspectionStatus", timeline.get("technicalInspectionStatus", "brak"))
+        tech_status = basic.get("technicalInspectionStatus") or timeline.get("technicalInspectionStatus") or "brak"
 
         # Theft
         is_stolen = 1 if (basic.get("vehicleLost") or timeline.get("vehicleLost")) else 0
@@ -214,8 +214,9 @@ class CepikClient:
             odo_src = "SKP" if "badanie techniczne" in ev_name.lower() else "Inne"
 
             for d in details:
-                d_name = d.get("name", "")
-                d_val = str(d.get("value", ""))
+                # CEPiK sends null for some fields: a missing name or value is an empty one
+                d_name = d.get("name") or ""
+                d_val = str(d.get("value") or "")
                 if "policja" in d_val.lower():
                     odo_src = "Policja"
                 if "drogomierza" in d_name.lower() or "drogomierza" in d_val.lower():
@@ -388,7 +389,7 @@ def save_cepik_report(report: Dict[str, Any], conn) -> bool:
     ))
 
     # Tag a valid OC and SKP when there are no issues
-    if report["has_current_oc"] and report["tech_inspection_status"].lower() == "aktualne" and not odometer_rollback and not report["is_stolen"]:
+    if report["has_current_oc"] and (report["tech_inspection_status"] or "").lower() == "aktualne" and not odometer_rollback and not report["is_stolen"]:
         try:
             conn.execute("INSERT OR IGNORE INTO tags (vin, tag, source_method) VALUES (?, 'CEPiK: Ważne OC i SKP', 'cepik')", (vin,))
         except Exception:
