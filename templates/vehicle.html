@@ -174,6 +174,47 @@
     {% endif %}
 
 
+    <!-- Tags -->
+<div class="card mb-4">
+  <div class="card-header">Tagi</div>
+  <div class="card-body">
+    {% for t in tags %}
+    {% if t.tag == 'photo extracted' %}
+    <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany ze zdjęcia">
+      <i class="bi bi-camera text-secondary me-1"></i>tablica ze zdjęcia
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
+        <input type="hidden" name="tag" value="{{ t.tag }}">
+        <button type="submit" class="btn-close ms-1"
+                style="font-size:.5rem;vertical-align:middle;"
+                title="Usuń tag" onclick="event.stopPropagation()"></button>
+      </form>
+    </span>
+    {% else %}
+    <span class="badge bg-info text-dark me-1 align-middle">{{ t.tag }}
+      <small class="opacity-75">{{ t.source_method }}</small>
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
+        <input type="hidden" name="tag" value="{{ t.tag }}">
+        <button type="submit" class="btn-close btn-close-white ms-1"
+                style="font-size:.5rem;vertical-align:middle;"
+                title="Usuń tag" onclick="event.stopPropagation()"></button>
+      </form>
+    </span>
+    {% endif %}
+    {% endfor %}
+    {% if not vehicle.registration_plate %}
+    <span class="badge bg-warning text-dark me-1 align-middle" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
+    {% endif %}
+    {% if not tags and vehicle.registration_plate %}
+    <span class="text-muted">Brak tagów</span>
+    {% endif %}
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
+      <input name="tag" class="form-control form-control-sm" placeholder="Dodaj tag…" style="width:140px;">
+      <button class="btn btn-sm btn-outline-secondary">+</button>
+    </form>
+  </div>
+</div>
+
+
     <!-- Podsumowanie przez AI -->
     <div class="section-label mt-3">Podsumowanie przez AI (Bielik)</div>
     <div class="ai-summary-box mb-4">
@@ -317,6 +358,19 @@
         <button class="btn btn-warning w-100">Zapisz</button>
       </div>
     </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Price timeline chart -->
+{% if price_timeline != '[]' %}
+<div class="card mb-4 shadow-sm">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small text-uppercase text-secondary">Historia cen wg portalu</span>
+    <span id="priceChips" class="d-flex flex-wrap justify-content-end gap-1 small"></span>
+  </div>
+  <div class="card-body py-2 px-3" style="height: 230px; position: relative;">
+    <canvas id="chartPrice"></canvas>
   </div>
 </div>
 {% endif %}
@@ -574,19 +628,6 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
 </div>
 {% endif %}
 
-<!-- Price timeline chart -->
-{% if price_timeline != '[]' %}
-<div class="card mb-4 shadow-sm">
-  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-    <span class="fw-semibold small text-uppercase text-secondary">Historia cen wg portalu</span>
-    <span id="priceChips" class="d-flex flex-wrap justify-content-end gap-1 small"></span>
-  </div>
-  <div class="card-body py-2 px-3" style="height: 230px; position: relative;">
-    <canvas id="chartPrice"></canvas>
-  </div>
-</div>
-{% endif %}
-
 <!-- Ads: one entry per ad, its sightings collapsed to the changes -->
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
@@ -694,46 +735,6 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
     {% if not ads and not ungrouped %}
     <p class="text-muted p-3 mb-0">Brak obserwacji.</p>
     {% endif %}
-  </div>
-</div>
-
-<!-- Tags -->
-<div class="card mb-4">
-  <div class="card-header">Tagi</div>
-  <div class="card-body">
-    {% for t in tags %}
-    {% if t.tag == 'photo extracted' %}
-    <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany ze zdjęcia">
-      <i class="bi bi-camera text-secondary me-1"></i>tablica ze zdjęcia
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
-        <input type="hidden" name="tag" value="{{ t.tag }}">
-        <button type="submit" class="btn-close ms-1"
-                style="font-size:.5rem;vertical-align:middle;"
-                title="Usuń tag" onclick="event.stopPropagation()"></button>
-      </form>
-    </span>
-    {% else %}
-    <span class="badge bg-info text-dark me-1 align-middle">{{ t.tag }}
-      <small class="opacity-75">{{ t.source_method }}</small>
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
-        <input type="hidden" name="tag" value="{{ t.tag }}">
-        <button type="submit" class="btn-close btn-close-white ms-1"
-                style="font-size:.5rem;vertical-align:middle;"
-                title="Usuń tag" onclick="event.stopPropagation()"></button>
-      </form>
-    </span>
-    {% endif %}
-    {% endfor %}
-    {% if not vehicle.registration_plate %}
-    <span class="badge bg-warning text-dark me-1 align-middle" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
-    {% endif %}
-    {% if not tags and vehicle.registration_plate %}
-    <span class="text-muted">Brak tagów</span>
-    {% endif %}
-    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
-      <input name="tag" class="form-control form-control-sm" placeholder="Dodaj tag…" style="width:140px;">
-      <button class="btn btn-sm btn-outline-secondary">+</button>
-    </form>
   </div>
 </div>
 
