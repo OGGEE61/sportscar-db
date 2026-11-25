@@ -1199,6 +1199,39 @@ class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
         self.assertEqual(self.scan(None)["queued_without_crop"], 0)
 
 
+    def test_a_card_whose_ad_is_gone_waits_instead_of_being_marked_empty(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        conn = db.get_db()
+        conn.execute("UPDATE listing_observations SET removed_at = datetime('now') WHERE vin = ?", (self.VIN,))
+        conn.commit()
+        conn.close()
+        out = self.scan(None)
+        self.assertEqual(out["waiting_for_ad"], 1)
+        rows, _ = self.queue()
+        self.assertEqual([r["crop_path"] for r in rows], [None])       # still waiting, not "nothing found"
+
+
+class TestScanOnlyLiveAds(ScrapingTestCase):
+    def test_a_removed_ad_is_not_scanned(self):
+        import json
+        with mock.patch.dict(sys.modules, {"numpy": mock.MagicMock()}):
+            from scripts import detect_plates
+        for sid, vin in (("live", "WBS11DM0308D29561"), ("gone", "WBS11DM0308D29562")):
+            self.add_active_listing(sid, vin, "Competition", model="M2", plate=None, frd="2023-07-06")
+        conn = db.get_db()
+        conn.execute("UPDATE pending_listings SET photos = ?, registration_plate = NULL", (json.dumps(["https://img/1.jpg"]),))
+        conn.execute("UPDATE vehicles SET registration_plate = NULL")
+        conn.execute("UPDATE listing_observations SET removed_at = datetime('now') WHERE source_listing_id = 'gone'")
+        conn.commit()
+        conn.close()
+        scanned = []
+        with mock.patch.object(detect_plates, "scan_listing_for_plates", side_effect=lambda item, c: scanned.append(item["vin"]) or []), \
+             mock.patch.object(detect_plates, "fill_missing_crops", return_value={"queued_without_crop": 0, "crops_filled": 0}):
+            detect_plates.run_plate_detection_batch(limit=0)
+        self.assertEqual(scanned, ["WBS11DM0308D29561"])
+
+
 class DealerStockExclusionTest(ScrapingTestCase):
     """Dealer-stock sightings (any model) are flagged, kept (VIN stays known) and left out of the dashboard."""
 

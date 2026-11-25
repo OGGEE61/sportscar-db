@@ -430,14 +430,19 @@ def fill_missing_crops(conn) -> Dict:
     """).fetchall()
     print(f"\n[plate_scanner] {len(rows)} pozycji w kolejce bez wycinka...")
 
-    filled = 0
+    filled = waiting = 0
     for q in rows:
-        listing = conn.execute("""
+        listing = conn.execute(f"""
             SELECT id, source_listing_id, vin, photos, source_url FROM pending_listings
-            WHERE vin = ? AND photos IS NOT NULL AND photos NOT IN ('', '[]')
+            WHERE vin = ? AND photos IS NOT NULL AND photos NOT IN ('', '[]') AND {live_listing_sql("pending_listings")}
             ORDER BY id DESC LIMIT 1
         """, (q["vin"],)).fetchone()
-        best = find_best_plate_shot(dict(listing), conn) if listing else None
+        if not listing:
+            # No ad up: its photos are gone. The card waits for the car's next ad instead of being
+            # marked as having no plate in the photos.
+            waiting += 1
+            continue
+        best = find_best_plate_shot(dict(listing), conn)
         if not best:
             conn.execute("UPDATE plate_review_queue SET crop_path = '' WHERE id = ?", (q["id"],))
             conn.commit()
@@ -465,7 +470,16 @@ def fill_missing_crops(conn) -> Dict:
         note = "zgodna z ogłoszeniem" if same else f"ogłoszenie: {q['detected_plate']}"
         print(f"  {q['vin']}: {best['detected_plate']} ({note})")
 
-    return {"queued_without_crop": len(rows), "crops_filled": filled}
+    if waiting:
+        print(f"  {waiting} kart bez aktywnego ogłoszenia (zdjęcia usunięte z portalu): czekają na nowe ogłoszenie")
+    return {"queued_without_crop": len(rows), "crops_filled": filled, "waiting_for_ad": waiting}
+
+
+def live_listing_sql(alias: str = "pending_listings") -> str:
+    """SQL condition: the listing's ad is still up. A removed ad's photos are deleted from the portal's
+    CDN (404), so scanning it finds nothing and would wrongly record "no plate in the photos"."""
+    return (f"EXISTS (SELECT 1 FROM listing_observations lo WHERE lo.source = {alias}.source "
+            f"AND lo.source_listing_id = {alias}.source_listing_id AND lo.removed_at IS NULL)")
 
 
 def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Dict:
@@ -530,6 +544,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
           AND photos != ''
           AND photos != '[]'
           AND NOT {overseas}
+          AND {live_listing_sql("pending_listings")}
           {scan_log_filter}
         ORDER BY id DESC
         {limit_clause}
