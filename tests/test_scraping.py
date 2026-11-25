@@ -325,7 +325,7 @@ class TestPlateDateQuality(ScrapingTestCase):
         self.ingest("m40i", registration_plate="BMWm40i")
         self.assertIsNone(self.stored("m40i")["registration_plate"])
 
-    def test_fix_tab_and_fix_endpoint(self):
+    def test_fix_endpoint_and_the_old_fix_tab_address(self):
         conn = db.get_db()
         conn.execute("CREATE TABLE IF NOT EXISTS cepik_sync_log (vin TEXT PRIMARY KEY, status TEXT, "
                      "message TEXT, attempted_at TEXT DEFAULT (datetime('now')))")
@@ -333,10 +333,7 @@ class TestPlateDateQuality(ScrapingTestCase):
                      "VALUES ('WBS8M9C50J5K99001','BMW','X3 M','M40i',2024,'BMWm40i','2024-01-01')")
         conn.commit()
         conn.close()
-        page = self.client.get("/cepik?tab=fix")
-        self.assertEqual(page.status_code, 200)
-        self.assertIn(b"WBS8M9C50J5K99001", page.data)
-        self.assertIn("Niepoprawna tablica".encode(), page.data)
+        self.assertEqual(self.client.get("/cepik?tab=fix").headers["Location"], "/verify?issue=cepik")
 
         bad = self.client.post("/api/cepik/fix/WBS8M9C50J5K99001", json={
             "plate": "BMWm40i", "first_registration_date": "2024-01-01"})
@@ -344,7 +341,6 @@ class TestPlateDateQuality(ScrapingTestCase):
         ok = self.client.post("/api/cepik/fix/WBS8M9C50J5K99001", json={
             "plate": "wx 12345", "first_registration_date": "2024-02-03"})
         self.assertEqual(ok.get_json()["plate"], "WX12345")
-        self.assertNotIn(b"WBS8M9C50J5K99001", self.client.get("/cepik?tab=fix").data.split(b"<tbody>")[1])
 
 
 class TestKnownListings(ScrapingTestCase):
