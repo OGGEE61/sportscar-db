@@ -101,6 +101,28 @@ class TestHeader(VehiclePageCase):
         self.assertIn(f"#{car_id}", title)
 
 
+class TestVinSearch(VehiclePageCase):
+    def test_a_north_american_car_points_to_the_auctions(self):
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET origin_market = 'USA' WHERE vin = ?", (CAR,))
+        conn.commit()
+        conn.close()
+        page = self.client.get(f"/vehicle/{CAR}").get_data(as_text=True)
+        self.assertIn("Auto z Ameryki Północnej", page)
+        self.assertIn(f"q=%22{CAR}%22%20%28bid.cars", page)
+        other = self.client.get(f"/vehicle/{OTHER}").get_data(as_text=True)
+        self.assertNotIn("Auto z Ameryki Północnej", other)
+        self.assertIn("Sprawdź VIN w sieci", other)
+
+    def test_a_vin_built_in_the_usa_counts_too(self):
+        vin = "5UX83DP08P9S24709"
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, year) VALUES (?, 'BMW', 'X3', 2023)", (vin,))
+        conn.commit()
+        conn.close()
+        self.assertIn("Auto z Ameryki Północnej", self.client.get(f"/vehicle/{vin}").get_data(as_text=True))
+
+
 class TestAdsAndDescription(VehiclePageCase):
     def test_an_ad_shows_only_its_changes_and_keeps_every_sighting_folded(self):
         page = self.client.get(f"/vehicle/{CAR}").get_data(as_text=True)

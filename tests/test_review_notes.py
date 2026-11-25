@@ -51,6 +51,18 @@ class TestReviewNotes(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_notes_and_origin_conflicts_are_tabs_of_one_page(self):
+        conn = db.get_db()
+        verification.add_review_note(conn, CAR, "plate", "SK1K663, CEPiK: brak")
+        conn.execute("UPDATE vehicles SET ai_conflict = 1 WHERE vin = ?", (OTHER,))
+        conn.commit()
+        conn.close()
+        for url in ("/review/notes", "/review/origins"):
+            page = self.client.get(url).get_data(as_text=True)
+            self.assertIn("<h2 class=\"mb-0\">Do sprawdzenia</h2>", page)
+            self.assertIn('Notatki <span class="badge bg-secondary">1</span>', page)
+            self.assertIn('id="origin-conflict-count">1</span>', page)
+
     def test_the_mcp_server_notes_a_car_by_its_id_and_a_second_note_replaces_the_first(self):
         self.assertIn("Zapisano", mcp_server.add_review_note(f"#{self.car_id}", "plate", "SK1K663, CEPiK: brak", AD))
         self.assertIn("Zapisano", mcp_server.add_review_note(CAR, "plate", "SK1K663, potrzebna data za granicą"))
