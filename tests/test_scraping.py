@@ -1126,9 +1126,10 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         client = mock.Mock(last_status=500)
         client.fetch_vehicle_data.return_value = None
         with mock.patch.object(fetch_cepik, "CepikClient", return_value=client), mock.patch.object(fetch_cepik.time, "sleep"):
-            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 2)   # AB12345 and its guess AB1234S
+            # AB12345 and its guess AB1234S, each with 2023-07-06 and its swap 2023-06-07
+            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 4)
         _, client = self.run_confirm({})
-        self.assertEqual(client.fetch_vehicle_data.call_count, 2)
+        self.assertEqual(client.fetch_vehicle_data.call_count, 4)
 
     def test_card_without_a_date_is_skipped(self):
         self.card()
