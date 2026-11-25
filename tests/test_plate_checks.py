@@ -201,6 +201,18 @@ class TestHints(PlateCheckCase):
         self.assertIn("Do wyjaśnienia: CEPiK nie potwierdził tych danych", page)
         self.assertLess(page.index(IMPORT), page.index(OCR))      # nothing left to try: first
 
+    def test_cards_show_the_car_id_and_are_found_by_it(self):
+        conn = db.get_db()
+        car_id = conn.execute("SELECT car_id FROM vehicles WHERE vin = ?", (AD,)).fetchone()[0]
+        conn.close()
+        page = self.client.get("/plates").get_data(as_text=True)
+        self.assertIn(f"#{car_id}</span>", page)
+        self.assertGreaterEqual(page.count(f'href="/vehicle/{AD}"'), 2)       # the title and "Strona auta"
+        for q in (f"%23{car_id}", str(car_id), AD[-6:], "wa12345"):
+            page = self.client.get(f"/plates?q={q}").get_data(as_text=True)
+            self.assertIn(AD, page, q)
+            self.assertNotIn(OCR, page, q)
+
     def test_a_car_cepik_did_not_find_is_marked_everywhere(self):
         self.assertIn("Niezgodne z CEPiK", self.client.get(f"/vehicle/{AD}").get_data(as_text=True))
         self.assertNotIn("Niezgodne z CEPiK", self.client.get(f"/vehicle/{OCR}").get_data(as_text=True))

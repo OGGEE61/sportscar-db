@@ -30,8 +30,7 @@ from validation import MARKETS, is_valid_first_registration_date
 from webapp.blueprints.plates import plate_cards, review_card
 from webapp.blueprints.review import ORIGIN_UNKNOWN, decide_origin, origin_conflicts
 from webapp.services import verification
-from webapp.services.plate_rules import plate_kind
-from webapp.services.plates import normalize_plate
+from webapp.services.plates import check_card_in_cepik, normalize_plate
 
 MAX_PHOTOS = 10
 PHOTO_SIDE = 1280          # px, longer side: enough to read a plate, small enough for the model
@@ -62,7 +61,7 @@ server = MCPServer(
         "Canada) is almost certainly damaged even when the ad says 'bezwypadkowy': look for the auction "
         "(Copart, IAAI), repair photos, the ad's history and the CEPiK events, and propose a damage history "
         "entry with what you found. Polish plates only: CEPiK does not know cars on foreign plates. "
-        "Every car left uncertain gets a note on the 'Do sprawdzenia' page (add_review_note): what is known, "
+        "Every car left uncertain gets a note on the Weryfikacja page (add_review_note): what is known, "
         "what is missing, where to look; propose them with the batch like any other change, and check "
         "list_review_notes first so as not to repeat one. Talk to the user in Polish."
     ),
@@ -178,29 +177,27 @@ def check_plate_in_cepik(card_id: int, plate: str, first_registration_date: str)
     the plate, the report is saved and the car takes that date. A miss is remembered, so the same pair
     is not asked again; it means the plate, the date or both are wrong (or the car is not registered in
     Poland)."""
-    global _cepik
-    from scripts.fetch_cepik import CepikClient, record_plate_check
+    from scripts.fetch_cepik import CepikClient
+
+    def client():
+        global _cepik
+        _cepik = _cepik or CepikClient()
+        return _cepik
 
     plate = normalize_plate(plate)
-    if not plate_kind(plate):
-        return f"{plate} nie jest polską tablicą: CEPiK zna tylko auta zarejestrowane w Polsce."
-    if not is_valid_first_registration_date(first_registration_date):
-        return "Niepoprawna data: RRRR-MM-DD, od 1980, nie z przyszłości."
     conn = _db()
     try:
-        card = conn.execute("SELECT id, vin, status FROM plate_review_queue WHERE id = ?", (card_id,)).fetchone()
-        if not card or card["status"] != "pending":
-            return f"Karta {card_id} nie czeka na weryfikację."
-        if conn.execute("SELECT 1 FROM cepik_plate_checks WHERE vin = ? AND plate = ? AND first_registration_date = ?",
-                        (card["vin"], plate, first_registration_date)).fetchone():
-            return f"{plate} z datą {first_registration_date} było już sprawdzane dla tego auta: CEPiK go nie znalazł."
-        _cepik = _cepik or CepikClient()
-        report = _cepik.fetch_vehicle_data(card["vin"], plate, first_registration_date)
-        outcome = record_plate_check(conn, {"card_id": card_id, "vin": card["vin"], "plate": plate,
-                                            "first_registration_date": first_registration_date},
-                                     report, _cepik.last_status)
+        outcome, report = check_card_in_cepik(conn, card_id, plate, first_registration_date, client)
     finally:
         conn.close()
+    if outcome == "bad_plate":
+        return f"{plate} nie jest polską tablicą: CEPiK zna tylko auta zarejestrowane w Polsce."
+    if outcome == "bad_date":
+        return "Niepoprawna data: RRRR-MM-DD, od 1980, nie z przyszłości."
+    if outcome == "not_pending":
+        return f"Karta {card_id} nie czeka na weryfikację."
+    if outcome == "asked":
+        return f"{plate} z datą {first_registration_date} było już sprawdzane dla tego auta: CEPiK go nie znalazł."
     if outcome == "confirmed":
         return json.dumps({"outcome": "Potwierdzone przez CEPiK: karta zatwierdzona, raport zapisany.",
                            "report": {k: report.get(k) for k in (
@@ -495,7 +492,7 @@ def _car_vin(conn, key):
 
 @server.tool(annotations=READ)
 def list_review_notes(resolved: bool = False) -> str:
-    """The notes on the 'Do sprawdzenia' page (/review/notes): open ones oldest first, or with
+    """The review notes (shown on the Weryfikacja page, /verify, and the car's page): open ones oldest first, or with
     resolved=true the latest the user ticked off."""
     conn = _db()
     try:
@@ -509,7 +506,7 @@ def list_review_notes(resolved: bool = False) -> str:
 
 @server.tool(annotations=WRITE)
 def add_review_note(car: str, topic: str, note: str, ad_url: str = "") -> str:
-    """Put a car the review left uncertain on the 'Do sprawdzenia' page for the user to check by hand.
+    """Put a car the review left uncertain on the Weryfikacja page for the user to check by hand.
     `car`: its VIN or ID (#123). `topic`: plate, date, damage, origin, vin or other. `note`, in Polish:
     what is known (what the photos show, what CEPiK answered and when), what is missing and where to look.
     `ad_url`: the ad that shows it. A car has one open note per topic: a new one replaces its text.
@@ -522,7 +519,7 @@ def add_review_note(car: str, topic: str, note: str, ad_url: str = "") -> str:
         error = verification.add_review_note(conn, vin, topic, note, ad_url)
     finally:
         conn.close()
-    return error or "Zapisano na stronie „Do sprawdzenia”."
+    return error or "Zapisano na stronie „Weryfikacja”."
 
 
 if __name__ == "__main__":

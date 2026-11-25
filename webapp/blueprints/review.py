@@ -5,7 +5,7 @@ from db import get_db, make_placeholder_vin
 from webapp.helpers import damage_reason_sql, is_plausible_vin
 from webapp.services import verification
 from webapp.services.listings import _approve_listing
-from validation import MARKETS
+from validation import MARKETS, ORIGIN_UNKNOWN
 
 bp = Blueprint("review", __name__)
 
@@ -57,7 +57,6 @@ def review_queue():
 # ORIGIN REVIEW: cars whose stored origin market and Bielik's disagree
 # ─────────────────────────────────────────────────────────────────────────────
 
-ORIGIN_UNKNOWN = "nieznany"
 
 
 def _origin_conflict_count(conn):
@@ -107,14 +106,29 @@ def decide_origin(conn, vin, market):
     return None, 200
 
 
+@bp.route("/verify")
+def verify():
+    """Weryfikacja: every car with something left to check, one row per car (?issue= one of
+    verification.VERIFY_ISSUES, default what reviews left open; ?q= car ID, VIN or plate). Plates,
+    CEPiK lookups, origin decisions and notes are handled in the row or on the car's page."""
+    issue = request.args.get("issue", "open")
+    issue = issue if issue in verification.VERIFY_ISSUES else "open"
+    q = request.args.get("q", "").strip()
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+    conn = get_db()
+    counts = verification.verify_counts(conn)
+    cars, total = verification.verify_cars(conn, issue, q, page)
+    conn.close()
+    pages = max((total + verification.VERIFY_PER_PAGE - 1) // verification.VERIFY_PER_PAGE, 1)
+    return render_template("verify.html", cars=cars, total=total, counts=counts, issue=issue, q=q, page=page,
+                           pages=pages, issues=verification.VERIFY_ISSUES, topics=verification.NOTE_TOPICS,
+                           markets=MARKETS, unknown=ORIGIN_UNKNOWN)
+
+
 @bp.route("/review/origins")
 def review_origins():
-    conn = get_db()
-    cars, ads = origin_conflicts(conn)
-    notes_open = verification.open_note_count(conn)
-    conn.close()
-    return render_template("review_origins.html", cars=cars, ads=ads, markets=MARKETS, unknown=ORIGIN_UNKNOWN,
-                           notes_open=notes_open)
+    """The origin conflicts are a filter of the Weryfikacja page now."""
+    return redirect(url_for("review.verify", issue="origin"), 301)
 
 
 @bp.route("/review/origins/<vin>", methods=["POST"])
@@ -131,21 +145,18 @@ def review_origin_decide(vin):
         # The card is swapped out; the counter is updated out of band
         return f'<span class="badge bg-warning text-dark" id="origin-conflict-count" hx-swap-oob="true">{left}</span>'
     flash(f"Zapisano rynek: {market}.", "success")
-    return redirect(url_for("review.review_origins"))
+    return redirect(request.referrer or url_for("review.verify", issue="origin"))
 
 
 @bp.route("/review/notes")
 def review_notes():
-    """"Do sprawdzenia": cars a review left uncertain (?status=resolved: the latest ticked off). Its
-    other tab is the origin conflicts (/review/origins)."""
-    resolved = request.args.get("status") == "resolved"
+    """The notes ticked off lately (?status=resolved); the open ones are on the Weryfikacja page."""
+    if request.args.get("status") != "resolved":
+        return redirect(url_for("review.verify", issue="notes"), 301)
     conn = get_db()
-    notes = verification.review_notes(conn, resolved=resolved)
-    notes_open = len(notes) if not resolved else verification.open_note_count(conn)
-    origins = _origin_conflict_count(conn)
+    notes = verification.review_notes(conn, resolved=True)
     conn.close()
-    return render_template("review_notes.html", notes=notes, resolved=resolved, topics=verification.NOTE_TOPICS,
-                           notes_open=notes_open, origin_conflicts=origins)
+    return render_template("review_notes.html", notes=notes, resolved=True, topics=verification.NOTE_TOPICS)
 
 
 @bp.route("/review/notes/<int:note_id>", methods=["POST"])
@@ -158,7 +169,7 @@ def review_note_resolve(note_id):
         return error, 409
     if request.headers.get("HX-Request"):
         return ""   # the card is swapped out
-    return redirect(url_for("review.review_notes"))
+    return redirect(request.referrer or url_for("review.verify", issue="notes"))
 
 
 @bp.route("/review/<int:pid>")

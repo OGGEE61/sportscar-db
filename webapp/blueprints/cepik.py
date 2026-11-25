@@ -1,7 +1,7 @@
 import json
 import re
 
-from flask import Blueprint, jsonify, redirect, render_template, request
+from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 from db import get_db
 from validation import is_valid_first_registration_date, is_valid_registration_plate
 from webapp.services.plates import normalize_plate
@@ -14,46 +14,13 @@ bp = Blueprint("cepik", __name__)
 # CEPIK & HISTORIAPOJAZDU (GOV.PL) DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _fix_candidates(conn, q=""):
-    """Vehicles without a CEPiK report whose plate/date need a human correction:
-    CEPiK did not find them, or the stored plate/date fails validation."""
-    where = ["v.vin NOT IN (SELECT vin FROM cepik_reports)",
-             "(COALESCE(v.registration_plate, '') != '' OR COALESCE(v.first_registration_date, p.first_registration_date, '') != '')"]
-    params = []
-    if q:
-        where.append("(v.vin LIKE ? OR v.registration_plate LIKE ? OR v.make LIKE ? OR v.model LIKE ?)")
-        params.extend([f"%{q}%"] * 4)
-    rows = conn.execute(f"""
-        SELECT v.vin, v.make, v.model, v.year, v.registration_plate,
-               COALESCE(v.first_registration_date, p.first_registration_date) AS first_registration_date,
-               (SELECT l.status FROM cepik_sync_log l WHERE l.vin = v.vin ORDER BY l.attempted_at DESC LIMIT 1) AS last_sync_status,
-               (SELECT l.message FROM cepik_sync_log l WHERE l.vin = v.vin ORDER BY l.attempted_at DESC LIMIT 1) AS last_sync_message
-        FROM vehicles v
-        LEFT JOIN pending_listings p ON p.vin = v.vin
-        WHERE {' AND '.join(where)}
-        GROUP BY v.vin
-        ORDER BY v.updated_at DESC
-    """, tuple(params)).fetchall()
-    items = []
-    for r in rows:
-        d = dict(r)
-        problems = []
-        if d["last_sync_status"] == "not_found":
-            problems.append("CEPiK nie znalazł rekordu")
-        if d["registration_plate"] and not is_valid_registration_plate(d["registration_plate"]):
-            problems.append("Niepoprawna tablica")
-        if d["first_registration_date"] and not is_valid_first_registration_date(d["first_registration_date"]):
-            problems.append("Niepoprawna data 1. rejestracji")
-        if problems:
-            d["problems"] = problems
-            items.append(d)
-    return items
-
-
 @bp.route("/cepik")
 def cepik_dashboard():
     conn = get_db()
     tab = request.args.get("tab", "all")
+    if tab == "fix":   # cars CEPiK did not find are a filter of the Weryfikacja page now
+        conn.close()
+        return redirect(url_for("review.verify", issue="cepik"), 301)
     q = request.args.get("q", "").strip()
 
     # Consolidated stats
@@ -91,10 +58,6 @@ def cepik_dashboard():
     stats["missing_count"] = missing_count
     stats["eligible_count"] = stats["total_reports"] + missing_count
 
-    # Computed once (it was twice per page view): the full list gives the count, a search filters it
-    all_fix = _fix_candidates(conn, "")
-    fix_items = _fix_candidates(conn, q) if tab == "fix" and q else all_fix
-    stats["fix_count"] = len(all_fix)
 
     reports = []
     missing_items = []
@@ -176,8 +139,6 @@ def cepik_dashboard():
         raw_rows = conn.execute(query, tuple(params)).fetchall()
         missing_items = [dict(r) for r in raw_rows]
 
-    elif tab == "fix":
-        pass  # fix_items already loaded above
 
     elif tab == "log":
         where_clauses = ["1=1"]
@@ -206,7 +167,6 @@ def cepik_dashboard():
         stats=stats,
         reports=reports,
         missing_items=missing_items,
-        fix_items=fix_items,
         sync_logs=sync_logs,
     )
 

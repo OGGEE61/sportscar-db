@@ -1,4 +1,4 @@
-"""The 'Do sprawdzenia' page (/review/notes): notes on cars a review left uncertain, added through the
+"""Review notes on cars a review left uncertain (shown on /verify and the car's page), added through the
 review MCP server and ticked off on the page."""
 import os
 import sys
@@ -51,17 +51,22 @@ class TestReviewNotes(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_notes_and_origin_conflicts_are_tabs_of_one_page(self):
+    def test_the_verify_page_lists_each_car_once_with_all_that_is_open(self):
         conn = db.get_db()
         verification.add_review_note(conn, CAR, "plate", "SK1K663, CEPiK: brak")
-        conn.execute("UPDATE vehicles SET ai_conflict = 1 WHERE vin = ?", (OTHER,))
+        verification.add_review_note(conn, CAR, "date", "Brak daty z pola B")
+        conn.execute("UPDATE vehicles SET ai_conflict = 1, origin_market = 'Polska', ai_suggested_market = 'USA' WHERE vin = ?", (OTHER,))
         conn.commit()
         conn.close()
-        for url in ("/review/notes", "/review/origins"):
-            page = self.client.get(url).get_data(as_text=True)
-            self.assertIn("<h2 class=\"mb-0\">Do sprawdzenia</h2>", page)
-            self.assertIn('Notatki <span class="badge bg-secondary">1</span>', page)
-            self.assertIn('id="origin-conflict-count">1</span>', page)
+        page = self.client.get("/verify").get_data(as_text=True)
+        self.assertEqual(page.count(f'id="car-{CAR}"'), 1)
+        self.assertIn("2 notatki", page)
+        self.assertIn("Bielik ma rację: USA", page)
+        self.assertIn('Notatki <span class="badge bg-secondary">1</span>', page)
+        self.assertIn('id="origin-conflict-count">1</span>', page)
+        found = self.client.get(f"/verify?q=%23{self.car_id}").get_data(as_text=True)
+        self.assertIn(CAR, found)
+        self.assertNotIn(f'id="car-{OTHER}"', found)
 
     def test_the_mcp_server_notes_a_car_by_its_id_and_a_second_note_replaces_the_first(self):
         self.assertIn("Zapisano", mcp_server.add_review_note(f"#{self.car_id}", "plate", "SK1K663, CEPiK: brak", AD))
@@ -81,7 +86,8 @@ class TestReviewNotes(unittest.TestCase):
 
     def test_the_page_lists_open_notes_and_ticking_one_off_moves_it(self):
         mcp_server.add_review_note(CAR, "plate", "Tablica SK1K663 wyraźna", AD)
-        page = self.client.get("/review/notes").get_data(as_text=True)
+        self.assertEqual(self.client.get("/review/notes").headers["Location"], "/verify?issue=notes")
+        page = self.client.get("/verify?issue=notes").get_data(as_text=True)
         self.assertIn(f"#{self.car_id}", page)
         self.assertIn("Tablica SK1K663 wyraźna", page)
         self.assertIn(f'href="/vehicle/{CAR}"', page)
@@ -91,7 +97,7 @@ class TestReviewNotes(unittest.TestCase):
         res = self.client.post(f"/review/notes/{note_id}", data={"resolved": "1"}, headers={"HX-Request": "true"})
         self.assertEqual(res.status_code, 200)
         self.assertEqual(self.notes(), [])
-        self.assertNotIn("SK1K663", self.client.get("/review/notes").get_data(as_text=True))
+        self.assertNotIn("SK1K663", self.client.get("/verify?issue=notes").get_data(as_text=True))
         self.assertIn("SK1K663", self.client.get("/review/notes?status=resolved").get_data(as_text=True))
 
         # A new note on the same topic opens; the old one cannot be reopened next to it

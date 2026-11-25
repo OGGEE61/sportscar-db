@@ -55,7 +55,8 @@ class TestOriginReview(unittest.TestCase):
         return row
 
     def test_the_page_lists_only_flagged_cars_with_their_ads(self):
-        page = self.client.get("/review/origins").get_data(as_text=True)
+        self.assertEqual(self.client.get("/review/origins").headers["Location"], "/verify?issue=origin")
+        page = self.client.get("/verify?issue=origin").get_data(as_text=True)
         self.assertIn(FLAGGED, page)
         self.assertNotIn(CALM, page)
         self.assertIn("Sprowadzony z USA, aukcja Copart", page)

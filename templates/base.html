@@ -42,7 +42,7 @@
         {#- The work pages (approving ads, checking cars, plates, CEPiK) share one menu -#}
         {%- set review_pages = [
               ("/review", "bi-inbox", "Kolejka", request.path.startswith("/review") and not request.path.startswith(("/review/notes", "/review/origins")), ""),
-              ("/review/notes", "bi-clipboard-check", "Do sprawdzenia", request.path.startswith(("/review/notes", "/review/origins")), ""),
+              ("/verify", "bi-clipboard-check", "Weryfikacja", request.path.startswith(("/verify", "/review/notes", "/review/origins")), ""),
               ("/plates", "bi-camera", "Tablice", request.path.startswith("/plates"), "plates"),
               ("/cepik", "bi-shield-check", "CEPiK", request.path.startswith("/cepik"), "")] %}
         {%- set review_active = review_pages|selectattr(3)|list|length > 0 %}

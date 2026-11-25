@@ -10,8 +10,9 @@ from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WR
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services import verification
 from webapp.services.photos import store_photo
-from webapp.services.plates import card_plates, normalize_plate, plate_card_hints, plate_check_plan
-from validation import MIN_FIRST_REGISTRATION_YEAR, OVERSEAS_ORIGINS
+from webapp.services.plates import (card_plates, check_card_in_cepik, normalize_plate, plate_card_hints,
+                                    plate_check_plan)
+from validation import MARKETS, MIN_FIRST_REGISTRATION_YEAR, ORIGIN_UNKNOWN, OVERSEAS_ORIGINS
 
 bp = Blueprint("vehicles", __name__)
 
@@ -278,9 +279,37 @@ def to_check_context(conn, vin, message=None, ok=True, needs_force=False):
         reading = normalize_plate(card["detected_plate"])
         card["hints"] = plate_card_hints(plan) if plan else []
         card["checks_left"] = len(plan["todo"]) if plan else 0
-        card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [reading])[0]
-    return {"vin": vin, "card": card, "notes": verification.review_notes(conn, vin=vin),
+        # Only a reading that can be a Polish plate is offered; a junk one (a dealer badge) leaves the field empty
+        card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [""])[0]
+        card["date"] = (plan["dates"][:1] or [""])[0] if plan else ""
+    # Bielik disagreeing with the stored origin market: decided here as on the Weryfikacja page
+    origin = conn.execute("""
+        SELECT vin, origin_market, ai_suggested_market, ai_reasoning FROM vehicles WHERE vin = ? AND ai_conflict = 1
+    """, (vin,)).fetchone()
+    return {"vin": vin, "card": card, "notes": verification.review_notes(conn, vin=vin), "origin": origin,
+            "markets": MARKETS, "unknown": ORIGIN_UNKNOWN,
             "topics": verification.NOTE_TOPICS, "message": message, "ok": ok, "needs_force": needs_force}
+
+
+CEPIK_CHECK_MESSAGES = {
+    "confirmed": ("CEPiK potwierdził auto: tablica zatwierdzona, raport zapisany.", True),
+    "not_found": ("CEPiK nie zna auta z tą tablicą i datą (zapamiętane). Sprawdź datę z pola B dowodu.", False),
+    "other_car": ("CEPiK zwrócił inne auto niż to: tablica albo data się nie zgadza.", False),
+    "error": ("CEPiK nie odpowiedział. Spróbuj za chwilę.", False),
+    "gone": ("Karta została w międzyczasie rozpatrzona.", False),
+    "bad_plate": ("To nie jest polska tablica: CEPiK zna tylko auta zarejestrowane w Polsce.", False),
+    "bad_date": ("Podaj dokładną datę pierwszej rejestracji (pole B dowodu).", False),
+    "not_pending": ("Ta karta nie czeka już na weryfikację.", False),
+    "asked": ("Ta tablica z tą datą była już sprawdzana: CEPiK jej nie znalazł.", False),
+}
+
+
+def cepik_card_check(conn, card_id, plate, first_registration_date):
+    """Ask CEPiK about the car's plate card from its page; returns the panel's message and whether it
+    went well."""
+    from scripts.fetch_cepik import CepikClient
+    outcome, _ = check_card_in_cepik(conn, card_id, plate, first_registration_date, CepikClient)
+    return CEPIK_CHECK_MESSAGES[outcome]
 
 
 @bp.route("/vehicle/<path:vin>/to_check")
@@ -304,6 +333,11 @@ def vehicle_plate_card(vin):
         row = conn.execute("SELECT vin FROM plate_review_queue WHERE id = ?", (card_id,)).fetchone()
         if not row or row["vin"] != vin:
             return "Ta karta nie należy do tego auta", 400
+        if request.form.get("action") == "cepik":
+            message, ok = cepik_card_check(conn, card_id, request.form.get("plate"),
+                                           request.form.get("first_registration_date", "").strip())
+            invalidate_notifications()
+            return render_template("_vehicle_to_check.html", **to_check_context(conn, vin, message=message, ok=ok))
         payload, status = review_card(conn, card_id, request.form.get("action"), request.form.get("plate"),
                                       request.form.get("force") == "1")
         invalidate_notifications()
