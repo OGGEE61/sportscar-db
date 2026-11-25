@@ -2,50 +2,129 @@
 {% from "_car_flags.html" import vin_block %}
 {% from "_location.html" import location_cell %}
 {% from "_source.html" import source_badge %}
-{% block title %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
+{% macro num(n) %}{{ "{:,.0f}".format(n).replace(",", " ") }}{% endmacro %}
+{% block title %}{% if vehicle.car_id %}#{{ vehicle.car_id }} {% endif %}{{ vehicle.make }} {{ vehicle.model }} – SportsCar DB{% endblock %}
 {% block head %}
 <style>
-  .photo-strip { display:flex; gap:8px; overflow-x:auto; padding-bottom:8px; }
-  .photo-strip img { height:160px; width:240px; object-fit:cover; border-radius:6px;
-                     cursor:pointer; flex-shrink:0; transition:opacity .15s; }
-  .photo-strip img:hover { opacity:.85; }
-  .raw-desc    { white-space:pre-wrap; font-size:.85rem; max-height:220px;
-                 overflow-y:auto; background:#f8f9fa; padding:12px;
-                 border-radius:6px; border:1px solid #dee2e6; }
+  .vehicle-hero { display:flex; gap:1.5rem; flex-wrap:wrap; background:var(--bg-surface);
+                  border:1px solid var(--border-default); border-radius:14px; padding:1.25rem; box-shadow:var(--shadow-sm); }
+  .vehicle-hero-photo { width:300px; max-width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:10px;
+                        flex-shrink:0; background:var(--bg-subtle); cursor:zoom-in; }
+  .vehicle-hero-body { flex:1 1 360px; min-width:0; display:flex; flex-direction:column; gap:.75rem; }
+  .vehicle-eyebrow { font-size:.8rem; color:var(--text-muted); font-weight:500; }
+  .vehicle-eyebrow .car-id { font-weight:700; color:var(--text-primary); }
+  .vehicle-title { font-size:1.75rem; font-weight:700; margin:0; letter-spacing:-.01em; }
+  .vehicle-title .variant { color:var(--text-muted); font-weight:500; font-size:1.25rem; }
+  .spec-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.5rem; }
+  .spec-chip { background:var(--bg-subtle); border:1px solid var(--border-default); border-radius:999px;
+               padding:.15rem .6rem; font-size:.78rem; color:var(--text-secondary); white-space:nowrap; }
+  .spec-chip i { color:var(--text-faint); margin-right:.25rem; }
+  .vehicle-price { text-align:right; }
+  .vehicle-price .price { font-size:1.6rem; font-weight:700; line-height:1.1; }
+  .vehicle-price .price-was { font-size:.8rem; color:var(--text-muted); }
+  .vehicle-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-top:auto;
+                     padding-top:.75rem; border-top:1px solid var(--border-subtle); }
+  .vehicle-actions .status-select { padding:.15rem 1.8rem .15rem .6rem; font-size:.8rem; font-weight:600; border:none; width:auto; }
+  @media (max-width: 767px) { .vehicle-price { text-align:left; } .vehicle-hero-photo { width:100%; } }
+
+  .gallery-main { width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:10px; cursor:zoom-in; background:var(--bg-subtle); }
+  .gallery-thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px; margin-top:6px; }
+  .gallery-thumbs img { width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:6px; cursor:pointer;
+                        opacity:.75; border:2px solid transparent; transition:opacity .15s; }
+  .gallery-thumbs img:hover, .gallery-thumbs img.active { opacity:1; border-color:var(--primary); }
+  .raw-desc { white-space:pre-wrap; font-size:.85rem; max-height:260px; overflow-y:auto; background:var(--bg-subtle);
+              padding:12px; border-radius:8px; border:1px solid var(--border-default); }
+  .raw-desc.expanded { max-height:none; }
   .section-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.08em;
                    color:#6c757d; font-weight:600; margin-bottom:.5rem; }
+
+  .facts { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:.9rem 1.25rem; }
+  .facts .label { font-size:.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+  .facts .value { font-weight:500; }
+
+  .to-check-card { border-color:#fcd34d !important; }
+  .to-check-card .card-header { background:var(--warning-light) !important; color:var(--warning-text); }
+  .to-check-item + .to-check-item { border-top:1px solid var(--border-subtle); margin-top:1rem; padding-top:1rem; }
+  .to-check-crop { max-height:70px; max-width:200px; object-fit:contain; border-radius:6px; border:1px solid var(--border-default);
+                   background:#fff; padding:3px; }
+  .to-check-photo { width:120px; aspect-ratio:3/2; object-fit:cover; border-radius:6px; }
+  .plate-input { width:9.5rem; text-transform:uppercase; }
+
+  .ad-item + .ad-item { border-top:1px solid var(--border-subtle); }
+  .ad-item.removed { background:var(--bg-app); }
+  .ad-item.removed .ad-price { color:var(--text-muted); }
+  .ad-price { font-size:1.15rem; font-weight:700; }
+  .ad-meta { font-size:.8rem; color:var(--text-muted); }
+  .ad-item details summary { font-size:.8rem; color:var(--primary); cursor:pointer; }
+
+  .more-actions > summary { list-style:none; cursor:pointer; color:var(--text-secondary); font-weight:600; font-size:.9rem; }
+  .more-actions > summary::-webkit-details-marker { display:none; }
+  .more-actions[open] > summary .bi-chevron-down { transform:rotate(180deg); }
+  .danger-zone .card-header { color:var(--danger-text); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 vehicle-header">
-  <div class="d-flex flex-wrap gap-3 align-items-start min-w-0">
-    {% if vehicle.photo %}
-    <img src="{{ media_url(vehicle.photo) }}" alt="zdjęcie" class="vehicle-hero-img"
-         style="width:160px;height:110px;object-fit:cover;border-radius:6px;flex-shrink:0;">
-    {% endif %}
-    <div>
-      <h2 class="mb-1">{{ vehicle.make }} {{ vehicle.model }}
-        {% if vehicle.variant %}<small class="text-muted fs-5">{{ vehicle.variant }}</small>{% endif %}
-      </h2>
-      <div class="d-flex flex-wrap align-items-end gap-2">
-        {{ vin_block(vehicle, vehicle.vin, link=False) }}
-        {% if damage_reports %}<a href="#history" class="small mb-1">szczegóły szkody</a>{% endif %}
+{% set cur = ads[0] if ads else None %}
+{% set hero_photo = media_url(vehicle.photo) if vehicle.photo else (photos[0] if photos else None) %}
+<div class="vehicle-hero mb-3">
+  {% if hero_photo %}
+  <img src="{{ hero_photo }}" alt="Zdjęcie auta" class="vehicle-hero-photo" onclick="window.open(this.src, '_blank')"
+       onerror="this.style.display='none'">
+  {% endif %}
+  <div class="vehicle-hero-body">
+    <div class="d-flex flex-wrap justify-content-between gap-3">
+      <div class="min-w-0">
+        <div class="vehicle-eyebrow">
+          {{ vehicle.year or 'rocznik ?' }}{% if vehicle.body_type %} · {{ vehicle.body_type }}{% endif %}
+        </div>
+        <h1 class="vehicle-title">{{ vehicle.make }} {{ vehicle.model }}{% if vehicle.variant %} <span class="variant">{{ vehicle.variant }}</span>{% endif %}</h1>
+        <div class="spec-chips">
+          {% if vehicle.power_hp %}<span class="spec-chip"><i class="bi bi-speedometer2"></i>{{ vehicle.power_hp }} KM</span>{% endif %}
+          {% if vehicle.engine_cc %}<span class="spec-chip"><i class="bi bi-gear-wide-connected"></i>{{ num(vehicle.engine_cc) }} cm³{% if vehicle.engine_cyl %} · {{ vehicle.engine_cyl }} cyl.{% endif %}</span>{% endif %}
+          {% if vehicle.transmission %}<span class="spec-chip"><i class="bi bi-diagram-3"></i>{{ {'automatic': 'automat', 'manual': 'manual'}.get(vehicle.transmission, vehicle.transmission) }}</span>{% endif %}
+          {% if vehicle.drivetrain %}<span class="spec-chip"><i class="bi bi-arrows-move"></i>{{ vehicle.drivetrain }}</span>{% endif %}
+          {% if vehicle.color_ext %}<span class="spec-chip"><i class="bi bi-palette"></i>{{ vehicle.color_ext }}</span>{% endif %}
+          {% if vehicle.first_registration_date %}<span class="spec-chip" title="Pierwsza rejestracja"><i class="bi bi-calendar-event"></i>{{ vehicle.first_registration_date }}</span>{% endif %}
+        </div>
       </div>
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status" class="d-inline-block ms-2">
-        <select name="vin_status" class="form-select form-select-sm d-inline-block w-auto fw-bold
+      {% if cur and cur.price %}
+      <div class="vehicle-price">
+        <div class="price">{{ num(cur.price) }} zł</div>
+        {% if cur.first_price and cur.first_price != cur.price %}
+        <div class="price-was">na początku {{ num(cur.first_price) }} zł
+          ({{ "{:+.1f}".format((cur.price - cur.first_price) / cur.first_price * 100) }}%)</div>
+        {% endif %}
+        <div class="small text-muted mt-1">
+          {% if cur.newest.mileage_km %}{{ num(cur.newest.mileage_km) }} km{% endif %}
+          {% if cur.newest.location_city %} · {{ cur.newest.location_city }}{% endif %}
+        </div>
+        <div class="small mt-1">
+          {{ source_badge(cur.source) }}
+          {% if cur.url %}<a href="{{ cur.url }}" target="_blank" rel="noopener">ogłoszenie <i class="bi bi-box-arrow-up-right"></i></a>{% endif %}
+          <div class="text-muted">{% if cur.removed_at %}zniknęło {{ cur.removed_at }}{% else %}aktywne od {{ cur.first_seen }}{% endif %}</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="d-flex flex-wrap align-items-end gap-2">
+      {{ vin_block(vehicle, vehicle.vin, link=False) }}
+      {% if damage_reports %}<a href="#history" class="small mb-1 text-danger">szczegóły szkody</a>{% endif %}
+    </div>
+    <div class="vehicle-actions">
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/update_status">
+        <select name="vin_status" aria-label="Status VIN-u" class="form-select form-select-sm status-select
             {% if vehicle.vin_status == 'verified' %}bg-success text-white
             {% elif vehicle.vin_status == 'placeholder' %}bg-warning text-dark
             {% else %}bg-secondary text-white{% endif %}"
-            style="padding-top:2px; padding-bottom:2px; border:none;"
             onchange="this.form.submit()">
-          <option value="unverified" class="bg-white text-dark" {% if vehicle.vin_status == 'unverified' %}selected{% endif %}>niezweryfikowany</option>
-          <option value="verified" class="bg-white text-dark" {% if vehicle.vin_status == 'verified' %}selected{% endif %}>zweryfikowany</option>
-          <option value="placeholder" class="bg-white text-dark" {% if vehicle.vin_status == 'placeholder' %}selected{% endif %}>tymczasowy</option>
+          <option value="unverified" class="bg-white text-dark" {% if vehicle.vin_status == 'unverified' %}selected{% endif %}>VIN niezweryfikowany</option>
+          <option value="verified" class="bg-white text-dark" {% if vehicle.vin_status == 'verified' %}selected{% endif %}>VIN zweryfikowany</option>
+          <option value="placeholder" class="bg-white text-dark" {% if vehicle.vin_status == 'placeholder' %}selected{% endif %}>VIN tymczasowy</option>
         </select>
       </form>
       {# Plate, first registration date, origin and damage checked by hand (or with the review MCP server) #}
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/data_checked" class="d-inline-block ms-2">
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/data_checked">
         {% if vehicle.data_checked_at %}
         <input type="hidden" name="checked" value="0">
         <span class="badge bg-success" title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia sprawdzone {{ vehicle.data_checked_at[:10] }}">
@@ -58,9 +137,9 @@
           <i class="bi bi-check2 me-1"></i>Oznacz dane jako sprawdzone</button>
         {% endif %}
       </form>
+      <a href="/vehicles" class="btn btn-outline-secondary btn-sm ms-auto"><i class="bi bi-arrow-left"></i> Baza VIN-ów</a>
     </div>
   </div>
-  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Wróć</a>
 </div>
 {% if wrong_model %}
 <div class="alert alert-warning py-2">
@@ -73,19 +152,27 @@
   <div class="col-lg-5">
     {% if photos %}
     <div class="section-label">Zdjęcia ({{ photos|length }})</div>
-    <div class="photo-strip mb-3">
-      {% for url in photos %}
-      <img src="{{ url }}" alt="Zdjęcie {{ loop.index }}"
-           onclick="window.open('{{ url }}','_blank')"
-           onerror="this.style.display='none'">
-      {% endfor %}
+    <div class="mb-3">
+      <img src="{{ photos[0] }}" alt="Zdjęcie 1" class="gallery-main" id="gallery-main"
+           onclick="window.open(this.src, '_blank')" onerror="this.style.visibility='hidden'">
+      {% if photos|length > 1 %}
+      <div class="gallery-thumbs">
+        {% for url in photos %}
+        <img src="{{ url }}" alt="Zdjęcie {{ loop.index }}" loading="lazy" class="{{ 'active' if loop.first else '' }}"
+             onclick="showPhoto(this)" onerror="this.style.display='none'">
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% endif %}
 
     {% if raw_desc %}
     <div class="section-label">Oryginalny opis</div>
-    <div class="raw-desc mb-3">{{ raw_desc|plain_text }}</div>
+    <div class="raw-desc mb-1" id="raw-desc">{{ raw_desc|plain_text }}</div>
+    <button type="button" class="btn btn-link btn-sm p-0 mb-3"
+            onclick="this.previousElementSibling.classList.toggle('expanded'); this.textContent = this.textContent === 'Pokaż cały opis' ? 'Zwiń opis' : 'Pokaż cały opis'">Pokaż cały opis</button>
     {% endif %}
+
 
     <!-- Podsumowanie przez AI -->
     <div class="section-label mt-3">Podsumowanie przez AI (Bielik)</div>
@@ -148,35 +235,38 @@
 
   <div class="col-lg-7">
 
+<div id="to-check" hx-get="/vehicle/{{ vehicle.vin }}/to_check" hx-trigger="load" hx-swap="outerHTML"></div>
+
 <!-- Vehicle details -->
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span>Dane auta</span>
     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editDetailsModal">
-      Edytuj
+      <i class="bi bi-pencil"></i> Edytuj
     </button>
   </div>
   <div class="card-body">
-    <div class="row g-2">
-      {% set fields = [
-        ("Rok", vehicle.year), ("Nadwozie", vehicle.body_type),
-        ("Pojemność (cm³)", vehicle.engine_cc), ("Cylindry", vehicle.engine_cyl),
-        ("Moc (KM)", vehicle.power_hp), ("Napęd", vehicle.drivetrain),
-        ("Skrzynia biegów", vehicle.transmission), ("Kolor nadwozia", vehicle.color_ext),
-        ("Kolor wnętrza", vehicle.color_int), ("Tablica rej.", vehicle.registration_plate),
-        ("Pierwsza rejestracja", vehicle.first_registration_date), ("Źródło danych", vehicle.source_method),
-        ("Dodano", vehicle.created_at[:16] if vehicle.created_at else None),
-        ("Zmieniono", vehicle.updated_at[:16] if vehicle.updated_at else None),
-      ] %}
+    {% set fields = [
+      ("Rok", vehicle.year), ("Nadwozie", vehicle.body_type),
+      ("Pojemność", (num(vehicle.engine_cc) ~ " cm³") if vehicle.engine_cc else None), ("Cylindry", vehicle.engine_cyl),
+      ("Moc", (vehicle.power_hp ~ " KM") if vehicle.power_hp else None), ("Napęd", vehicle.drivetrain),
+      ("Skrzynia biegów", vehicle.transmission), ("Kolor nadwozia", vehicle.color_ext),
+      ("Kolor wnętrza", vehicle.color_int), ("Tablica rej.", vehicle.registration_plate),
+      ("Pierwsza rejestracja", vehicle.first_registration_date), ("Rynek pochodzenia", vehicle.origin_market),
+      ("Źródło danych", vehicle.source_method),
+      ("Dodano", vehicle.created_at[:10] if vehicle.created_at else None),
+      ("Zmieniono", vehicle.updated_at[:10] if vehicle.updated_at else None),
+    ] %}
+    <div class="facts">
       {% for label, val in fields %}
-      <div class="col-6 col-md-3">
-        <div class="small text-muted">{{ label }}</div>
-        <div>{{ val or '—' }}</div>
+      <div>
+        <div class="label">{{ label }}</div>
+        <div class="value{{ ' font-monospace' if label == 'Tablica rej.' and val else '' }}">{{ val or '—' }}</div>
       </div>
       {% endfor %}
     </div>
     {% if vehicle.notes %}
-    <div class="mt-2"><span class="text-muted small">Notatki:</span> {{ vehicle.notes }}</div>
+    <div class="mt-3"><span class="text-muted small">Notatki:</span> {{ vehicle.notes }}</div>
     {% endif %}
   </div>
 </div>
@@ -210,7 +300,6 @@
     </div>
   </div>
 </div>
-
 
 <!-- Resolve placeholder -->
 {% if vehicle.vin_status == 'placeholder' %}
@@ -360,157 +449,6 @@
   </div>
 </div>
 
-<!-- Tags -->
-<div class="card mb-4">
-  <div class="card-header">Tagi</div>
-  <div class="card-body">
-    {% for t in tags %}
-    {% if t.tag == 'photo extracted' %}
-    <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany ze zdjęcia">
-      <i class="bi bi-camera text-secondary me-1"></i>tablica ze zdjęcia
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
-        <input type="hidden" name="tag" value="{{ t.tag }}">
-        <button type="submit" class="btn-close ms-1"
-                style="font-size:.5rem;vertical-align:middle;"
-                title="Usuń tag" onclick="event.stopPropagation()"></button>
-      </form>
-    </span>
-    {% else %}
-    <span class="badge bg-info text-dark me-1 align-middle">{{ t.tag }}
-      <small class="opacity-75">{{ t.source_method }}</small>
-      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
-        <input type="hidden" name="tag" value="{{ t.tag }}">
-        <button type="submit" class="btn-close btn-close-white ms-1"
-                style="font-size:.5rem;vertical-align:middle;"
-                title="Usuń tag" onclick="event.stopPropagation()"></button>
-      </form>
-    </span>
-    {% endif %}
-    {% endfor %}
-    {% if not vehicle.registration_plate %}
-    <span class="badge bg-warning text-dark me-1 align-middle" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
-    {% endif %}
-    {% if not tags and vehicle.registration_plate %}
-    <span class="text-muted">Brak tagów</span>
-    {% endif %}
-    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
-      <input name="tag" class="form-control form-control-sm" placeholder="Dodaj tag…" style="width:140px;">
-      <button class="btn btn-sm btn-outline-secondary">+</button>
-    </form>
-  </div>
-</div>
-
-<!-- Price timeline chart -->
-{% if price_timeline != '[]' %}
-<div class="card mb-4 shadow-sm">
-  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-    <span class="fw-semibold small text-uppercase text-secondary">Historia cen wg portalu</span>
-    <span id="priceChips" class="d-flex flex-wrap justify-content-end gap-1 small"></span>
-  </div>
-  <div class="card-body py-2 px-3" style="height: 230px; position: relative;">
-    <canvas id="chartPrice"></canvas>
-  </div>
-</div>
-{% endif %}
-
-<!-- Ad groups / observations -->
-<div class="card mb-4">
-  <div class="card-header">Ogłoszenia ({{ ad_groups|length }} + pozostałe obserwacje: {{ ungrouped|length }})</div>
-  <div class="card-body p-0">
-    {% for key, obs_list in ad_groups.items() %}
-    <div class="border-bottom p-3">
-      <div class="fw-semibold mb-2 small text-muted">
-        {{ source_badge(obs_list[0].source) }} Ogłoszenie: <code>{{ obs_list[0].source_listing_id }}</code>
-        {% set url = obs_list[0].source_url if obs_list else None %}
-        {% if url %}
-        <a href="{{ url }}" target="_blank" class="ms-2 text-decoration-none" title="Otwórz ogłoszenie">&#8599;</a>
-        {% endif %}
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead class="table-light"><tr>
-            <th>Zobaczono</th><th>Cena (zł)</th><th>Przebieg</th><th>Miasto</th><th>Tablica rej.</th><th>Sprzedawca</th><th>Zniknęło</th><th></th>
-          </tr></thead>
-          <tbody>
-            {% for o in obs_list %}
-            <tr>
-              <td class="small">{{ o.observed_at[:16] }}</td>
-              <td>{{ "{:,.0f}".format(o.price_pln) if o.price_pln else '—' }}</td>
-              <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
-              <td>{{ location_cell(o.location_city, o.location_region) }}</td>
-              <td>{{ o.registration_plate or '—' }}</td>
-              <td>{{ {'private': 'prywatny', 'dealer': 'dealer'}.get(o.seller_type, o.seller_type) or '—' }}</td>
-              <td>{{ o.removed_at[:10] if o.removed_at else '' }}</td>
-              <td>
-                {% if o.source_url %}
-                <a href="{{ o.source_url }}" target="_blank" class="text-muted text-decoration-none small">&#8599;</a>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {% endfor %}
-    {% if ungrouped %}
-    <div class="p-3">
-      <div class="fw-semibold mb-2 small text-muted">Pozostałe obserwacje</div>
-      <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead class="table-light"><tr>
-            <th>Zobaczono</th><th>Cena (zł)</th><th>Przebieg</th><th>Tablica rej.</th><th>Źródło</th><th>Metoda</th><th></th>
-          </tr></thead>
-          <tbody>
-            {% for o in ungrouped %}
-            <tr>
-              <td class="small">{{ o.observed_at[:16] }}</td>
-              <td>{{ "{:,.0f}".format(o.price_pln) if o.price_pln else '—' }}</td>
-              <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
-              <td>{{ o.registration_plate or '—' }}</td>
-              <td>{{ source_badge(o.source) }}</td>
-              <td><span class="badge bg-secondary">{{ o.source_method }}</span></td>
-              <td>
-                {% if o.source_url %}
-                <a href="{{ o.source_url }}" target="_blank" class="text-muted text-decoration-none small">&#8599;</a>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {% endif %}
-    {% if not ad_groups and not ungrouped %}
-    <p class="text-muted p-3 mb-0">Brak obserwacji.</p>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Add observation -->
-<div class="card mb-4">
-  <div class="card-header">Dodaj obserwację</div>
-  <div class="card-body">
-    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_observation" class="row g-2">
-      <div class="col-md-2"><input name="source" class="form-control" placeholder="Źródło" value="manual"></div>
-      <div class="col-md-2"><input name="source_listing_id" class="form-control" placeholder="ID ogłoszenia"></div>
-      <div class="col-md-3"><input name="source_url" class="form-control" placeholder="URL"></div>
-      <div class="col-md-2"><input name="price_pln" class="form-control" type="number" placeholder="Cena (zł)"></div>
-      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Przebieg (km)"></div>
-      <div class="col-md-2"><input name="location_city" class="form-control" placeholder="Miasto"></div>
-      <div class="col-md-2">
-        <select name="seller_type" class="form-select">
-          <option value="private">Prywatny</option>
-          <option value="dealer">Dealer</option>
-        </select>
-      </div>
-      <div class="col-md-6"><input name="notes" class="form-control" placeholder="Notatki"></div>
-      <div class="col-md-2"><button class="btn btn-outline-primary w-100">Dodaj</button></div>
-    </form>
-  </div>
-</div>
-
 <!-- Condition reports -->
 <div class="card mb-4" id="history">
   <div class="card-header d-flex justify-content-between align-items-center">
@@ -561,7 +499,8 @@
       </tbody>
     </table>
   </div>
-  <div class="card-footer">
+  <details class="card-footer">
+    <summary class="small text-primary mb-2" style="cursor:pointer;"><i class="bi bi-plus-lg"></i> Dodaj wpis</summary>
     <form method="post" action="/vehicle/{{ vehicle.vin }}/add_condition" enctype="multipart/form-data" class="row g-2" id="history-form">
       <div class="col-6 col-md-2"><label class="form-label small mb-0">Data</label><input name="report_date" class="form-control form-control-sm" type="date"></div>
       <div class="col-6 col-md-2"><label class="form-label small mb-0">Bezwypadkowy?</label>
@@ -582,7 +521,7 @@
         <option value="Włochy"><option value="Szwajcaria"><option value="Austria"><option value="USA"><option value="Kanada">
       </datalist>
     </form>
-  </div>
+  </details>
 </div>
 <script>
 // Phone photos are several MB; shrink them in the browser so the upload stays under the 4 MB limit
@@ -604,29 +543,6 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
   } catch (err) { /* keep the original file; the server checks the size */ }
 });
 </script>
-
-<!-- Correction log -->
-{% if corrections %}
-<div class="card mb-4">
-  <div class="card-header">Historia poprawek VIN</div>
-  <div class="table-responsive">
-    <table class="table table-sm mb-0">
-      <thead class="table-light"><tr><th>Data</th><th>Stary VIN</th><th>Nowy VIN</th><th>Powód</th><th>Kto</th></tr></thead>
-      <tbody>
-        {% for c in corrections %}
-        <tr>
-          <td class="small">{{ c.created_at[:16] }}</td>
-          <td class="font-monospace small">{{ c.old_vin }}</td>
-          <td class="font-monospace small">{{ c.new_vin }}</td>
-          <td>{{ c.reason or '—' }}</td>
-          <td>{{ c.corrected_by or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
 
 <!-- Damage mark -->
 {% if damage_marks %}
@@ -658,6 +574,218 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
 </div>
 {% endif %}
 
+<!-- Price timeline chart -->
+{% if price_timeline != '[]' %}
+<div class="card mb-4 shadow-sm">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small text-uppercase text-secondary">Historia cen wg portalu</span>
+    <span id="priceChips" class="d-flex flex-wrap justify-content-end gap-1 small"></span>
+  </div>
+  <div class="card-body py-2 px-3" style="height: 230px; position: relative;">
+    <canvas id="chartPrice"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- Ads: one entry per ad, its sightings collapsed to the changes -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Ogłoszenia</span>
+    <span class="small fw-normal text-muted">{{ ads|length }} {{ 'ogłoszenie' if ads|length == 1 else 'ogłoszeń' if ads|length >= 5 or ads|length == 0 else 'ogłoszenia' }}{% if ungrouped %} · {{ ungrouped|length }} innych obserwacji{% endif %}</span>
+  </div>
+  <div class="card-body p-0">
+    {% for ad in ads %}
+    <div class="ad-item p-3 {{ 'removed' if ad.removed_at else '' }}">
+      <div class="d-flex flex-wrap justify-content-between gap-2">
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            {{ source_badge(ad.source) }}
+            {% if ad.url %}<a href="{{ ad.url }}" target="_blank" rel="noopener" class="small font-monospace">{{ ad.listing_id }} <i class="bi bi-box-arrow-up-right"></i></a>
+            {% else %}<span class="small font-monospace">{{ ad.listing_id }}</span>{% endif %}
+            {% if ad.removed_at %}<span class="badge bg-light text-muted border">zniknęło {{ ad.removed_at }}</span>
+            {% else %}<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">aktywne</span>{% endif %}
+          </div>
+          <div class="ad-meta mt-1">
+            {{ ad.first_seen }} – {{ ad.last_seen }}
+            {% if ad.newest.mileage_km %} · {{ num(ad.newest.mileage_km) }} km{% endif %}
+            {% if ad.newest.location_city %} · {{ ad.newest.location_city }}{% endif %}
+            {% if ad.newest.seller_type %} · {{ {'private': 'prywatny', 'dealer': 'dealer'}.get(ad.newest.seller_type, ad.newest.seller_type) }}{% endif %}
+            {% if ad.newest.registration_plate %} · <span class="font-monospace">{{ ad.newest.registration_plate }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="text-end">
+          <div class="ad-price">{{ num(ad.price) ~ ' zł' if ad.price else '—' }}</div>
+          {% if ad.first_price and ad.price and ad.first_price != ad.price %}
+          <div class="ad-meta">było {{ num(ad.first_price) }} zł</div>
+          {% endif %}
+        </div>
+      </div>
+      {% if ad.changes|length > 1 %}
+      <div class="table-responsive mt-2">
+        <table class="table table-sm mb-0 small">
+          <thead class="table-light"><tr><th>Od</th><th>Cena</th><th>Przebieg</th><th>Tablica</th></tr></thead>
+          <tbody>
+            {% for o in ad.changes %}
+            <tr>
+              <td class="text-nowrap">{{ o.observed_at[:10] }}</td>
+              <td>{{ num(o.price_pln) ~ ' zł' if o.price_pln else '—' }}</td>
+              <td>{{ num(o.mileage_km) ~ ' km' if o.mileage_km else '—' }}</td>
+              <td class="font-monospace">{{ o.registration_plate or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      <details class="mt-2">
+        <summary>Wszystkie obserwacje ({{ ad.observations|length }})</summary>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm mb-0 small">
+            <thead class="table-light"><tr>
+              <th>Zobaczono</th><th>Cena (zł)</th><th>Przebieg</th><th>Miasto</th><th>Tablica rej.</th><th>Sprzedawca</th><th>Zniknęło</th>
+            </tr></thead>
+            <tbody>
+              {% for o in ad.observations %}
+              <tr>
+                <td class="text-nowrap">{{ o.observed_at[:16] }}</td>
+                <td>{{ num(o.price_pln) if o.price_pln else '—' }}</td>
+                <td>{{ num(o.mileage_km) if o.mileage_km else '—' }}</td>
+                <td>{{ location_cell(o.location_city, o.location_region) }}</td>
+                <td>{{ o.registration_plate or '—' }}</td>
+                <td>{{ {'private': 'prywatny', 'dealer': 'dealer'}.get(o.seller_type, o.seller_type) or '—' }}</td>
+                <td>{{ o.removed_at[:10] if o.removed_at else '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+    {% endfor %}
+    {% if ungrouped %}
+    <div class="p-3 border-top">
+      <div class="fw-semibold mb-2 small text-muted">Pozostałe obserwacje</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 small">
+          <thead class="table-light"><tr>
+            <th>Zobaczono</th><th>Cena (zł)</th><th>Przebieg</th><th>Tablica rej.</th><th>Źródło</th><th>Metoda</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for o in ungrouped %}
+            <tr>
+              <td class="text-nowrap">{{ o.observed_at[:16] }}</td>
+              <td>{{ num(o.price_pln) if o.price_pln else '—' }}</td>
+              <td>{{ num(o.mileage_km) if o.mileage_km else '—' }}</td>
+              <td>{{ o.registration_plate or '—' }}</td>
+              <td>{{ source_badge(o.source) }}</td>
+              <td><span class="badge bg-secondary">{{ o.source_method }}</span></td>
+              <td>
+                {% if o.source_url %}
+                <a href="{{ o.source_url }}" target="_blank" class="text-muted text-decoration-none small">&#8599;</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    {% if not ads and not ungrouped %}
+    <p class="text-muted p-3 mb-0">Brak obserwacji.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Tags -->
+<div class="card mb-4">
+  <div class="card-header">Tagi</div>
+  <div class="card-body">
+    {% for t in tags %}
+    {% if t.tag == 'photo extracted' %}
+    <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany ze zdjęcia">
+      <i class="bi bi-camera text-secondary me-1"></i>tablica ze zdjęcia
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
+        <input type="hidden" name="tag" value="{{ t.tag }}">
+        <button type="submit" class="btn-close ms-1"
+                style="font-size:.5rem;vertical-align:middle;"
+                title="Usuń tag" onclick="event.stopPropagation()"></button>
+      </form>
+    </span>
+    {% else %}
+    <span class="badge bg-info text-dark me-1 align-middle">{{ t.tag }}
+      <small class="opacity-75">{{ t.source_method }}</small>
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
+        <input type="hidden" name="tag" value="{{ t.tag }}">
+        <button type="submit" class="btn-close btn-close-white ms-1"
+                style="font-size:.5rem;vertical-align:middle;"
+                title="Usuń tag" onclick="event.stopPropagation()"></button>
+      </form>
+    </span>
+    {% endif %}
+    {% endfor %}
+    {% if not vehicle.registration_plate %}
+    <span class="badge bg-warning text-dark me-1 align-middle" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
+    {% endif %}
+    {% if not tags and vehicle.registration_plate %}
+    <span class="text-muted">Brak tagów</span>
+    {% endif %}
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
+      <input name="tag" class="form-control form-control-sm" placeholder="Dodaj tag…" style="width:140px;">
+      <button class="btn btn-sm btn-outline-secondary">+</button>
+    </form>
+  </div>
+</div>
+
+<!-- Correction log -->
+{% if corrections %}
+<div class="card mb-4">
+  <div class="card-header">Historia poprawek VIN</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Data</th><th>Stary VIN</th><th>Nowy VIN</th><th>Powód</th><th>Kto</th></tr></thead>
+      <tbody>
+        {% for c in corrections %}
+        <tr>
+          <td class="small">{{ c.created_at[:16] }}</td>
+          <td class="font-monospace small">{{ c.old_vin }}</td>
+          <td class="font-monospace small">{{ c.new_vin }}</td>
+          <td>{{ c.reason or '—' }}</td>
+          <td>{{ c.corrected_by or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Rarely used: manual observation, wrong model, delete -->
+<details class="more-actions mb-4" {{ 'open' if wrong_model or request.args.get('delete_error') else '' }}>
+  <summary class="mb-3"><i class="bi bi-three-dots me-1"></i>Więcej akcji <i class="bi bi-chevron-down small"></i></summary>
+<!-- Add observation -->
+<div class="card mb-4">
+  <div class="card-header">Dodaj obserwację</div>
+  <div class="card-body">
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/add_observation" class="row g-2">
+      <div class="col-md-2"><input name="source" class="form-control" placeholder="Źródło" value="manual"></div>
+      <div class="col-md-2"><input name="source_listing_id" class="form-control" placeholder="ID ogłoszenia"></div>
+      <div class="col-md-3"><input name="source_url" class="form-control" placeholder="URL"></div>
+      <div class="col-md-2"><input name="price_pln" class="form-control" type="number" placeholder="Cena (zł)"></div>
+      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Przebieg (km)"></div>
+      <div class="col-md-2"><input name="location_city" class="form-control" placeholder="Miasto"></div>
+      <div class="col-md-2">
+        <select name="seller_type" class="form-select">
+          <option value="private">Prywatny</option>
+          <option value="dealer">Dealer</option>
+        </select>
+      </div>
+      <div class="col-md-6"><input name="notes" class="form-control" placeholder="Notatki"></div>
+      <div class="col-md-2"><button class="btn btn-outline-primary w-100">Dodaj</button></div>
+    </form>
+  </div>
+</div>
+
 <!-- Wrong model -->
 <div class="card mb-4 border-warning" id="wrong-model">
   <div class="card-header bg-warning-subtle">To nie ten model</div>
@@ -686,8 +814,8 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
 </div>
 
 <!-- Delete vehicle -->
-<div class="card mb-4 border-danger">
-  <div class="card-header bg-danger text-white">Usuń auto</div>
+<div class="card mb-4 border-danger danger-zone">
+  <div class="card-header"><i class="bi bi-trash me-1"></i>Usuń auto</div>
   <div class="card-body">
     {% if request.args.get('delete_error') %}
     <div class="alert alert-danger py-1 mb-2">VIN się nie zgadza — auta nie usunięto.</div>
@@ -709,6 +837,7 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
     </form>
   </div>
 </div>
+</details>
 
   </div> <!-- end col-lg-7 -->
 </div> <!-- end row -->
@@ -850,6 +979,16 @@ async function fetchCepik(vin) {
       btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i> Pobierz z CEPiK';
     }
   }
+}
+</script>
+<script>
+function showPhoto(thumb) {
+  const main = document.getElementById('gallery-main');
+  if (!main) return;
+  main.src = thumb.src;
+  main.style.visibility = '';
+  document.querySelectorAll('.gallery-thumbs img.active').forEach(el => el.classList.remove('active'));
+  thumb.classList.add('active');
 }
 </script>
 {% endblock %}

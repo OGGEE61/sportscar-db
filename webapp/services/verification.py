@@ -105,17 +105,18 @@ def add_review_note(conn, vin, topic, note, ad_url=None):
     return None
 
 
-def review_notes(conn, resolved=False, limit=200):
-    """Open notes, oldest first (or the latest resolved ones), each with its car (one query)."""
+def review_notes(conn, resolved=False, limit=200, vin=None):
+    """Open notes, oldest first (or the latest resolved ones), each with its car (one query). With
+    `vin`, only that car's notes (the car's page)."""
     order = "n.resolved_at DESC" if resolved else "n.created_at, n.id"
     return [dict(r) for r in conn.execute(f"""
         SELECT n.id, n.vin, n.topic, n.note, n.ad_url, n.created_at, n.updated_at, n.resolved_at,
                v.car_id, v.make, v.model, v.variant, v.year, v.registration_plate
         FROM review_notes n JOIN vehicles v ON v.vin = n.vin
-        WHERE n.resolved_at IS {'NOT ' if resolved else ''}NULL
+        WHERE n.resolved_at IS {'NOT ' if resolved else ''}NULL {"AND n.vin = ?" if vin else ""}
         ORDER BY {order}
         LIMIT ?
-    """, (limit,)).fetchall()]
+    """, ((vin,) if vin else ()) + (limit,)).fetchall()]
 
 
 def open_note_count(conn):
