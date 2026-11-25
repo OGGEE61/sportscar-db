@@ -3,7 +3,7 @@
 <div id="to-check">
 {% if card or notes or message %}
 <div class="card mb-4 to-check-card">
-  <div class="card-header d-flex justify-content-between align-items-center">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <span><i class="bi bi-clipboard-check me-1"></i>Do sprawdzenia</span>
     <span class="small fw-normal d-flex gap-3">
       {% if card %}<a href="/plates" class="text-decoration-none">Tablice</a>{% endif %}
