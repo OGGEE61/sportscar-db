@@ -233,7 +233,7 @@
               <div class="fw-semibold text-dark">{% if c.car_id %}<span class="car-id" title="ID auta w bazie">#{{ c.car_id }}</span> {% endif %}{{ c.make or 'Pojazd' }} {{ c.model or '' }}</div>
             </td>
             <td>
-              <span class="font-monospace small text-muted">{{ c.vin or '—' }}</span>
+              {% if c.vin %}<a href="/vehicle/{{ c.vin }}" class="font-monospace small text-muted">{{ c.vin }}</a>{% else %}<span class="font-monospace small text-muted">—</span>{% endif %}
             </td>
             <td>
               <span class="text-decoration-line-through text-muted font-monospace">{{ c.detected_plate }}</span>
@@ -291,7 +291,7 @@
         <!-- Card header -->
         <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2 px-3">
           <div class="d-flex align-items-center gap-2">
-            <span class="fw-bold text-dark">{% if c.car_id %}<span class="car-id" title="ID auta w bazie">#{{ c.car_id }}</span> {% endif %}{{ c.make or 'Samochód' }} {{ c.model or '' }}</span>
+            {% if c.vin %}<a href="/vehicle/{{ c.vin }}" class="fw-bold text-dark text-decoration-none" title="Strona auta">{% else %}<span class="fw-bold text-dark">{% endif %}{% if c.car_id %}<span class="car-id" title="ID auta w bazie">#{{ c.car_id }}</span> {% endif %}{{ c.make or 'Samochód' }} {{ c.model or '' }}{% if c.vin %}</a>{% else %}</span>{% endif %}
             {% if c.year %}<span class="badge bg-light text-dark border">{{ c.year }}</span>{% endif %}
           </div>
           <div class="d-flex align-items-center gap-2">
@@ -345,7 +345,7 @@
           <!-- Vehicle info -->
           <div class="d-flex flex-wrap gap-3 text-muted small mb-3">
             {% if c.vin %}
-            <div>VIN: <span class="fw-semibold text-dark font-monospace">{{ c.vin }}</span></div>
+            <div>VIN: <a href="/vehicle/{{ c.vin }}" class="fw-semibold text-dark font-monospace">{{ c.vin }}</a></div>
             {% endif %}
             {% if c.price_pln %}
             <div>Cena: <span class="text-dark">{{ "{:,.0f}".format(c.price_pln).replace(',', ' ') }} zł</span></div>
@@ -445,6 +445,12 @@
                     title="Brak lub błędna tablica{% if c.car_plate %}: usuwa {{ c.car_plate }} z auta{% endif %}">
               <i class="bi bi-x-lg"></i> Odrzuć tablicę
             </button>
+            {% if c.vin %}
+            <a href="/vehicle/{{ c.vin }}" class="btn btn-outline-primary px-3 d-flex align-items-center justify-content-center gap-1"
+               title="Strona auta: ogłoszenia, zdjęcia, historia, wszystko do sprawdzenia przy tym aucie">
+              <i class="bi bi-car-front"></i> Strona auta
+            </a>
+            {% endif %}
           </div>
         </div>
       </div>

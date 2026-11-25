@@ -205,7 +205,9 @@ class TestHints(PlateCheckCase):
         conn = db.get_db()
         car_id = conn.execute("SELECT car_id FROM vehicles WHERE vin = ?", (AD,)).fetchone()[0]
         conn.close()
-        self.assertIn(f"#{car_id}</span>", self.client.get("/plates").get_data(as_text=True))
+        page = self.client.get("/plates").get_data(as_text=True)
+        self.assertIn(f"#{car_id}</span>", page)
+        self.assertGreaterEqual(page.count(f'href="/vehicle/{AD}"'), 2)       # the title and "Strona auta"
         for q in (f"%23{car_id}", str(car_id), AD[-6:], "wa12345"):
             page = self.client.get(f"/plates?q={q}").get_data(as_text=True)
             self.assertIn(AD, page, q)
