@@ -73,6 +73,9 @@
   .more-actions > summary::-webkit-details-marker { display:none; }
   .more-actions[open] > summary .bi-chevron-down { transform:rotate(180deg); }
   .danger-zone .card-header { color:var(--danger-text); }
+  .vin-search { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem;
+                padding:.6rem 1.25rem; font-size:.85rem; border-bottom:1px solid var(--border-subtle); }
+  .vin-search-na { background:var(--warning-light); color:var(--warning-text); }
 </style>
 {% endblock %}
 
@@ -516,6 +519,24 @@
     <span>Historia i szkody</span>
     {% if damage_reports %}<span class="badge bg-danger">{{ damage_reports|length }} {{ "szkoda" if damage_reports|length == 1 else "szkody" }}</span>{% endif %}
   </div>
+  {# Auction sites block automatic lookups, so the search opens in the browser; a lot found goes in as the entry's source #}
+  {% if vehicle.vin is plausible_vin %}
+  <div class="vin-search {{ 'vin-search-na' if north_american else '' }}">
+    {% if north_american %}
+    <span><i class="bi bi-exclamation-triangle me-1"></i>Auto z Ameryki Północnej: prawie zawsze po szkodzie. Poszukaj VIN-u na aukcjach i wklej link do lotu jako źródło wpisu.</span>
+    {% else %}
+    <span class="text-muted">Sprawdź VIN w sieci:</span>
+    {% endif %}
+    <span class="d-flex gap-2">
+      <a class="btn btn-sm {{ 'btn-warning' if north_american else 'btn-outline-secondary' }}" target="_blank" rel="noopener noreferrer"
+         href="https://www.google.com/search?q={{ ('"' ~ vehicle.vin ~ '" (bid.cars OR copart OR iaai OR stat.vin OR autoastat)')|urlencode }}">
+        <i class="bi bi-search"></i> Aukcje USA</a>
+      <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer"
+         href="https://www.google.com/search?q={{ ('"' ~ vehicle.vin ~ '"')|urlencode }}">
+        <i class="bi bi-google"></i> Google</a>
+    </span>
+  </div>
+  {% endif %}
   <div class="table-responsive">
     <table class="table table-sm mb-0 align-middle">
       <thead class="table-light"><tr>

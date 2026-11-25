@@ -415,8 +415,12 @@ def vehicle_detail(vin):
     can_fetch_cepik = bool(vehicle["registration_plate"] and first_reg and first_reg["first_registration_date"])
 
     conn.close()
+    # Built in or sold to North America: almost always a damaged car, so its page points to the auctions
+    vin_head = (vehicle["vin"] or "")[:1]
+    north_american = vehicle["origin_market"] in OVERSEAS_ORIGINS or (vin_head != "" and vin_head in "12345")
     return render_template("vehicle.html",
         vehicle=vehicle,
+        north_american=north_american,
         wrong_model=wrong_model,
         damage_marks=damage_marks,
         sold_damaged=sold_damaged,
