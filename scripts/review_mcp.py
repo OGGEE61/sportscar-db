@@ -61,7 +61,7 @@ server = MCPServer(
         "Canada) is almost certainly damaged even when the ad says 'bezwypadkowy': look for the auction "
         "(Copart, IAAI), repair photos, the ad's history and the CEPiK events, and propose a damage history "
         "entry with what you found. Polish plates only: CEPiK does not know cars on foreign plates. "
-        "Every car left uncertain gets a note on the 'Do sprawdzenia' page (add_review_note): what is known, "
+        "Every car left uncertain gets a note on the Weryfikacja page (add_review_note): what is known, "
         "what is missing, where to look; propose them with the batch like any other change, and check "
         "list_review_notes first so as not to repeat one. Talk to the user in Polish."
     ),
@@ -492,7 +492,7 @@ def _car_vin(conn, key):
 
 @server.tool(annotations=READ)
 def list_review_notes(resolved: bool = False) -> str:
-    """The notes on the 'Do sprawdzenia' page (/review/notes): open ones oldest first, or with
+    """The review notes (shown on the Weryfikacja page, /verify, and the car's page): open ones oldest first, or with
     resolved=true the latest the user ticked off."""
     conn = _db()
     try:
@@ -506,7 +506,7 @@ def list_review_notes(resolved: bool = False) -> str:
 
 @server.tool(annotations=WRITE)
 def add_review_note(car: str, topic: str, note: str, ad_url: str = "") -> str:
-    """Put a car the review left uncertain on the 'Do sprawdzenia' page for the user to check by hand.
+    """Put a car the review left uncertain on the Weryfikacja page for the user to check by hand.
     `car`: its VIN or ID (#123). `topic`: plate, date, damage, origin, vin or other. `note`, in Polish:
     what is known (what the photos show, what CEPiK answered and when), what is missing and where to look.
     `ad_url`: the ad that shows it. A car has one open note per topic: a new one replaces its text.
@@ -519,7 +519,7 @@ def add_review_note(car: str, topic: str, note: str, ad_url: str = "") -> str:
         error = verification.add_review_note(conn, vin, topic, note, ad_url)
     finally:
         conn.close()
-    return error or "Zapisano na stronie „Do sprawdzenia”."
+    return error or "Zapisano na stronie „Weryfikacja”."
 
 
 if __name__ == "__main__":

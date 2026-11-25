@@ -134,3 +134,88 @@ def set_note_resolved(conn, note_id, resolved):
         return "To auto ma już otwartą notatkę w tym temacie."
     conn.commit()
     return None if cur.rowcount else "Nie ma takiej notatki."
+
+
+# ── Weryfikacja (/verify): every car with something left to check, one row per car ──
+
+NORTH_AMERICA = "('USA', 'USA/Kanada', 'Kanada')"
+
+# What can be left to check on a car: its label and the SQL listing the VINs it applies to. Each
+# reads through an index, except "damage" and "unchecked", which read the vehicles table (a few
+# thousand rows).
+VERIFY_ISSUES = {
+    "plate": ("Tablica", "SELECT vin FROM plate_review_queue WHERE status = 'pending'"),
+    "cepik": ("CEPiK nie zna", """SELECT l.vin FROM cepik_sync_log l JOIN vehicles cv ON cv.vin = l.vin
+                                  WHERE l.status = 'not_found' AND cv.data_checked_at IS NULL
+                                    AND NOT EXISTS (SELECT 1 FROM cepik_reports r WHERE r.vin = l.vin)"""),
+    "origin": ("Rynek", "SELECT vin FROM vehicles WHERE ai_conflict = 1"),
+    "notes": ("Notatki", "SELECT vin FROM review_notes WHERE resolved_at IS NULL"),
+    "damage": ("Z Ameryki, bez szkody", f"""SELECT dv.vin FROM vehicles dv
+                                            WHERE dv.origin_market IN {NORTH_AMERICA} AND dv.data_checked_at IS NULL
+                                              AND NOT EXISTS (SELECT 1 FROM condition_reports cr
+                                                              WHERE cr.vin = dv.vin AND cr.accident_free = 0)"""),
+    "unchecked": ("Niesprawdzone", "SELECT vin FROM vehicles WHERE data_checked_at IS NULL"),
+}
+# "Do zrobienia" (the default) is what a review left open; the last two are wider lists to go through
+VERIFY_OPEN = ("plate", "cepik", "origin", "notes")
+VERIFY_PER_PAGE = 30
+
+
+def _verify_set(issue):
+    return " UNION ".join(VERIFY_ISSUES[i][1] for i in VERIFY_OPEN) if issue == "open" else VERIFY_ISSUES[issue][1]
+
+
+def verify_counts(conn):
+    """How many cars each issue of the Weryfikacja page has, and "open" (any of VERIFY_OPEN), in one query."""
+    keys = ["open", *VERIFY_ISSUES]
+    row = conn.execute("SELECT " + ", ".join(
+        f"(SELECT COUNT(*) FROM vehicles c WHERE c.vin IN ({_verify_set(k)})) AS {k}" for k in keys)).fetchone()
+    return {k: row[k] or 0 for k in keys}
+
+
+def verify_search_sql(q):
+    """The Weryfikacja search: a car ID (#123), else part of the VIN or of the plate. Returns the SQL
+    condition on alias v and its parameters."""
+    q = (q or "").strip().lstrip("#").strip().upper()
+    if not q:
+        return "", []
+    if q.isdigit():
+        return " AND v.car_id = ?", [int(q)]
+    term = f"%{q.replace(' ', '')}%"
+    return " AND (v.vin LIKE ? OR UPPER(REPLACE(COALESCE(v.registration_plate, ''), ' ', '')) LIKE ?)", [term, term]
+
+
+def verify_cars(conn, issue="open", q="", page=1):
+    """One page of the Weryfikacja list: the cars with the issue (newest car ID first), each with what is
+    open on it (its plate card, CEPiK miss, origin conflict, notes, North American origin without a
+    damage entry), and the total number of such cars. Notes come with their text."""
+    from webapp.helpers import car_flags_sql
+    cars_sql = _verify_set(issue)
+    search, params = verify_search_sql(q)
+    total = conn.execute(f"SELECT COUNT(*) FROM vehicles v WHERE v.vin IN ({cars_sql}){search}", params).fetchone()[0]
+    cars = [dict(r) for r in conn.execute(f"""
+        SELECT v.vin, v.make, v.model, v.variant, v.year, v.origin_market, v.ai_suggested_market, v.ai_reasoning,
+               v.ai_conflict AS has_origin, {car_flags_sql("v")},
+               (SELECT q.id FROM plate_review_queue q WHERE q.vin = v.vin AND q.status = 'pending' ORDER BY q.id DESC LIMIT 1) AS card_id,
+               (SELECT q.crop_path FROM plate_review_queue q WHERE q.vin = v.vin AND q.status = 'pending' ORDER BY q.id DESC LIMIT 1) AS card_crop,
+               (SELECT q.detected_plate FROM plate_review_queue q WHERE q.vin = v.vin AND q.status = 'pending' ORDER BY q.id DESC LIMIT 1) AS card_reading,
+               (SELECT p.source_url FROM pending_listings p WHERE p.vin = v.vin AND COALESCE(p.source_url, '') <> ''
+                ORDER BY p.id DESC LIMIT 1) AS ad_url,
+               v.vin IN ({VERIFY_ISSUES["cepik"][1]}) AS has_cepik,
+               v.vin IN ({VERIFY_ISSUES["damage"][1]}) AS has_damage
+        FROM vehicles v
+        WHERE v.vin IN ({cars_sql}){search}
+        ORDER BY v.car_id DESC
+        LIMIT ? OFFSET ?
+    """, (*params, VERIFY_PER_PAGE, (max(page, 1) - 1) * VERIFY_PER_PAGE)).fetchall()]
+    notes = {}
+    if cars:
+        marks = ", ".join("?" * len(cars))
+        for n in conn.execute(f"""
+            SELECT id, vin, topic, note, ad_url, created_at FROM review_notes
+            WHERE resolved_at IS NULL AND vin IN ({marks}) ORDER BY created_at, id
+        """, [c["vin"] for c in cars]):
+            notes.setdefault(n["vin"], []).append(dict(n))
+    for c in cars:
+        c["notes"] = notes.get(c["vin"], [])
+    return cars, total

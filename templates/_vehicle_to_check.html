@@ -7,8 +7,8 @@
   <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
     <span><i class="bi bi-clipboard-check me-1"></i>Do sprawdzenia</span>
     <span class="small fw-normal d-flex gap-3">
-      {% if card %}<a href="/plates" class="text-decoration-none">Tablice</a>{% endif %}
-      {% if notes %}<a href="/review/notes" class="text-decoration-none">Wszystkie notatki</a>{% endif %}
+      {% if card %}<a href="/plates?q={{ vin }}" class="text-decoration-none">Tablice</a>{% endif %}
+      <a href="/verify" class="text-decoration-none">Weryfikacja</a>
     </span>
   </div>
   <div class="card-body">

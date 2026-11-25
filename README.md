@@ -46,10 +46,10 @@ How a listing becomes data:
 | **Poznań** (`/poznan`) | Newest ads around Poznań, each with its price against the median of similar cars |
 | **Ulubione** (`/favorites`) | Cars you starred (the star sits next to every VIN) |
 | **Kolejka** (`/review`) | New listings to approve or reject |
-| **Do sprawdzenia** (`/review/notes`) | Cars a review left uncertain: what is known, what is missing, links to the car and its ad |
+| **Weryfikacja** (`/verify`) | Every car with something left to check, one row per car: its plate card, CEPiK miss, origin conflict and review notes; search by car ID, VIN or plate |
 | **Tablice** (`/plates`) | Registration plates read from photos, to confirm |
 | **CEPiK** (`/cepik`) | Reports from the state vehicle register: insurance, inspection, odometer history |
-| Car page (`/vehicle/<vin>`) | Everything about one car: ads, price timeline, damage history, tags |
+| Car page (`/vehicle/<vin>`) | Everything about one car: ads, price timeline, damage history, tags, and a "Do sprawdzenia" panel to close what is open on it |
 
 Every list marks a car with the same set of badges: plate, VIN status, origin market, CEPiK
 (including rolled-back odometer and stolen), whether an ad is still up, damage, and "W USA" for a
