@@ -4,7 +4,10 @@ import time
 from flask import Blueprint, current_app, jsonify, make_response, redirect, render_template, request, url_for
 from db import get_db
 from webapp import _inject_notifications, invalidate_notifications
-from webapp.helpers import car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, script_json, trend_line
+from webapp.services.stored_cache import stored
+from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, car_flags_sql, car_visible_sql, damage_history_sql, damaged_ad_sql, engine_filter,
+                            is_abroad, script_json, trend_line)
+from webapp.services.d1_usage import READS_PER_DAY, rows_read_today
 from webapp.model_catalog import DEFAULT_MODEL_ID, STANDARD_MODELS, get_model
 from webapp.regions import CITY_TO_REGION, REGION_NAMES, resolve_region
 
@@ -78,15 +81,19 @@ def logs():
         f"SELECT *, {src_expr} AS src FROM scraper_logs{where} ORDER BY run_date DESC LIMIT ? OFFSET ?",
         (*params, LOGS_PER_PAGE, (page - 1) * LOGS_PER_PAGE),
     ).fetchall()
+    try:
+        locks = conn.execute("SELECT locked_at, address FROM login_locks ORDER BY id DESC LIMIT 10").fetchall()
+    except Exception:  # database not migrated yet
+        locks = []
     # Mark as read
     conn.execute("UPDATE scraper_logs SET is_read = 1 WHERE is_read = 0")
     conn.commit()
     conn.close()
     invalidate_notifications()  # badge should drop to 0 right away
-    return render_template("logs.html", logs=logs_data, page=page, pages=pages, source=source)
+    return render_template("logs.html", logs=logs_data, locks=locks, page=page, pages=pages, source=source)
 
 _CACHE = {}
-_CACHE_TTL = 60  # seconds; dashboard aggregates may lag the scrapers by up to a minute
+_CACHE_TTL = 300  # seconds; dashboard aggregates may lag the scrapers by up to 5 minutes (each miss reads ~100k rows)
 
 
 def _cached(key, fn, ttl=_CACHE_TTL):
@@ -163,16 +170,17 @@ def dashboard():
 
 def _load_summary():
     conn = get_db()
+    # One pass over the sightings for every figure (it was five), plus the cars with no sighting
     s = conn.execute("""
         SELECT
-            (SELECT COUNT(*) FROM vehicles v WHERE """ + car_visible_sql() + """)                           AS total_vins,
-            (SELECT COUNT(*) FROM listing_observations WHERE excluded_reason IS NULL)                  AS total_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations WHERE removed_at IS NULL AND excluded_reason IS NULL AND source_listing_id IS NOT NULL) AS active_obs,
-            (SELECT COUNT(DISTINCT source_listing_id) FROM listing_observations
-             WHERE excluded_reason IS NULL AND source_listing_id IS NOT NULL)                         AS unique_ads,
-            (SELECT AVG(price_pln) FROM listing_observations
-             WHERE removed_at IS NULL AND excluded_reason IS NULL AND price_pln > 0
-               AND NOT """ + damaged_ad_sql("listing_observations") + """)                              AS avg_price
+            SUM(o.excluded_reason IS NULL)                                                           AS total_obs,
+            COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL AND o.removed_at IS NULL
+                                THEN o.source_listing_id END)                                       AS active_obs,
+            COUNT(DISTINCT CASE WHEN o.excluded_reason IS NULL THEN o.source_listing_id END)        AS unique_ads,
+            AVG(CASE WHEN o.excluded_reason IS NULL AND o.removed_at IS NULL AND o.price_pln > 0
+                      AND NOT """ + damaged_ad_sql("o") + """ THEN o.price_pln END)                  AS avg_price,
+            (SELECT COUNT(*) FROM vehicles)                                                          AS total_vins
+        FROM listing_observations o
     """).fetchone()
     stats = {
         "total_vins":       s["total_vins"],
@@ -190,14 +198,30 @@ def _load_summary():
         sess = None
     conn.close()
     otomoto_session = dict(sess) if sess and sess["session_status"] != "ok" else None
-    return stats, otomoto_session
+    return {"stats": stats, "otomoto_session": otomoto_session}
+
+
+# Aggregates kept in the database (webapp.services.stored_cache) for hours: a cold instance reads
+# one row instead of recomputing (~20k-60k rows read each time)
+SUMMARY_TTL_S = 3 * 3600
+CHARTS_TTL_S = 6 * 3600
 
 
 @bp.route("/api/dashboard/summary")
 def dashboard_summary():
-    stats, otomoto_session = _cached("summary", _load_summary)
+    data = _cached("summary", lambda: stored("dashboard_summary", SUMMARY_TTL_S, _load_summary))
+    stats, otomoto_session = data["stats"], data["otomoto_session"]
     resp = make_response(render_template("_dashboard_summary.html", stats=stats, otomoto_session=otomoto_session))
     return _private_cache(resp)
+
+
+@bp.route("/api/d1_usage")
+def d1_usage():
+    """Warning bar for the dashboard: empty unless today's D1 reads are past half of the daily limit
+    (or cannot be read: no token). Costs no D1 reads."""
+    rows = rows_read_today()
+    share = 100 * rows / READS_PER_DAY if rows is not None else 0
+    return _private_cache(make_response(render_template("_d1_usage.html", rows=rows or 0, share=share)), seconds=300)
 
 
 def _load_charts():
@@ -250,7 +274,7 @@ def _load_charts():
 
 @bp.route("/api/dashboard/charts")
 def dashboard_charts():
-    return _private_cache(jsonify(_cached("charts", _load_charts)))
+    return _private_cache(jsonify(_cached("charts", lambda: stored("dashboard_charts", CHARTS_TTL_S, _load_charts))))
 
 
 @bp.route("/api/dashboard/recent")
@@ -312,22 +336,24 @@ def model_analytics():
                """ + damage_history_sql("v") + """ AS damage_history,
                """ + car_flags_sql("v") + """
         FROM vehicles v
-        LEFT JOIN (
-            SELECT vin, source, source_listing_id, price_pln, mileage_km, location_city, location_region,
-                   observed_at, source_url, title,
-                   ROW_NUMBER() OVER (PARTITION BY vin ORDER BY observed_at DESC) as rn
-            FROM listing_observations
-            WHERE price_pln IS NOT NULL AND price_pln > 0 AND excluded_reason IS NULL
-        ) o ON v.vin = o.vin AND o.rn = 1
+        -- The car's newest priced sighting, found through idx_obs_vin_observed (a few index rows per
+        -- car). Numbering every sighting in the database to pick these read ~90k rows a page.
+        LEFT JOIN listing_observations o ON o.id = (
+            SELECT x.id FROM listing_observations x
+            WHERE x.vin = v.vin AND x.price_pln > 0 AND x.excluded_reason IS NULL
+            ORDER BY x.observed_at DESC, x.id DESC LIMIT 1)
         WHERE {condition} AND """ + car_visible_sql() + """
     """
     rule = current_model['where']
+    # Fuel and engine size chosen on the page: every number below (statistics, charts, table) follows
+    fuel, cc_from, cc_to, engine_conds, engine_params = engine_filter(request.args)
+    extra = "".join(f" AND {c}" for c in engine_conds)
     try:
         rows = conn.execute(
-            base_sql.format(condition=f"(v.model_id = ? OR (v.model_id IS NULL AND ({rule})))"),
-            (current_model['id'],)).fetchall()
+            base_sql.format(condition=f"(v.model_id = ? OR (v.model_id IS NULL AND ({rule}))){extra}"),
+            (current_model['id'], *engine_params)).fetchall()
     except Exception:  # model_id column not migrated yet
-        rows = conn.execute(base_sql.format(condition=f"({rule})")).fetchall()
+        rows = conn.execute(base_sql.format(condition=f"({rule}){extra}"), engine_params).fetchall()
     # Newest observation first (the page's default sort; the table headers re-sort in the browser)
     vehicles = sorted((dict(r) for r in rows), key=lambda v: v.get("observed_at") or "", reverse=True)
 
@@ -336,7 +362,8 @@ def model_analytics():
     for v in vehicles:
         reg = resolve_region(v.get("location_region"), v.get("location_city"))
         if reg:
-            region_counts[reg] = region_counts.get(reg, 0) + 1
+            if not is_abroad(v):
+                region_counts[reg] = region_counts.get(reg, 0) + 1
             v["region"] = reg
             v["region_name"] = REGION_NAMES.get(reg, reg)
         else:
@@ -344,11 +371,13 @@ def model_analytics():
             v["region_name"] = ""
 
     # Prices of damaged cars (sold as damaged, or with damage in their history) say little about
-    # the market: left out of the charts and averages
+    # the market: left out of the charts and averages. A damaged car from the USA or Canada is not
+    # in Poland yet (is_abroad): left out of every statistic, it stays in the table.
     for v in vehicles:
         v["sold_damaged"] = v.get("sold_damaged") or v.get("damage_history")
-    prices = [v["price_pln"] for v in vehicles if v.get("price_pln") and not v.get("sold_damaged")]
-    mileages = [v["mileage_km"] for v in vehicles if v.get("mileage_km")]
+    in_poland = [v for v in vehicles if not is_abroad(v)]
+    prices = [v["price_pln"] for v in in_poland if v.get("price_pln") and not v.get("sold_damaged")]
+    mileages = [v["mileage_km"] for v in in_poland if v.get("mileage_km")]
 
     import statistics
     stats = {
@@ -363,7 +392,7 @@ def model_analytics():
 
     # Price vs Mileage scatter data
     scatter_data = []
-    for v in vehicles:
+    for v in in_poland:
         if v.get("price_pln") and v.get("mileage_km") and not v.get("sold_damaged"):
             scatter_data.append({
                 "x": v["mileage_km"],
@@ -397,7 +426,7 @@ def model_analytics():
 
     # Year breakdown
     year_counts = {}
-    for v in vehicles:
+    for v in in_poland:
         y = v.get("year")
         if y:
             year_counts[y] = year_counts.get(y, 0) + 1
@@ -410,6 +439,7 @@ def model_analytics():
         "model_analytics.html",
         models=STANDARD_MODELS,
         selected_model=current_model,
+        fuel=fuel, cc_from=cc_from, cc_to=cc_to, fuels=FUELS, cc_min=CC_MIN, cc_max=CC_MAX, cc_step=CC_STEP,
         stats=stats,
         vehicles=vehicles,
         scatter_data=script_json(scatter_data),

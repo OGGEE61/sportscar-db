@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import unittest
+from datetime import date
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -145,10 +146,10 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertEqual(self.status("m1"), "rejected")
 
     def test_pending_with_vin_lists_the_listings_reject_novin_would_keep(self):
-        self.add("m1", "otomoto", vin="WBS8M9C59J5K12345")
+        self.add("m1", "otomoto", vin="WBS8M9C59J5K12845")
         self.add("m2", "otomoto")
         self.add("m3", "otomoto", vin="UNVERIFIED-OTOMOTO-m3")
-        self.add("o1", "olx", vin="WBS8M9C59J5K54321")
+        self.add("o1", "olx", vin="WBS8M9C59J5K54871")
         self.add("m4", "otomoto", status="rejected", vin="WBS8M9C59J5K11111")
 
         def listed(query=""):
@@ -166,13 +167,13 @@ class TestBulkActionsRespectSource(ScrapingTestCase):
         self.assertEqual({self.status("m2"), self.status("m3")}, {"rejected"})
 
     def test_review_page_has_approve_all_with_vin_button(self):
-        self.add("m1", "otomoto", vin="WBS8M9C59J5K12345")
+        self.add("m1", "otomoto", vin="WBS8M9C59J5K12845")
         page = self.client.get("/review?source=otomoto").get_data(as_text=True)
         self.assertIn('id="approve-all-vin-btn"', page)
         self.assertIn("/review/pending_with_vin?source=otomoto", page)
 
     def test_review_row_shows_the_registration_plate(self):
-        self.add("a1", "autoplac", vin="WBS8M9C59J5K12345")
+        self.add("a1", "autoplac", vin="WBS8M9C59J5K12845")
         conn = db.get_db()
         conn.execute("UPDATE pending_listings SET registration_plate='SD3097N' WHERE source_listing_id='a1'")
         conn.commit()
@@ -407,7 +408,7 @@ class TestVehiclePriceChart(ScrapingTestCase):
         res = self.client.get(f"/vehicle/{self.VIN}")
         self.assertEqual(res.status_code, 200)
         html = res.get_data(as_text=True)
-        self.assertIn("Price History by platform", html)
+        self.assertIn("Historia cen wg portalu", html)
         for source in ("otomoto", "olx", "autoplac"):
             self.assertRegex(html, rf'"source":\s*"{source}"')
         # the chart script builds one dataset per platform, coloured like the badges
@@ -460,7 +461,7 @@ class TestDashboardStatCards(ScrapingTestCase):
     def test_summary_has_no_placeholders_card(self):
         html = self.client.get("/api/dashboard/summary").get_data(as_text=True)
         self.assertNotIn("Placeholders", html)
-        for label in ("Total VINs", "Observations", "Active Listings", "Unique Ads", "Avg Price"):
+        for label in ("VIN-y", "Obserwacje", "Aktywne ogłoszenia", "Ogłoszenia", "Średnia cena"):
             self.assertIn(label, html)
         self.assertEqual(html.count('class="card stat-card'), 5)
 
@@ -482,14 +483,14 @@ class TestPager(ScrapingTestCase):
 
     def test_shapes(self):
         L = self.labels
-        self.assertEqual(L(self.pager(1, 3)), ["‹ Prev", "1", "2", "3", "Next ›"])
-        self.assertEqual(L(self.pager(10, 20)), ["‹ Prev", "1", "…", "8", "9", "10", "11", "12", "…", "20", "Next ›"])
-        self.assertEqual(L(self.pager(1, 20)), ["‹ Prev", "1", "2", "3", "…", "20", "Next ›"])
-        self.assertEqual(L(self.pager(20, 20)), ["‹ Prev", "1", "…", "18", "19", "20", "Next ›"])
-        self.assertEqual(L(self.pager(4, 20)), ["‹ Prev", "1", "2", "3", "4", "5", "6", "…", "20", "Next ›"])
+        self.assertEqual(L(self.pager(1, 3)), ["‹ Poprzednia", "1", "2", "3", "Następna ›"])
+        self.assertEqual(L(self.pager(10, 20)), ["‹ Poprzednia", "1", "…", "8", "9", "10", "11", "12", "…", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(1, 20)), ["‹ Poprzednia", "1", "2", "3", "…", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(20, 20)), ["‹ Poprzednia", "1", "…", "18", "19", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(4, 20)), ["‹ Poprzednia", "1", "2", "3", "4", "5", "6", "…", "20", "Następna ›"])
         # a gap of one page is shown as that page, not as "…"
-        self.assertEqual(L(self.pager(5, 20)), ["‹ Prev", "1", "2", "3", "4", "5", "6", "7", "…", "20", "Next ›"])
-        self.assertEqual(L(self.pager(17, 20)), ["‹ Prev", "1", "…", "15", "16", "17", "18", "19", "20", "Next ›"])
+        self.assertEqual(L(self.pager(5, 20)), ["‹ Poprzednia", "1", "2", "3", "4", "5", "6", "7", "…", "20", "Następna ›"])
+        self.assertEqual(L(self.pager(17, 20)), ["‹ Poprzednia", "1", "…", "15", "16", "17", "18", "19", "20", "Następna ›"])
 
     def test_single_page_has_no_pager(self):
         self.assertEqual(self.pager(1, 1).strip(), "")
@@ -500,7 +501,7 @@ class TestPager(ScrapingTestCase):
         self.assertIn('href="/x?a=1&amp;page=11"', html)    # next
         self.assertIn('href="/x?a=1&amp;page=20"', html)    # last page is reachable
         self.assertIn('id="page-prev"', html)
-        self.assertIn("Page 10 of 20", html)
+        self.assertIn("Strona 10 z 20", html)
         self.assertRegex(html, r'page-item active">\s*<a class="page-link" href="[^"]*page=10"')
         first = self.pager(1, 20)
         self.assertRegex(first, r'page-item disabled"><a class="page-link" href="[^"]*page=0"')   # Prev disabled
@@ -510,7 +511,7 @@ class TestPager(ScrapingTestCase):
         for i in range(250):
             self.client.post("/api/log_run", headers=TOKEN, json={"status": "success", "message": f"m{i}", "source": "olx"})
         html = self.client.get("/logs?page=2").get_data(as_text=True)
-        self.assertIn("Page 2 of 3", html)
+        self.assertIn("Strona 2 z 3", html)
         self.assertIn("page=3", html)
         self.assertIn("page=1", html)
 
@@ -894,8 +895,8 @@ class TestNextScrapers(ScrapingTestCase):
         self.assertNotEqual(self.pick(count=1), first)
 
     def test_a_manual_run_counts_as_a_turn(self):
-        for key, date in (("a", "2026-11-05 10:00:00"), ("b", "2026-11-05 10:00:00"), ("c", "2026-11-05 10:00:00")):
-            self.log(key, date)
+        for key, when in (("a", "2026-11-05 10:00:00"), ("b", "2026-11-05 10:00:00"), ("c", "2026-11-05 10:00:00")):
+            self.log(key, when)
         self.assertEqual(self.pick(count=1), ["d"])
 
     def test_sources_are_separate(self):
@@ -941,7 +942,7 @@ class TestAlpinaValidator(unittest.TestCase):
             self.assertEqual(validate(detail), expected, detail)
 
     def test_wap_vin_is_kept(self):
-        self.check(True, vin="WAPB350009HE12345", title="BMW-ALPINA B5", power_hp=500)
+        self.check(True, vin="WAPB350009HE12845", title="BMW-ALPINA B5", power_hp=500)
 
     def test_powerful_bmw_vin_goes_to_review(self):
         self.check(True, vin="WBA6D6C58JG745657", title="BMW-ALPINA B6", power_hp=600)
@@ -1082,20 +1083,21 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         conn.close()
 
     def test_confirmed_ocr_reading_is_approved_and_replaces_the_listing_number(self):
-        self.card(proposal="CD99999")
-        stats, _ = self.run_confirm({"CD99999": self.report(plate="CD99999")})
+        self.card(proposal="CB99999")
+        stats, _ = self.run_confirm({"CB99999": self.report(plate="CB99999")})
         self.assertEqual(stats["confirmed"], 1)
         rows, plate = self.queue()
-        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("approved", "CD99999"))
-        self.assertEqual(plate, "CD99999")
+        self.assertEqual((rows[0]["status"], rows[0]["reviewed_plate"]), ("approved", "CB99999"))
+        self.assertEqual(plate, "CB99999")
         conn = db.get_db()
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM cepik_reports WHERE vin=?", (self.VIN,)).fetchone()[0], 1)
         conn.close()
 
     def test_miss_leaves_the_card_for_a_human_and_is_not_asked_twice(self):
-        self.card(proposal="CD99999")
+        self.card(proposal="CB99999")
         _, client = self.run_confirm({})
-        self.assertEqual(client.fetch_vehicle_data.call_count, 2)  # the proposal and the listing number
+        # the proposal, the listing number, and the listing number's S/5 guess (AB1234S)
+        self.assertEqual([c.args[1] for c in client.fetch_vehicle_data.call_args_list], ["CB99999", "AB12345", "AB1234S"])
         rows, plate = self.queue()
         self.assertEqual(rows[0]["status"], "pending")
         self.assertEqual(plate, "AB12345")
@@ -1124,9 +1126,9 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         client = mock.Mock(last_status=500)
         client.fetch_vehicle_data.return_value = None
         with mock.patch.object(fetch_cepik, "CepikClient", return_value=client), mock.patch.object(fetch_cepik.time, "sleep"):
-            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 1)
+            self.assertEqual(fetch_cepik.confirm_queue_with_cepik()["errors"], 2)   # AB12345 and its guess AB1234S
         _, client = self.run_confirm({})
-        self.assertEqual(client.fetch_vehicle_data.call_count, 1)
+        self.assertEqual(client.fetch_vehicle_data.call_count, 2)
 
     def test_card_without_a_date_is_skipped(self):
         self.card()
@@ -1198,8 +1200,8 @@ class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
         self.assertEqual(self.scan(None)["queued_without_crop"], 0)
 
 
-class DealerM2ExclusionTest(ScrapingTestCase):
-    """Dealer-stock M2 sightings are flagged, kept (VIN stays known) and left out of the dashboard."""
+class DealerStockExclusionTest(ScrapingTestCase):
+    """Dealer-stock sightings (any model) are flagged, kept (VIN stays known) and left out of the dashboard."""
 
     def _car(self, conn, vin, model, year, first_reg=None):
         conn.execute("INSERT INTO vehicles(vin,make,model,variant,year,first_registration_date) VALUES(?,?,?,?,?,?)",
@@ -1213,30 +1215,62 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         return {r["source_listing_id"]: r["excluded_reason"]
                 for r in conn.execute("SELECT source_listing_id, excluded_reason FROM listing_observations")}
 
-    def test_trigger_matches_python_rule(self):
-        from validation import is_dealer_new_m2
-        from datetime import date
-        conn = db.get_db()
-        cases = [  # id, model, year, first_reg, km, seen
-            ("1", "M2", 2026, None,         3000,  "2026-09-01"),
-            ("2", "M2", 2025, None,         3000,  "2026-09-01"),
-            ("3", "M2", 2025, "2025-10-27", 3000,  "2026-10-26"),
-            ("4", "M2", 2025, "2025-10-25", 3000,  "2026-10-26"),
-            ("5", "M2", 2026, None,         20000, "2026-09-01"),
-            ("6", "M2", 2026, None,         None,  "2026-09-01"),
-            ("7", "M3", 2026, None,         100,   "2026-09-01"),
-            ("8", "M2", 2026, "2027-01-01", 100,   "2026-09-01"),   # future date: fall back to year
-        ]
-        for sid, model, year, reg, km, seen in cases:
+    CASES = [  # id, model, year, first_reg, km, seen
+        ("1", "M2", 2026, None,         3000,  "2026-09-01"),
+        ("2", "M2", 2025, None,         3000,  "2026-09-01"),
+        ("3", "M2", 2025, "2025-10-27", 3000,  "2026-10-26"),
+        ("4", "M2", 2025, "2025-10-25", 3000,  "2026-10-26"),
+        ("5", "M2", 2026, None,         20000, "2026-09-01"),
+        ("6", "M2", 2026, None,         None,  "2026-09-01"),
+        ("7", "M3", 2026, None,         100,   "2026-09-01"),   # any model
+        ("8", "M2", 2026, "2027-01-01", 3000,  "2026-09-01"),   # future date: fall back to year
+        ("9", "M2", 2025, None,         5,     "2026-11-11"),   # last model year, delivery km
+        ("10", "M2", 2025, "2025-01-10", 999,  "2026-11-11"),   # registered long ago, still delivery km
+        ("11", "M2", 2024, None,        5,     "2026-11-11"),   # two model years back: kept
+        ("12", "Z3", 2000, None,        800,   "2026-11-11"),   # garaged classic: kept
+        ("13", "M2", 2025, None,        1000,  "2026-11-11"),
+    ]
+
+    def _store(self, conn):
+        for sid, model, year, reg, km, seen in self.CASES:
             vin = f"VIN{sid}".ljust(17, "X")
             self._car(conn, vin, model, year, reg)
             self._obs(conn, vin, sid, km, seen)
         conn.commit()
+
+    def _want(self):
+        from validation import is_dealer_new
+        from datetime import date
+        return {sid: is_dealer_new(year, km, reg, on=date.fromisoformat(seen))
+                for sid, model, year, reg, km, seen in self.CASES}
+
+    def test_trigger_matches_python_rule(self):
+        conn = db.get_db()
+        self._store(conn)
         flags = self._flags(conn)
-        for sid, model, year, reg, km, seen in cases:
-            want = is_dealer_new_m2(model, year, km, reg, on=date.fromisoformat(seen))
-            self.assertEqual(flags[sid] is not None, want, sid)
         conn.close()
+        want = self._want()
+        self.assertEqual({sid: f is not None for sid, f in flags.items()}, want)
+        self.assertEqual([sid for sid, w in want.items() if w], ["1", "3", "7", "8", "9", "10"])
+
+    def test_migration_21_matches_python_rule(self):
+        conn = db.get_db()
+        conn.execute("DROP TRIGGER trg_obs_dealer_new")
+        self._store(conn)
+        conn.execute("DELETE FROM schema_migrations WHERE version = 21")
+        conn.execute("UPDATE listing_observations SET excluded_reason = 'not_m2' WHERE source_listing_id = '13'")
+        conn.commit()
+        self.assertTrue(all(f is None for sid, f in self._flags(conn).items() if sid != "13"))
+        conn.close()
+        db.init_db()
+        conn = db.get_db()
+        flags = self._flags(conn)
+        conn.close()
+        want = self._want()
+        for sid, w in want.items():
+            if sid != "13":
+                self.assertEqual(flags[sid] == "dealer_new", w, sid)
+        self.assertEqual(flags["13"], "not_m2")   # another reason is left as it is
 
     def test_dashboard_skips_excluded_but_vin_stays_known(self):
         conn = db.get_db()
@@ -1249,15 +1283,15 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         summary = self.client.get("/api/dashboard/summary").get_data(as_text=True)
         self.assertNotIn("400", summary)  # no crash; stats rendered
         import webapp.blueprints.dashboard as dash
-        stats, _ = dash._load_summary()
-        self.assertEqual(stats["total_vins"], 1)
-        self.assertEqual(stats["total_obs"], 1)
+        stats = dash._load_summary()["stats"]
+        self.assertEqual(stats["total_vins"], 2)     # every VIN we have, the dealer-stock one too
+        self.assertEqual(stats["total_obs"], 1)      # sightings of the market only
         self.assertEqual(stats["avg_price"], 300000)
         conn = db.get_db()
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM vehicles WHERE vin = ?", ("A" * 17,)).fetchone()[0], 1)
         conn.close()
 
-    def test_vehicles_list_skips_dealer_m2_but_keeps_resold_car(self):
+    def test_vehicles_list_marks_dealer_stock_but_not_a_resold_car(self):
         conn = db.get_db()
         self._car(conn, "A" * 17, "M2", 2026)
         self._obs(conn, "A" * 17, "1", 5, "2026-09-01")           # dealer only: hidden
@@ -1267,10 +1301,10 @@ class DealerM2ExclusionTest(ScrapingTestCase):
         conn.commit()
         conn.close()
         html = self.client.get("/vehicles").get_data(as_text=True)
-        self.assertNotIn("A" * 17, html)
+        self.assertIn("A" * 17, html)                          # the VIN base lists every car ...
         self.assertIn("B" * 17, html)
+        self.assertEqual(html.count(">Z salonu</span>"), 1)    # ... and marks the one left out
         self.assertIn("B" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
-        self.assertNotIn("A" * 17, self.client.get("/vehicles?source=otomoto").get_data(as_text=True))
 
 
 class TestTrendLine(unittest.TestCase):
@@ -1302,6 +1336,7 @@ class TestNewModelRules(unittest.TestCase):
                 ("D", "Mercedes-Benz", "Klasa G", "W460 / W461 / W463", 544, 5461, "g_w463"),
                 ("E", "Mercedes-Benz", "Klasa G", "G55 AMG W463", 507, 5439, "g55_w463"),
                 ("F", "Mercedes-Benz", "Klasa S", "W140", 394, 5987, "s_w140"),
+                ("I", "Mercedes-Benz", "Klasa E", "W124", 220, 3199, "e_w124"),
                 ("G", "Audi", "RS Q3", "RS Q3 8U", 340, 2480, "rsq3_8u"),
                 ("H", "Audi", "RS Q3", "RS Q3 F3", 400, 2480, "rsq3_f3")]
         conn.executemany("INSERT INTO vehicles VALUES (?,?,?,?,?,?,NULL,NULL,NULL)", [c[:6] for c in cars])
@@ -1343,20 +1378,50 @@ class TestNewModelRules(unittest.TestCase):
             self.assertTrue(any(w.lower().replace(" ", "") in haystack for w in F90_AUTOPLAC.title_must_not_contain), title)
         self.assertFalse(any(w.lower().replace(" ", "") in "bmwm54.4competition" for w in F90.title_must_not_contain))
 
-    def test_m340i_skips_diesel_and_dealer_stock(self):
-        from datetime import date
+    def test_m340i_skips_diesel(self):
         from otomoto.bmw_m340i_g20 import CONFIG
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "petrol"}))
         self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 60000, "fuel_type": "diesel"}))
-        self.assertFalse(CONFIG.validator({"year": date.today().year, "mileage_km": 50, "fuel_type": "petrol"}))
 
-    def test_rsq3_f3_skips_dealer_stock(self):
-        from datetime import date
-        from otomoto.audi_rsq3_f3 import CONFIG
+    def test_dealer_stock_is_skipped_for_every_model(self):
         year = date.today().year
-        self.assertFalse(CONFIG.validator({"year": year, "mileage_km": 50}))
+        self.assertTrue(base_scraper._dealer_stock({"year": year, "mileage_km": 50}))
+        self.assertTrue(base_scraper._dealer_stock({"year": year - 1, "mileage_km": 5}))
+        self.assertFalse(base_scraper._dealer_stock({"year": 2021, "mileage_km": 50}))
+        self.assertFalse(base_scraper._dealer_stock({"year": year, "mileage_km": None}))
+
+    def test_rsq3_f3_skips_8u_vin(self):
+        from otomoto.audi_rsq3_f3 import CONFIG
         self.assertTrue(CONFIG.validator({"year": 2021, "mileage_km": 50}))
-        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD123456"}))
+        self.assertFalse(CONFIG.validator({"year": 2021, "mileage_km": 90000, "vin": "WUAZZZ8U0FD128406"}))
+
+    def test_w124_keeps_3_litre_diesels_and_petrols_from_the_320(self):
+        from otomoto.mercedes_e_w124 import CONFIG
+        from olx.mercedes_e_w124 import CONFIG as OLX
+        from autoplac.mercedes_e_w124 import CONFIG as AUTOPLAC
+        ok = lambda cfg, **d: cfg.validator({"year": 1992, **d})
+        for cfg in (CONFIG, OLX, AUTOPLAC):
+            self.assertEqual((cfg.model, cfg.variant, cfg.model_id), ("Klasa E", "W124", "e_w124"))
+            self.assertTrue(ok(cfg, fuel_type="diesel", engine_cc=2996))          # 300D
+            self.assertFalse(ok(cfg, fuel_type="diesel", engine_cc=2497))         # 250D
+            self.assertFalse(ok(cfg, fuel_type="diesel", engine_cc=1997))         # 200D
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199))          # 320E / E320, the smallest wanted
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3606))          # E36 AMG
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=4196))          # 400E / E420
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=4973))          # 500E
+            self.assertTrue(ok(cfg, fuel_type="petrol+lpg", engine_cc=3199))      # E320 on LPG
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2960))         # 300E
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2799))         # E280
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2597))         # 260E
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=2298))         # 230E
+            self.assertTrue(ok(cfg, fuel_type="petrol"))                           # engine size unknown
+            self.assertTrue(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB1240321A128406"))
+            self.assertFalse(ok(cfg, fuel_type="petrol", engine_cc=3199, vin="WDB2100551A128406"))   # a W210
+        self.assertFalse(OLX.validator({"fuel_type": "petrol", "engine_cc": 3199}))   # no year: not a car ad
+        self.assertEqual(len(CONFIG.list_url), 4)                                  # 2 ways it is filed x diesel, petrol
+        for url in CONFIG.list_url:
+            self.assertIn("{page}", url)
+            self.assertEqual(url.count("?"), 1)
 
     def test_g_class_title_filter_skips_g55_but_not_g550(self):
         from otomoto.mercedes_g_w463 import CONFIG
@@ -1366,8 +1431,8 @@ class TestNewModelRules(unittest.TestCase):
         self.assertTrue(skip("Mercedes-Benz Klasa G 55 AMG"))
         self.assertFalse(skip("Mercedes-Benz Klasa G 550"))
         self.assertFalse(skip("Mercedes-Benz Klasa G AMG 63"))
-        self.assertTrue(CONFIG.validator({"vin": "WDB4632481X123456"}))
-        self.assertFalse(CONFIG.validator({"vin": "WDB2200751A123456"}))
+        self.assertTrue(CONFIG.validator({"vin": "WDB4632481X128406"}))
+        self.assertFalse(CONFIG.validator({"vin": "WDB2200751A128406"}))
 
 
 class TestUrlYearRange(unittest.TestCase):
@@ -1420,9 +1485,9 @@ class TestRevealVin(RevealStateMixin, unittest.TestCase):
         return mock.patch.object(base_scraper.requests, "post", return_value=resp)
 
     def test_reads_the_vin_from_the_viewer_query(self):
-        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": " wdb4632481x123456 "}}}}}
+        body = {"data": {"viewer": {"adVin": {"__typename": "AdVin", "vin": {"value": " wdb4632481x128406 "}}}}}
         with self.reply(body) as post:
-            self.assertEqual(base_scraper.reveal_vin("6151216780", {}), "WDB4632481X123456")
+            self.assertEqual(base_scraper.reveal_vin("6151216780", {}), "WDB4632481X128406")
         sent = post.call_args.kwargs["json"]
         self.assertEqual(sent["operationName"], "AdvertDetails_ViewerAdVin")
         self.assertEqual(sent["variables"], {"adId": "6151216780"})
@@ -1480,7 +1545,7 @@ class TestRevealVinPacing(TestRevealVin):
         self.assertFalse(base_scraper.vin_reveal_allowed())
 
     def test_reveals_are_spaced_and_capped(self):
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
                 base_scraper.reveal_vin(str(i), {})
         self.assertEqual(post.call_count, base_scraper.VIN_REVEALS_PER_RUN)
@@ -1493,8 +1558,8 @@ class TestRevealVinPacing(TestRevealVin):
                 self.assertIsNone(base_scraper.reveal_vin(str(i), {}))
         self.assertEqual(post.call_count, 5)
         self.assertTrue(base_scraper.vin_reveal_allowed())
-        with self.reply(self.vin_body("WDB4632481X123456")):
-            self.assertEqual(base_scraper.reveal_vin("9", {}), "WDB4632481X123456")
+        with self.reply(self.vin_body("WDB4632481X128406")):
+            self.assertEqual(base_scraper.reveal_vin("9", {}), "WDB4632481X128406")
 
 
 class TestRevealBudget(TestRevealVin):
@@ -1509,7 +1574,7 @@ class TestRevealBudget(TestRevealVin):
         with self.reply({}, status=403):
             base_scraper.reveal_vin("1", {})
         self.new_process()
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             self.assertIsNone(base_scraper.reveal_vin("2", {}))
         post.assert_not_called()
         self.assertIn("HTTP 403", base_scraper.reveal_skip_reason("plate"))
@@ -1519,8 +1584,9 @@ class TestRevealBudget(TestRevealVin):
 
     def test_the_daily_limit_counts_every_process(self):
         sent = 0
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
-            for run in range(5):
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
+            runs = base_scraper.REVEALS_PER_DAY // base_scraper.VIN_REVEALS_PER_RUN + 2   # more than the day allows
+            for run in range(runs):
                 self.new_process()
                 for i in range(base_scraper.VIN_REVEALS_PER_RUN):
                     base_scraper.reveal_vin(f"{run}-{i}", {})
@@ -1541,7 +1607,7 @@ class TestRevealBudget(TestRevealVin):
         self.new_process()
         self.assertTrue(base_scraper.recently_asked("vin", "1"))
         self.assertFalse(base_scraper.recently_asked("plate", "1"))
-        with self.reply(self.vin_body("WDB4632481X123456")) as post:
+        with self.reply(self.vin_body("WDB4632481X128406")) as post:
             self.assertIsNone(base_scraper.reveal_vin("1", {}))
         post.assert_not_called()
         later = base_scraper.time.time() + base_scraper.VIN_RETRY_AFTER_S + 1
@@ -1611,7 +1677,7 @@ class TestRevealPlate(TestRevealVin):
         self.assertTrue(base_scraper.plate_reveal_allowed())
 
     def test_plates_are_capped_and_paced_with_the_vins(self):
-        with self.reply(TestRevealVinPacing.vin_body("WDB4632481X123456")):
+        with self.reply(TestRevealVinPacing.vin_body("WDB4632481X128406")):
             base_scraper.reveal_vin("0", {})
         with self.get(self.plate_body("WA12345")) as get:
             for i in range(base_scraper.VIN_REVEALS_PER_RUN + 5):
@@ -1637,6 +1703,34 @@ class TestOtomotoDetailPlate(unittest.TestCase):
 
     def test_an_ad_without_a_plate_is_not_flagged(self):
         self.assertFalse(self.detail({})["plate_behind_reveal"])
+
+
+class TestOtomotoVinFlag(unittest.TestCase):
+    """An ad whose VIN is behind "Wyświetl VIN" must be flagged, or the VIN is never revealed."""
+
+    def detail(self, params_dict):
+        return TestOtomotoDetailPlate.detail(None, params_dict)
+
+    @staticmethod
+    def flag(value="1", label=""):
+        return {"values": [{"value": value, "label": label}]}
+
+    def test_each_known_flag_marks_a_vin_to_reveal(self):
+        # 6151759476, an X3 M40i moved over from OLX, carries only with_vin
+        for key in base_scraper.VIN_FLAG_KEYS:
+            d = self.detail({key: self.flag()})
+            self.assertEqual((d["vin"], d["vin_confidence"]), (None, "found_in_schema"), key)
+
+    def test_an_unknown_vin_flag_counts_and_is_logged(self):
+        with mock.patch("builtins.print") as out:
+            d = self.detail({"vin_available": self.flag("Tak")})
+        self.assertEqual(d["vin_confidence"], "found_in_schema")
+        self.assertIn("unknown VIN flag vin_available", str(out.call_args_list))
+
+    def test_no_flag_a_no_value_or_a_lookalike_key_means_no_vin(self):
+        for params in ({}, {"with_vin": self.flag("0")}, {"has_vin": self.flag("0", "Nie")},
+                       {"province": self.flag()}, {"vin": self.flag("1")}):
+            self.assertEqual(self.detail(params)["vin_confidence"], "none", params)
 
 
 class TestOtomotoVinIsValidated(unittest.TestCase):
@@ -1682,6 +1776,24 @@ class TestWorthRevealing(unittest.TestCase):
         from otomoto.bmw_m5_f90 import CONFIG
         self.assertTrue(base_scraper._worth_revealing(CONFIG, {"year": 2017}))
         self.assertFalse(CONFIG.validator({"year": 2017}))
+
+    def test_no_reveal_for_dealer_stock_of_any_model(self):
+        from otomoto.bmw_x3_m_f97 import CONFIG as X3M          # picks its model by VIN
+        from otomoto.toyota_gr_yaris import CONFIG as YARIS     # no validator
+        year = date.today().year
+        for cfg in (X3M, YARIS):
+            self.assertFalse(base_scraper._worth_revealing(cfg, {"year": year, "mileage_km": 15}))
+            self.assertTrue(base_scraper._worth_revealing(cfg, {"year": year - 3, "mileage_km": 45000}))
+
+    def test_m2_g87_needs_an_m_vin(self):
+        from otomoto.bmw_m2_g87 import CONFIG
+        from olx.bmw_m2_g87 import CONFIG as OLX
+        from autoplac.bmw_m2_g87 import CONFIG as AUTOPLAC
+        for cfg in (CONFIG, OLX, AUTOPLAC):
+            self.assertTrue(cfg.validator({"vin": "WBS21DM0608G23935"}))
+            self.assertTrue(cfg.validator({"vin": "3MF23DM02S8E99894"}))
+            self.assertFalse(cfg.validator({"vin": "WBA13AL02P7M17423"}))   # 2 Series sold as an M2
+            self.assertTrue(cfg.validator({"vin": None, "before_reveal": True}))
 
     def test_scrapers_that_pick_the_model_by_vin_always_reveal(self):
         from otomoto.bmw_x3_m_f97 import CONFIG
@@ -1741,6 +1853,53 @@ class TestRevealEndpoints(ScrapingTestCase):
         self.assertFalse(res.get_json()["vin"])
         self.assertIsNone(self.row(bad)["vin"])
 
+    def test_an_ad_without_a_vin_stops_waiting_for_a_reveal(self):
+        import webapp.blueprints.review as review
+        waiting, has_vin = self.add("waiting"), self.add("hasvin2", vin="WBA5U91010FK21968")
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": waiting, "no_vin": True})
+        self.assertEqual(res.get_json(), {"vin": False, "plate": False, "no_vin": True})
+        res = self.client.post("/api/reveal_result", headers=TOKEN, json={"id": has_vin, "no_vin": True})
+        self.assertFalse(res.get_json()["no_vin"])                       # a listing with a VIN is left alone
+        conn = db.get_db()
+        rows = {r["source_listing_id"]: dict(r) for r in conn.execute("SELECT * FROM pending_listings")}
+        conn.close()
+        self.assertEqual(rows["waiting"]["vin_confidence"], "not_shown")   # not "none": not re-read
+        self.assertEqual(rows["hasvin2"]["vin_confidence"], "found_in_schema")
+        self.assertFalse(review.vin_awaits_reveal(rows["waiting"]))
+        # It left the reveal queue, and "reject without VIN" now takes it
+        q = self.client.post("/api/reveal_queue", headers=TOKEN, json={"plates_since": "2026-11-05"}).get_json()
+        self.assertNotIn("waiting", [it["source_listing_id"] for it in q["vins"]])
+        self.client.post("/review/bulk_reject_novin")
+        conn = db.get_db()
+        status = {r["source_listing_id"]: r["status"] for r in conn.execute("SELECT * FROM pending_listings")}
+        conn.close()
+        self.assertEqual(status, {"waiting": "rejected", "hasvin2": "pending"})
+
+    def test_queue_screen_tells_waiting_listings_from_those_without_a_vin(self):
+        waiting = self.add("waiting")
+        self.add("novin", vc="none")
+        html = self.client.get("/review").get_data(as_text=True)
+        self.assertEqual(html.count("VIN za „Pokaż VIN”</span>"), 1)
+        self.assertEqual(html.count(">BRAK VIN</span>"), 1)
+        self.assertIn("ukryty za „Pokaż VIN”", self.client.get(f"/review/{waiting}").get_data(as_text=True))
+        # Once Otomoto says there is none, it reads as any listing without a VIN
+        self.client.post("/api/reveal_result", headers=TOKEN, json={"id": waiting, "no_vin": True})
+        html = self.client.get("/review").get_data(as_text=True)
+        self.assertEqual((html.count("VIN za „Pokaż VIN”</span>"), html.count(">BRAK VIN</span>")), (0, 2))
+
+    def test_reveal_job_reports_an_ad_without_a_vin_but_not_a_failed_request(self):
+        import importlib
+        job = importlib.import_module("scripts.maintenance.reveal_pending_vins")
+        sent = []
+        items = [{"id": 1, "source_listing_id": "none", "variant": "x"}, {"id": 2, "source_listing_id": "failed", "variant": "x"}]
+        with mock.patch.object(job, "reveal_skip_reason", return_value=None), \
+             mock.patch.object(job, "reveal_vin", return_value=None), \
+             mock.patch.object(job, "recently_asked", side_effect=lambda kind, sid: sid == "none"), \
+             mock.patch.object(job, "send_result", side_effect=lambda lid, **kw: sent.append((lid, kw)) or {}):
+            found, stop = job.fill_vins(items, mock.Mock())
+        self.assertEqual((found, stop), (0, None))
+        self.assertEqual(sent, [(1, {"no_vin": True})])
+
     def test_plate_goes_to_the_approved_car_too(self):
         self.add_active_listing("ap", "WBS8M9C50J5K99001", "F80")
         conn = db.get_db()
@@ -1793,10 +1952,14 @@ class TestRevealJob(RevealStateMixin, unittest.TestCase):
 
     def test_vins_are_stored_and_an_invalid_one_is_remembered(self):
         with mock.patch.object(self.job, "reveal_vin", side_effect=["WBA5U91010FK21968", None, "WDD15666600000000"]), \
-             mock.patch.object(self.job, "send_result", side_effect=[{"vin": True}, {"vin": False}]) as send:
+             mock.patch.object(self.job, "send_result", side_effect=[{"vin": True}, {"vin": False}, {"no_vin": True}]) as send:
             self.assertEqual(self.job.fill_vins(self.items(3), self.session), (1, None))
         self.assertEqual(send.call_args_list[0], mock.call(0, vin="WBA5U91010FK21968"))
         self.assertTrue(base_scraper.recently_asked("vin", "1002"))
+        # The second ad's request failed (nothing sent); the third's VIN was refused, so the app
+        # is told the ad has no usable VIN
+        self.assertEqual(send.call_args_list[2], mock.call(2, no_vin=True))
+        self.assertEqual(send.call_count, 3)
 
     def test_a_block_stops_the_batch(self):
         def blocked(*a):
@@ -1839,7 +2002,25 @@ class TestRevealJob(RevealStateMixin, unittest.TestCase):
             self.job.main()
         reveal.assert_called_once_with("1001", {})
         self.assertEqual(log.call_args.args[0], "success")
-        self.assertIn("1 of 1 pending", log.call_args.args[1])
+        self.assertIn("VINs: 1 of 1 revealed (1 due, 2 waiting)", log.call_args.args[1])
+
+    def test_a_kind_over_todays_limit_is_logged_as_skipped_with_its_queue(self):
+        # VINs used up for today, plates not: the log line must not read "0 of 0" as if none waited
+        limit = lambda kind, *a: "limit of 60 per day reached" if kind == "vin" else None
+        with mock.patch.object(self.job, "reveal_skip_reason", side_effect=limit), \
+             mock.patch.object(self.job, "fetch_queue", return_value={"vins": self.items(48), "plates": self.items(1)}), \
+             mock.patch.object(self.job, "_Session", return_value=mock.Mock(cookies={}, get=lambda: {})), \
+             mock.patch.object(self.job, "check_session", return_value=True), \
+             mock.patch.object(self.job, "reveal_vin") as reveal_vin, \
+             mock.patch.object(self.job, "reveal_plate", return_value="DW12345"), \
+             mock.patch.object(self.job, "send_result", return_value={"plate": True}), \
+             mock.patch.object(self.job, "_log_run") as log, \
+             mock.patch.object(sys, "argv", ["reveal_pending_vins.py"]):
+            self.job.main()
+        reveal_vin.assert_not_called()
+        line = log.call_args.args[1]
+        self.assertIn("VINs: skipped, limit of 60 per day reached (48 waiting)", line)
+        self.assertIn("plates: 1 of 1 revealed (1 due, 1 waiting)", line)
 
 
 class TestUseStored(unittest.TestCase):
@@ -1984,6 +2165,39 @@ class TestBulkRejectKeepsVinsAwaitingReveal(ScrapingTestCase):
         conn.close()
         self.assertEqual(status, {"behind": "pending", "none": "rejected", "olx": "rejected", "has": "pending"})
 
+    def seed(self):
+        conn = db.get_db()
+        for sid, vin, vc in (("behind", None, "found_in_schema"), ("masked", "WDB4632481X165XXX", "found_in_schema"),
+                             ("none", None, "none")):
+            conn.execute("INSERT INTO pending_listings (source, source_listing_id, make, model, vin, vin_confidence)"
+                         " VALUES ('otomoto', ?, 'BMW', 'M3', ?, ?)", (sid, vin, vc))
+        conn.commit()
+        ids = {r["source_listing_id"]: r["id"] for r in conn.execute("SELECT id, source_listing_id FROM pending_listings")}
+        conn.close()
+        return ids
+
+    def statuses(self):
+        conn = db.get_db()
+        out = {r["source_listing_id"]: r["status"] for r in
+               conn.execute("SELECT source_listing_id, status FROM pending_listings").fetchall()}
+        conn.close()
+        return out
+
+    def test_reject_all_keeps_vins_awaiting_reveal(self):
+        # On 2026-11-11 "reject all" took 47 listings whose VIN was still behind "Show VIN"
+        self.seed()
+        res = self.client.post("/review/reject_all_pending?ajax=1")
+        self.assertEqual(res.get_json(), {"status": "success", "skipped": 1})
+        self.assertEqual(self.statuses(), {"behind": "pending", "masked": "rejected", "none": "rejected"})
+
+    def test_reject_selected_keeps_vins_awaiting_reveal(self):
+        ids = self.seed()
+        res = self.client.post("/review/bulk_reject?ajax=1", data={"ids": [ids["behind"], ids["none"]]})
+        self.assertEqual(res.get_json()["skipped"], 1)
+        self.assertEqual(self.statuses(), {"behind": "pending", "masked": "pending", "none": "rejected"})
+        page = self.client.get("/review").get_data(as_text=True)
+        self.assertIn("Pominięto 1: VIN jest w ogłoszeniu za „Pokaż VIN”", page)
+
 
 class TestAuditListings(unittest.TestCase):
     def setUp(self):
@@ -2006,8 +2220,11 @@ class TestAuditListings(unittest.TestCase):
     def test_rejected_only_for_a_vin_behind_reveal_can_be_restored(self):
         a = self.audit(self.listing(status="rejected", vin_confidence="found_in_schema"), self.configs)
         self.assertEqual((a["verdict"], a["vin"]), ("restore", "behind_reveal"))
-        a = self.audit(self.listing(status="rejected", raw_description="VIN WDD1569421J123456"), self.configs)
+        a = self.audit(self.listing(status="rejected", raw_description="VIN WDD1569421J128406"), self.configs)
         self.assertEqual((a["verdict"], a["vin"]), ("restore", "in_description"))
+        # The seller masked it: nothing to reveal, the rejection stands
+        a = self.audit(self.listing(status="rejected", vin_confidence="found_in_schema", vin="WDB4632481X165XXX"), self.configs)
+        self.assertEqual((a["verdict"], a["vin"]), ("ok", "none"))
 
     def test_rejected_without_any_vin_stays(self):
         self.assertEqual(self.audit(self.listing(status="rejected"), self.configs)["verdict"], "ok")

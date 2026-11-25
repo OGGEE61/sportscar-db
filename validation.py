@@ -41,7 +41,14 @@ def is_plausible_vin(vin: str) -> bool:
     # (which contain letters) require at least 2 trailing digits instead of 4
     if not re.search(r"[0-9]{2}$", vin):
         return False
-        
+
+    # RULE 3b: a made-up serial number: the last 6 characters all the same (WBA85DP090N111111,
+    # WDB4632741X000000) or ending in a run of 5 digits (JTDMF432101234567, ...PPP12345, 54321).
+    # A real car with such a serial is about one in 100,000.
+    serial = vin[-6:]
+    if len(set(serial)) == 1 or vin[-5:] in "0123456789" or vin[-5:] in "9876543210":
+        return False
+
     # RULE 4: the WMI (first 3 characters) must match a make in the DB (BMW, Audi, Merc, Porsche, Toyota, Alpina)
     valid_wmi = (
         r"^(WAU|WUA|TRU|WA1|"     # Audi
@@ -102,32 +109,39 @@ def is_valid_first_registration_date(value, today=None) -> bool:
     return d.year >= MIN_FIRST_REGISTRATION_YEAR and d <= (today or date.today())
 
 
-# Listings that are nearly new with a delivery mileage are dealer stock, not the
-# used-car market this project tracks
-DEALER_M2_MAX_AGE_DAYS = 365
-DEALER_M2_MAX_KM = 20_000
+# Origin markets whose damaged cars are sold from auctions there (Copart, IAAI): such a car is
+# offered in Poland before it is shipped, so it has no Polish plate and its price is not the
+# Polish market's.
+OVERSEAS_ORIGINS = ("USA", "USA/Kanada", "Kanada")
+
+# The markets a car's origin is told as, by Bielik (enrich_with_bielik.py) and on the origin review page
+MARKETS = ["Polska", "Europa", "USA", "Kanada", "Japonia", "Szwajcaria", "Zatoka Perska"]
 
 
-def is_dealer_new_m2(model, year, mileage_km, first_registration_date=None, on=None) -> bool:
-    """is_dealer_new for an M2; any other model is never dealer stock here."""
-    if (model or "").strip().upper() != "M2":
-        return False
-    return is_dealer_new(year, mileage_km, first_registration_date, on)
+# Nearly new cars are dealer stock ("salonówki"), not the used-car market this project
+# tracks. Applies to every model: scrapers skip them and the database hides their sightings.
+DEALER_MAX_AGE_DAYS = 365
+DEALER_MAX_KM = 20_000
+# A car from this or last model year with delivery mileage is unsold stock, registered or not
+DELIVERY_MAX_KM = 1_000
 
 
 def is_dealer_new(year, mileage_km, first_registration_date=None, on=None) -> bool:
-    """True for a car less than a year old with under 20 000 km (dealer stock).
+    """True for dealer stock: a car under a year old with under 20 000 km, or a car from
+    this or last model year with under 1 000 km.
 
     Age comes from the first registration date when it is a valid date, else from the
     model year (same calendar year as `on` counts as under a year; older never does).
     Unknown mileage or age is never treated as dealer stock. `on` is the date the ad
     was seen (default today).
     """
-    if mileage_km is None or mileage_km >= DEALER_M2_MAX_KM:
+    if mileage_km is None or mileage_km >= DEALER_MAX_KM:
         return False
     on = on or date.today()
+    if mileage_km < DELIVERY_MAX_KM and year and year >= on.year - 1:
+        return True
     if is_valid_first_registration_date(first_registration_date, today=on):
-        return (on - date.fromisoformat(first_registration_date.strip())).days < DEALER_M2_MAX_AGE_DAYS
+        return (on - date.fromisoformat(first_registration_date.strip())).days < DEALER_MAX_AGE_DAYS
     return bool(year) and year >= on.year
 
 
@@ -147,3 +161,82 @@ def is_other_mercedes_chassis(vin, chassis) -> bool:
         return True
     code = vin[3:6]
     return len(code) == 3 and code.isdigit() and code != chassis
+
+
+# ── Damage stated in the ad's text ───────────────────────────────────────────
+# Sellers often leave the portal's "damaged" box unticked and say it in the title or description.
+# Only wording that offers the car in a damaged state counts; a repaired past damage ("miał
+# uszkodzony przód, wymieniono…") is history, not the car's state, and is left alone.
+_TAGS = re.compile(r"<[^>]+>")
+_NOT_DAMAGED = r"(?:nie|bez|brak|żadn\w+|nigdy|nie\s*był\w*)\s+(?:\w+\s+){0,2}"
+# Offers of cars standing at US insurance auctions (import brokers' templates)
+_DAMAGE_AUCTION = re.compile(
+    r"uszkodzenie auta\s*:|rodzaj szkody\s*:|dokument\s*:\s*salvage|salvage (?:title|certificate)|numer lota|"
+    r"run\s*&\s*drive|primary damage|\bcopart\b|\biaai\b|(?:licytacji|aukcji)\s+firm\w*\s+ubezpieczeniow|"
+    r"szacunkowy koszt zakupu wraz z transportem")
+_DAMAGE_TITLE = re.compile(r"(?<!nie)uszkodz|(?<!nie)rozbit|po wypadku|po kolizji|do naprawy|do remontu|powypadk|\bdamaged\b|"
+                           r"\b(?:mała|lekka|drobna)\s+szkoda")
+_DAMAGE_OFFER = re.compile(
+    r"(?:sprzedam|sprzedaż|oferuję|na sprzedaż)[^.!?]{0,60}uszkodzon|"
+    r"(?:auto|samoch[oó]d|pojazd|egzemplarz)\s+(?:jest\s+)?(?:mocno\s+|lekko\s+)?uszkodzon|"
+    r"(?:auto|samoch[oó]d|pojazd)\s+do\s+(?:naprawy|remontu|odbudowy)|"
+    r"do naprawy (?:blacharskiej|lakierniczej|tył|tyln|przód|przedn|bok|zderzak|lamp)|"
+    r"(?:lekko|mocno)\s+uszkodzon|uszkodzon[yae]\s+(?:lew[ya]|praw[ya]|przód|tył|bok|podwozie)|"
+    r"uszkodzenia\s+(?:widoczne|jak)\s+na\s+zdj|w\s+stanie\s+uszkodzonym|"
+    r"po\s+(?:kolizji|wypadku|stłuczce),?\s+do\s+naprawy|uwaga\s*:?\s*pojazd uszkodzon|"
+    r"uszkodzon\w*\s+(?:jak\s+|widoczn\w*\s+)?na\s+zdj|"
+    r"(?:auto|samoch[oó]d|pojazd)\s+(?:\w+\s+)?(?:ma|posiada)\s+(?:\w+\s+){0,4}uszkodzeni|"
+    r"(?:auto|samoch[oó]d)\s+z\s+(?:lekk|mał|drobn|niewielk)\w*\s+szkod|"
+    r"sprowadzon\w*,\s*uszkodzon|wizualnie\s+po\s+(?:obcier|stłucz|kolizj)|"
+    r"uszkodzenia\s+to\s+(?:podwozie|przód|tył|bok)|"
+    r"(?:przód|tył|bok|zderzak)\s+do\s+(?:\w+\s+)?(?:poprawki|naprawy)")
+# The same sentence says the damage is in the past or was repaired
+_DAMAGE_PAST = re.compile(
+    r"napraw(?:i|ion|a\b|ie\b|ą\b)|wymieni|odbudow|usunięt|zrobion|miał\w*\s|był\w*\s|został\w*\s|"
+    r"kupion\w*\s|sprowadzon\w*\s+(?:\w+\s+){0,6}jako|kilka lat temu|w przeszłości|histori")
+
+
+def damage_in_text(title, description):
+    """The wording that offers the car as damaged, or None.
+
+    For ads whose seller did not tick the portal's "damaged" box. Returns a short quote (shown
+    with the "Uszkodzony" marker), so a wrong match can be seen and dismissed on the car's page.
+    """
+    title = " ".join(_TAGS.sub(" ", title or "").lower().split())
+    text = " ".join(_TAGS.sub(" ", description or "").lower().replace("&amp;", "&").split())
+    if (m := _DAMAGE_TITLE.search(title)) and not re.search(_NOT_DAMAGED + r"(?:uszkodz|rozbit)", title):
+        return title[max(0, m.start() - 30):m.end() + 30].strip()
+    if m := _DAMAGE_AUCTION.search(text):
+        return text[max(0, m.start() - 20):m.end() + 60].strip()
+    for sentence in re.split(r"(?<=[.!?])\s+|\s[-–•*]\s", text):
+        m = _DAMAGE_OFFER.search(sentence)
+        if not m:
+            continue
+        # The past tense counts only near the match: a long sentence without stops ("…uszkodzony jak
+        # na zdjęciach … w carfax wcześniej nic nie było") is not history because of a far-off "było"
+        near = sentence[max(0, m.start() - 80):m.end() + 80]
+        if re.search(_NOT_DAMAGED + r"uszkodz", sentence) or _DAMAGE_PAST.search(near.replace("do naprawy", "")):
+            continue
+        return sentence[max(0, m.start() - 40):m.end() + 60].strip()
+    return None
+
+
+# ── Import offers of brokers ──────────────────────────────────────────────────
+# A broker lists a car still at an auction or a dealer abroad (USA, Canada, Japan, Korea): the price
+# is an estimate of what the car would cost to buy and bring, not a price of a car in Poland. Its
+# sightings are kept (the VIN stays known) and left out of the market data (excluded_reason
+# 'import_offer'). A private seller's "zdjęcia z aukcji do wglądu" is a car already imported: not this.
+_IMPORT_OFFER = re.compile(
+    r"cena,? za którą zakupimy samoch[oó]d|propozycj\w+ do sprowadzenia|szac\w+ koszt\w* zakupu|"
+    r"oferta dotyczy importu samochodu|dostępny do zakupu i (?:bezpośredniego )?importu|do wylicytowania|"
+    r"importu z aukcji|inspekcji przed licytacją|(?:aukcj|licytacj)\w*\s+firm\w*\s+ubezpieczeniow|"
+    r"koszt\w* zakupu (?:i importu |wraz z )|z licytacji w usa|do kupienia na aukcji|"
+    r"ofert\w* licytacji|dostępny na aukcji w|będzie licytowany|szacowana cena (?:z transportem|zakupu|podana)|"
+    r"sprzedawany przez firmę ubezpieczeniową|wylicytowanie pojazdu|przedmiotem aukcji jest")
+
+
+def is_import_offer(title, description) -> bool:
+    """True for a broker's offer of a car still abroad, priced at an estimated cost of buying it."""
+    text = " ".join(_TAGS.sub(" ", f"{title or ''} {description or ''}").replace("\\", "")
+                    .replace("&nbsp;", " ").lower().split())
+    return bool(_IMPORT_OFFER.search(text))

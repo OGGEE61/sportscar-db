@@ -6,7 +6,7 @@
   <div>
     <h2 class="h3 fw-bold mb-1 d-flex flex-wrap align-items-center gap-2 text-dark">
       <i class="bi bi-camera text-primary"></i> Weryfikacja Tablic Rejestracyjnych
-      <span class="badge bg-light text-secondary border fw-normal fs-6">Human-in-the-Loop</span>
+      <span class="badge bg-light text-secondary border fw-normal fs-6">Weryfikacja ręczna</span>
     </h2>
     <p class="text-muted small mb-0">
       Lokalny model CV (YOLOv8 + EasyOCR) wykrywa tablice na zdjęciach. Zatwierdź lub skoryguj numer jednym kliknięciem.
@@ -114,7 +114,7 @@
             </td>
             <td>
               {% if c.crop_path %}
-              <img loading="lazy" decoding="async" src="{{ c.crop_path }}" alt="Crop" class="rounded border p-1 bg-light" style="max-height: 38px; max-width: 120px; object-fit: contain; cursor: pointer;" onclick="showImageModal(this.src, 'Wycinek tablicy')">
+              <img loading="lazy" decoding="async" src="{{ c.crop_path }}" alt="Wycinek" class="rounded border p-1 bg-light" style="max-height: 38px; max-width: 120px; object-fit: contain; cursor: pointer;" onclick="showImageModal(this.src, 'Wycinek tablicy')">
               {% else %}
               <span class="text-muted small">—</span>
               {% endif %}
@@ -218,7 +218,7 @@
             </td>
             <td>
               {% if c.crop_path %}
-              <img loading="lazy" decoding="async" src="{{ c.crop_path }}" alt="Crop" class="rounded border p-1 bg-light" style="max-height: 38px; max-width: 120px; object-fit: contain;">
+              <img loading="lazy" decoding="async" src="{{ c.crop_path }}" alt="Wycinek" class="rounded border p-1 bg-light" style="max-height: 38px; max-width: 120px; object-fit: contain;">
               {% endif %}
             </td>
             <td>
@@ -347,6 +347,18 @@
             {% endif %}
           </div>
 
+          {% if c.hints %}
+          <!-- Why CEPiK may not know the car, and what the automatic checks did (webapp.services.plates.plate_card_hints) -->
+          <div class="alert {{ 'alert-secondary' if c.checks_left else 'alert-warning' }} py-2 px-3 small mb-3">
+            <div class="fw-semibold mb-1">
+              {% if c.checks_left %}<i class="bi bi-hourglass-split me-1"></i>W kolejce do automatycznego sprawdzenia
+              {% else %}<i class="bi bi-exclamation-triangle me-1"></i>Do wyjaśnienia: CEPiK nie potwierdził tych danych{% endif %}
+            </div>
+            <ul class="mb-0 ps-3">
+              {% for hint in c.hints %}<li>{{ hint }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% endif %}
           <!-- Human-in-the-loop review form -->
           <div class="bg-light p-3 rounded-3 border mb-3">
             {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}
@@ -374,7 +386,7 @@
               <span class="input-group-text bg-white text-dark fw-bold border-end-0 px-2 font-monospace" style="font-size: 0.85rem;">PL</span>
               <input type="text" 
                      id="input-{{ c.id }}" 
-                     value="{{ c.detected_plate }}" 
+                     value="{{ c.suggested_plate if c.suggested_plate is defined else c.detected_plate }}" 
                      class="form-control form-control-lg fw-bold font-monospace text-uppercase plate-input plate-field bg-white {% if c.detected_plate and (c.detected_plate | replace(' ', '') | length) > 8 %}border-warning{% endif %}"
                      placeholder="np. KR7VG22"
                      maxlength="20"
@@ -382,7 +394,13 @@
                      autocomplete="off">
             </div>
             <div class="d-flex justify-content-between align-items-center mt-1">
+              {% if c.reading and c.suggested_plate and c.suggested_plate != c.reading %}
+              <span class="small text-primary" style="font-size: 0.75rem;" title="Poprawione według przepisów o polskich tablicach: wyróżnik powiatu to same litery, a w dalszej części nie ma liter B, D, I, O, Z">
+                <i class="bi bi-magic"></i> Odczyt <span class="font-monospace">{{ c.reading }}</span> poprawiony według reguł polskich tablic
+              </span>
+              {% else %}
               <span class="text-muted small" style="font-size: 0.75rem;">Standard PL: 4–8 znaków (bez spacji)</span>
+              {% endif %}
               {% if c.car_plate and (c.car_plate | upper | replace(' ', '') | replace('-', '')) != ((c.detected_plate or '') | upper | replace(' ', '') | replace('-', '')) %}
               <span class="small text-danger" style="font-size: 0.75rem;" title="Tablica z ogłoszenia, której CEPiK nie znalazł">
                 Z ogłoszenia: <span class="font-monospace fw-semibold">{{ c.car_plate }}</span> (brak w CEPiK)
@@ -491,7 +509,7 @@
     <div class="modal-content bg-white border shadow">
       <div class="modal-header border-bottom py-2">
         <h6 class="modal-title fw-bold text-dark" id="imageModalTitle">Powiększenie</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
       </div>
       <div class="modal-body text-center p-3">
         <img id="imageModalSrc" src="" alt="Powiększenie" class="img-fluid rounded border" style="max-height: 80vh;">

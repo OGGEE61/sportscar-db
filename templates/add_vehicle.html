@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Add Vehicle – SportsCar DB{% endblock %}
+{% block title %}Dodaj auto – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0">Add Vehicle</h2>
-  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
+  <h2 class="mb-0">Dodaj auto</h2>
+  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Wróć</a>
 </div>
 
 {% if error %}
@@ -14,14 +14,14 @@
 <div class="card">
   <div class="card-body">
     <form method="post" action="/add">
-      <h5 class="mb-3">Identity</h5>
+      <h5 class="mb-3">Identyfikacja</h5>
       <div class="row g-3 mb-4">
         <div class="col-md-4">
           <label class="form-label">VIN <span class="text-danger">*</span></label>
           <input name="vin" class="form-control font-monospace" maxlength="17" required value="{{ form.get('vin','') }}">
         </div>
         <div class="col-md-3">
-          <label class="form-label">Make <span class="text-danger">*</span></label>
+          <label class="form-label">Marka <span class="text-danger">*</span></label>
           <input name="make" class="form-control" required value="{{ form.get('make','') }}">
         </div>
         <div class="col-md-3">
@@ -29,43 +29,43 @@
           <input name="model" class="form-control" required value="{{ form.get('model','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Variant</label>
+          <label class="form-label">Wersja</label>
           <input name="variant" class="form-control" value="{{ form.get('variant','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Year <span class="text-danger">*</span></label>
+          <label class="form-label">Rok <span class="text-danger">*</span></label>
           <input name="year" class="form-control" type="number" min="1900" max="2100" required value="{{ form.get('year','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Body type</label>
+          <label class="form-label">Nadwozie</label>
           <input name="body_type" class="form-control" value="{{ form.get('body_type','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">VIN status</label>
+          <label class="form-label">Status VIN</label>
           <select name="vin_status" class="form-select">
-            <option value="unverified" {% if form.get('vin_status','unverified')=='unverified' %}selected{% endif %}>Unverified</option>
-            <option value="verified"   {% if form.get('vin_status')=='verified'   %}selected{% endif %}>Verified</option>
-            <option value="placeholder"{% if form.get('vin_status')=='placeholder'%}selected{% endif %}>Placeholder</option>
+            <option value="unverified" {% if form.get('vin_status','unverified')=='unverified' %}selected{% endif %}>Niezweryfikowany</option>
+            <option value="verified"   {% if form.get('vin_status')=='verified'   %}selected{% endif %}>Zweryfikowany</option>
+            <option value="placeholder"{% if form.get('vin_status')=='placeholder'%}selected{% endif %}>Tymczasowy</option>
           </select>
         </div>
       </div>
 
-      <h5 class="mb-3">Engine &amp; drivetrain</h5>
+      <h5 class="mb-3">Silnik i napęd</h5>
       <div class="row g-3 mb-4">
         <div class="col-md-2">
-          <label class="form-label">Engine cc</label>
+          <label class="form-label">Pojemność (cm³)</label>
           <input name="engine_cc" class="form-control" type="number" value="{{ form.get('engine_cc','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Cylinders</label>
+          <label class="form-label">Cylindry</label>
           <input name="engine_cyl" class="form-control" type="number" value="{{ form.get('engine_cyl','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Power HP</label>
+          <label class="form-label">Moc (KM)</label>
           <input name="power_hp" class="form-control" type="number" value="{{ form.get('power_hp','') }}">
         </div>
         <div class="col-md-3">
-          <label class="form-label">Drivetrain</label>
+          <label class="form-label">Napęd</label>
           <select name="drivetrain" class="form-select">
             <option value="">—</option>
             {% for d in ['RWD','FWD','AWD','4WD'] %}
@@ -74,7 +74,7 @@
           </select>
         </div>
         <div class="col-md-3">
-          <label class="form-label">Transmission</label>
+          <label class="form-label">Skrzynia biegów</label>
           <select name="transmission" class="form-select">
             <option value="">—</option>
             {% for t in ['manual','automatic','semi-auto'] %}
@@ -83,59 +83,59 @@
           </select>
         </div>
         <div class="col-md-3">
-          <label class="form-label">Ext. color</label>
+          <label class="form-label">Kolor nadwozia</label>
           <input name="color_ext" class="form-control" value="{{ form.get('color_ext','') }}">
         </div>
         <div class="col-md-3">
-          <label class="form-label">Int. color</label>
+          <label class="form-label">Kolor wnętrza</label>
           <input name="color_int" class="form-control" value="{{ form.get('color_int','') }}">
         </div>
       </div>
 
-      <h5 class="mb-3">First listing (optional)</h5>
+      <h5 class="mb-3">Pierwsze ogłoszenie (opcjonalnie)</h5>
       <div class="row g-3 mb-4">
         <div class="col-md-2">
-          <label class="form-label">Price PLN</label>
+          <label class="form-label">Cena (zł)</label>
           <input name="price_pln" class="form-control" type="number" step="0.01" value="{{ form.get('price_pln','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Mileage km</label>
+          <label class="form-label">Przebieg (km)</label>
           <input name="mileage_km" class="form-control" type="number" value="{{ form.get('mileage_km','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Source</label>
+          <label class="form-label">Źródło</label>
           <input name="source" class="form-control" value="{{ form.get('source','manual') }}">
         </div>
         <div class="col-md-4">
-          <label class="form-label">Source URL</label>
+          <label class="form-label">Link do ogłoszenia</label>
           <input name="source_url" class="form-control" type="url" value="{{ form.get('source_url','') }}">
         </div>
         <div class="col-md-2">
-          <label class="form-label">Seller type</label>
+          <label class="form-label">Typ sprzedawcy</label>
           <select name="seller_type" class="form-select">
-            <option value="private" {% if form.get('seller_type','private')=='private' %}selected{% endif %}>Private</option>
+            <option value="private" {% if form.get('seller_type','private')=='private' %}selected{% endif %}>Prywatny</option>
             <option value="dealer"  {% if form.get('seller_type')=='dealer'  %}selected{% endif %}>Dealer</option>
           </select>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Listing notes</label>
+          <label class="form-label">Notatki do ogłoszenia</label>
           <input name="listing_notes" class="form-control" value="{{ form.get('listing_notes','') }}">
         </div>
       </div>
 
-      <h5 class="mb-3">Notes &amp; tags</h5>
+      <h5 class="mb-3">Notatki i tagi</h5>
       <div class="row g-3 mb-4">
         <div class="col-md-6">
-          <label class="form-label">Notes</label>
+          <label class="form-label">Notatki</label>
           <textarea name="notes" class="form-control" rows="2">{{ form.get('notes','') }}</textarea>
         </div>
         <div class="col-md-6">
-          <label class="form-label">Tags (comma-separated)</label>
-          <input name="tags" class="form-control" placeholder="e.g. track, modified, rare" value="{{ form.get('tags','') }}">
+          <label class="form-label">Tagi (po przecinku)</label>
+          <input name="tags" class="form-control" placeholder="np. tor, modyfikowany, rzadki" value="{{ form.get('tags','') }}">
         </div>
       </div>
 
-      <button type="submit" class="btn btn-primary px-5">Save vehicle</button>
+      <button type="submit" class="btn btn-primary px-5">Zapisz auto</button>
     </form>
   </div>
 </div>

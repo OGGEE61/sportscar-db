@@ -3,13 +3,14 @@ import hashlib
 import json
 import os
 import time
+from datetime import timedelta
 
 from flask import Flask
 
 from db import get_db
 from webapp.services import r2
 from webapp.regions import location
-from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_plausible_vin, is_valid_registration_plate, plain_text
+from webapp.helpers import IS_PRODUCTION, ROOT_DIR, is_abroad, is_plausible_vin, is_valid_registration_plate, plain_text
 
 
 _NOTIF_CACHE = {"at": 0.0, "data": None}
@@ -64,6 +65,29 @@ def media_url(path):
     return r2.presigned_url(path) or f"/media/{path}"
 
 
+HEAVY_REQUEST_ROWS = 20000  # rows read by one request worth a line in the log
+
+
+def _count_rows_read(app):
+    """Every response says how many rows D1 read for it (X-D1-Rows-Read), and heavy requests are
+    logged with their path, so whatever eats the daily read limit (5M rows on the free plan)
+    can be found in the Vercel logs."""
+    from flask import request
+    from db import ROWS_READ
+
+    @app.before_request
+    def _reset_rows_read():
+        ROWS_READ.reset()
+
+    @app.after_request
+    def _report_rows_read(response):
+        n = ROWS_READ.count
+        response.headers["X-D1-Rows-Read"] = str(n)
+        if n >= HEAVY_REQUEST_ROWS:
+            print(f"[d1] {n} rows read: {request.method} {request.path}", flush=True)
+        return response
+
+
 def create_app() -> Flask:
     app = Flask(
         __name__,
@@ -82,6 +106,7 @@ def create_app() -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=IS_PRODUCTION,
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     )
 
     app.jinja_env.filters["fromjson"] = json.loads
@@ -90,10 +115,13 @@ def create_app() -> Flask:
     app.jinja_env.tests["valid_plate"] = is_valid_registration_plate
     app.jinja_env.globals["media_url"] = media_url
     app.jinja_env.globals["location"] = location
+    app.jinja_env.globals["is_abroad"] = is_abroad
     app.jinja_env.globals["css_version"] = _static_version("style.css")
 
     from webapp.blueprints import api, auth, cepik, dashboard, deals, plates, review, vehicles
     for module in (auth, dashboard, deals, vehicles, review, plates, cepik, api):
         app.register_blueprint(module.bp)
+
+    _count_rows_read(app)
 
     return app

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ selected_model.name }} – Market Analytics – SportsCar DB{% endblock %}
+{% from "_engine_filter.html" import engine_fields %}
+{% block title %}{{ selected_model.name }} – Analiza rynku – SportsCar DB{% endblock %}
 
 {% block head %}
 <style>
@@ -54,8 +55,8 @@
 <!-- Page title & selector tabs -->
 <div class="mb-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="mb-0">Model Analytics</h2>
-    <span class="badge bg-secondary">Market Observations</span>
+    <h2 class="mb-0">Analiza modelu</h2>
+    <span class="badge bg-secondary">Obserwacje rynku</span>
   </div>
 
   <!-- Model selector dropdown -->
@@ -82,30 +83,42 @@
         <div class="text-uppercase small text-primary fw-bold tracking-wide">{{ selected_model.make }}</div>
         <h3 class="mb-1 fw-bold">{{ selected_model.name }}</h3>
         <p class="text-muted mb-0">
-          <span class="badge bg-light text-dark border me-2">Years: {{ selected_model.years }}</span>
+          <span class="badge bg-light text-dark border me-2">Roczniki: {{ selected_model.years }}</span>
           <span>{{ selected_model.engine }}</span>
         </p>
       </div>
       <div class="d-flex gap-2">
         <a href="/vehicles?q={{ selected_model.model }}" class="btn btn-outline-primary btn-sm">
-          Browse All {{ selected_model.name }} →
+          Wszystkie {{ selected_model.name }} →
         </a>
       </div>
     </div>
   </div>
 </div>
 
+<!-- Fuel and engine size: the whole page (statistics, charts, table) is recalculated -->
+<form class="row g-2 mb-4 align-items-center" method="get" action="/models">
+  <input type="hidden" name="model" value="{{ selected_model.id }}">
+  {{ engine_fields(fuel, cc_from, cc_to, fuels, "col-6 col-md-2", "col-6 col-md-3", cc_min, cc_max, cc_step) }}
+  <div class="col-12 col-md-auto d-flex gap-2">
+    <button class="btn btn-primary"><i class="bi bi-funnel"></i> Filtruj</button>
+    {% if fuel or cc_from is not none or cc_to is not none %}
+    <a href="/models?model={{ selected_model.id }}" class="btn btn-outline-secondary">Wyczyść</a>
+    {% endif %}
+  </div>
+</form>
+
 <!-- Active Filter Banner -->
 <div id="activeFilterBannerWrapper" class="mb-4">
   <div id="activeFilterBanner" class="alert alert-info py-3 px-4 shadow-sm d-none align-items-center justify-content-between border-0">
     <div class="d-flex align-items-center gap-2">
       <i class="bi bi-funnel-fill text-primary fs-5"></i>
-      <span class="fs-5">Filtered by: <strong id="activeFilterLabel"></strong></span>
+      <span class="fs-5">Filtr: <strong id="activeFilterLabel"></strong></span>
       <span class="badge bg-white text-dark border ms-2 fs-6" id="activeFilterCount"></span>
     </div>
     <div class="d-flex align-items-center gap-2">
-      <button class="btn btn-outline-danger shadow-sm" onclick="clearModelFilter()">✕ Clear filter</button>
-      <a id="dashboardFilterLink" href="/" class="btn btn-primary shadow-sm">View in Dashboard →</a>
+      <button class="btn btn-outline-danger shadow-sm" onclick="clearModelFilter()">✕ Wyczyść filtr</button>
+      <a id="dashboardFilterLink" href="/" class="btn btn-primary shadow-sm">Pokaż na pulpicie →</a>
     </div>
   </div>
 </div>
@@ -114,25 +127,25 @@
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-4 col-lg-2">
     <div class="kpi-card p-3 h-100" style="border-left: 3px solid #1e40af !important;">
-      <div class="small text-muted mb-1">Active Listings</div>
+      <div class="small text-muted mb-1">Aktywne ogłoszenia</div>
       <div class="fs-4 fw-bold text-dark">{{ stats.count }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
     <div class="kpi-card p-3 h-100" style="border-left: 3px solid #1d4ed8 !important;">
-      <div class="small text-muted mb-1">Average Price</div>
+      <div class="small text-muted mb-1">Średnia cena</div>
       <div class="fs-4 fw-bold" style="color: #1d4ed8;">{{ "{:,.0f} zł".format(stats.avg_price) if stats.avg_price else "—" }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
     <div class="kpi-card p-3 h-100" style="border-left: 3px solid #2563eb !important;">
-      <div class="small text-muted mb-1">Median Price</div>
+      <div class="small text-muted mb-1">Mediana ceny</div>
       <div class="fs-4 fw-bold" style="color: #2563eb;">{{ "{:,.0f} zł".format(stats.median_price) if stats.median_price else "—" }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
     <div class="kpi-card p-3 h-100" style="border-left: 3px solid #60a5fa !important;">
-      <div class="small text-muted mb-1">Price Range</div>
+      <div class="small text-muted mb-1">Zakres cen</div>
       <div class="fs-5 fw-bold text-dark">
         {% if stats.min_price and stats.max_price %}
         {{ "{:,.0f}k".format(stats.min_price/1000) }} – {{ "{:,.0f}k zł".format(stats.max_price/1000) }}
@@ -142,13 +155,13 @@
   </div>
   <div class="col-6 col-md-4 col-lg-2">
     <div class="kpi-card p-3 h-100" style="border-left: 3px solid #93c5fd !important;">
-      <div class="small text-muted mb-1">Avg Mileage</div>
+      <div class="small text-muted mb-1">Średni przebieg</div>
       <div class="fs-4 fw-bold text-dark">{{ "{:,.0f} km".format(stats.avg_mileage) if stats.avg_mileage else "—" }}</div>
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
     <div class="kpi-card p-3 h-100" style="border-left: 3px solid #cbd5e1 !important;">
-      <div class="small text-muted mb-1">Median Mileage</div>
+      <div class="small text-muted mb-1">Mediana przebiegu</div>
       <div class="fs-4 fw-bold text-dark">{{ "{:,.0f} km".format(stats.median_mileage) if stats.median_mileage else "—" }}</div>
     </div>
   </div>
@@ -161,17 +174,17 @@
     <div class="card h-100 shadow-sm border-0">
       <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
         <div>
-          <span class="fw-bold text-dark">Price vs. Mileage Curve</span>
-          <span class="text-muted small ms-2 d-none d-sm-inline">Click any point to view vehicle. Damaged cars left out</span>
+          <span class="fw-bold text-dark">Cena a przebieg</span>
+          <span class="text-muted small ms-2 d-none d-sm-inline">Kliknij punkt, aby otworzyć auto. Uszkodzone auta pominięte</span>
         </div>
-        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Depreciation Trend</span>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Spadek wartości z wiekiem</span>
       </div>
       <div class="card-body" style="height: 320px; position: relative;">
         {% if scatter_data != '[]' %}
         <canvas id="chartScatter"></canvas>
         {% else %}
         <div class="d-flex h-100 align-items-center justify-content-center text-muted">
-          No mileage vs. price points observed yet for this model.
+          Brak jeszcze danych o cenie i przebiegu dla tego modelu.
         </div>
         {% endif %}
       </div>
@@ -182,14 +195,14 @@
   <div class="col-lg-5">
     <div class="card h-100 shadow-sm border-0">
       <div class="card-header bg-white py-3">
-        <span class="fw-bold text-dark">Price Brackets (PLN)</span>
+        <span class="fw-bold text-dark">Przedziały cen (zł)</span>
       </div>
       <div class="card-body" style="height: 320px; position: relative;">
         {% if hist_labels != '[]' and hist_counts != '[]' %}
         <canvas id="chartHist"></canvas>
         {% else %}
         <div class="d-flex h-100 align-items-center justify-content-center text-muted">
-          Insufficient price data for histogram.
+          Za mało cen na histogram.
         </div>
         {% endif %}
       </div>
@@ -203,8 +216,8 @@
   <div class="col-lg-6">
     <div class="card h-100 shadow-sm border-0">
       <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <span class="fw-bold text-dark">Geographic Location in Poland</span>
-        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Click province to filter</span>
+        <span class="fw-bold text-dark">Położenie w Polsce</span>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Kliknij województwo, aby filtrować</span>
       </div>
       <div class="card-body" style="height: 300px; cursor: pointer;" id="chartModelMap"></div>
     </div>
@@ -214,15 +227,15 @@
   <div class="col-lg-6">
     <div class="card h-100 shadow-sm border-0">
       <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <span class="fw-bold text-dark">Listings by Manufacturing Year</span>
-        <span class="badge bg-light text-muted border">Click year to filter</span>
+        <span class="fw-bold text-dark">Ogłoszenia wg rocznika</span>
+        <span class="badge bg-light text-muted border">Kliknij rok, aby filtrować</span>
       </div>
       <div class="card-body" style="height: 300px; position: relative;">
         {% if year_data != '[]' %}
         <canvas id="chartYears"></canvas>
         {% else %}
         <div class="d-flex h-100 align-items-center justify-content-center text-muted">
-          No year data available.
+          Brak danych o rocznikach.
         </div>
         {% endif %}
       </div>
@@ -234,9 +247,9 @@
 <div class="card shadow-sm border-0" id="trackedVehiclesCard">
   <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
     <span class="fw-bold text-dark">
-      Tracked {{ selected_model.name }} Vehicles <span id="tableHeaderCount">({{ vehicles|length }})</span>
+      Śledzone auta {{ selected_model.name }} <span id="tableHeaderCount">({{ vehicles|length }})</span>
     </span>
-    <span class="text-muted small">Updated live from market observations</span>
+    <span class="text-muted small">Na bieżąco z obserwacji rynku</span>
   </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
@@ -276,7 +289,7 @@
           <td class="text-nowrap fw-semibold">{{ v.year or '—' }}</td>
           <td class="text-nowrap">
             <div class="fw-semibold">{{ v.power_hp ~ ' KM' if v.power_hp else '—' }}</div>
-            {%- set spec = [("{:,}".format(v.engine_cc).replace(",", " ") ~ " cm³") if v.engine_cc else None, v.body_type]|select|list %}
+            {%- set spec = [("{:,}".format(v.engine_cc).replace(",", " ") ~ " cm³") if v.engine_cc else None, fuels[v.fuel_type] if v.fuel_type in fuels else None, v.body_type]|select|list %}
             {% if spec %}<div class="small text-muted">{{ spec|join(" · ") }}</div>{% endif %}
           </td>
           <td class="text-nowrap text-end">{{ "{:,} km".format(v.mileage_km).replace(",", " ") if v.mileage_km else '—' }}</td>
@@ -287,18 +300,18 @@
         {% else %}
         <tr>
           <td colspan="7" class="text-center py-5 text-muted">
-            No approved vehicles in the database for {{ selected_model.name }} yet.
+            Brak jeszcze zatwierdzonych aut {{ selected_model.name }} w bazie.
             <div class="mt-2">
-              <a href="/review" class="btn btn-sm btn-outline-secondary">Check Review Queue</a>
+              <a href="/review" class="btn btn-sm btn-outline-secondary">Zobacz kolejkę przeglądu</a>
             </div>
           </td>
         </tr>
         {% endfor %}
         <tr id="modelEmptyFilterRow" style="display: none;">
           <td colspan="7" class="text-center py-4 text-muted">
-            No listings for this model match the selected filter.
+            Żadne ogłoszenie tego modelu nie pasuje do filtra.
             <div class="mt-2">
-              <button class="btn btn-sm btn-outline-secondary" onclick="clearModelFilter()">Clear filter</button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="clearModelFilter()">Wyczyść filtr</button>
             </div>
           </td>
         </tr>
@@ -324,7 +337,7 @@ if (scatterData.length && document.getElementById('chartScatter')) {
     type: 'scatter',
     data: {
       datasets: [{
-        label: 'Listings',
+        label: 'Ogłoszenia',
         data: chartPoints,
         backgroundColor: 'rgba(13, 110, 253, 0.75)',
         borderColor: '#0d6efd',
@@ -345,12 +358,12 @@ if (scatterData.length && document.getElementById('chartScatter')) {
       maintainAspectRatio: false,
       scales: {
         x: {
-          title: { display: true, text: 'Mileage (km)', font: { weight: 'bold' } },
+          title: { display: true, text: 'Przebieg (km)', font: { weight: 'bold' } },
           ticks: { callback: v => Number(v).toLocaleString() + ' km' },
           grid: { color: 'rgba(0,0,0,0.04)' }
         },
         y: {
-          title: { display: true, text: 'Price (PLN)', font: { weight: 'bold' } },
+          title: { display: true, text: 'Cena (zł)', font: { weight: 'bold' } },
           ticks: { callback: v => Number(v).toLocaleString() + ' zł' },
           grid: { color: 'rgba(0,0,0,0.04)' }
         }
@@ -364,8 +377,8 @@ if (scatterData.length && document.getElementById('chartScatter')) {
               const m = ctx.raw.meta;
               return [
                 `${m.title} (${m.year})`,
-                `Price: ${Number(m.y).toLocaleString()} PLN`,
-                `Mileage: ${Number(m.x).toLocaleString()} km`
+                `Cena: ${Number(m.y).toLocaleString()} zł`,
+                `Przebieg: ${Number(m.x).toLocaleString()} km`
               ];
             }
           }
@@ -407,7 +420,7 @@ if (histLabels.length && document.getElementById('chartHist')) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.parsed.y} vehicle(s)`
+            label: ctx => `aut: ${ctx.parsed.y}`
           }
         }
       }
@@ -439,7 +452,7 @@ if (yearData.length && document.getElementById('chartYears')) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.parsed.y} listing(s) (Click to filter)`
+            label: ctx => `ogłoszeń: ${ctx.parsed.y} (kliknij, aby filtrować)`
           }
         }
       },
@@ -496,10 +509,10 @@ function filterModelTable(type, value) {
       dashLink.href = '/?region=' + encodeURIComponent(value) + '#obs-card';
       dashLink.style.display = '';
     } else if (type === 'year') {
-      label.textContent = `Year ${value}`;
+      label.textContent = `Rocznik ${value}`;
       dashLink.style.display = 'none';
     }
-    count.textContent = `${visibleCount} listing(s)`;
+    count.textContent = `ogłoszeń: ${visibleCount}`;
   }
 
   if (emptyRow) {
@@ -508,7 +521,7 @@ function filterModelTable(type, value) {
 
   const tableHeaderCount = document.getElementById('tableHeaderCount');
   if (tableHeaderCount) {
-    tableHeaderCount.textContent = `(Showing ${visibleCount} of ${rows.length})`;
+    tableHeaderCount.textContent = `(widoczne ${visibleCount} z ${rows.length})`;
   }
 
   const tableEl = document.getElementById('trackedVehiclesCard');
@@ -584,7 +597,7 @@ function clearModelFilter() {
     if (!mapContainer) return;
     
     if (rawData.length <= 1) {
-      mapContainer.innerHTML = '<div class="d-flex h-100 align-items-center justify-content-center text-muted">No location data for this model yet.</div>';
+      mapContainer.innerHTML = '<div class="d-flex h-100 align-items-center justify-content-center text-muted">Brak jeszcze danych o lokalizacji dla tego modelu.</div>';
       return;
     }
 

@@ -1,0 +1,49 @@
+{# Fuel and engine size (cm3) fields for a filter form; engine_filter() in webapp/helpers.py reads them.
+   The size is a two-handled slider; a handle at an end sends nothing (no limit on that side). #}
+{% macro engine_fields(fuel, cc_from, cc_to, fuels, fuel_cols, slider_cols, cc_min, cc_max, cc_step) %}
+<div class="{{ fuel_cols }}">
+  <select name="fuel" class="form-select" title="Paliwo">
+    <option value="">Paliwo</option>
+    {% for key, label in fuels.items() %}
+    <option value="{{ key }}" {% if key == fuel %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="{{ slider_cols }}">
+  <div class="cc-range cc-field" data-min="{{ cc_min }}" data-max="{{ cc_max }}"
+       title="Pojemność silnika w cm³ (auta bez podanej pojemności znikają, gdy ją ograniczysz)">
+    <div class="cc-head">
+      <span>Pojemność</span><span class="cc-label"></span>
+    </div>
+    <div class="cc-track">
+      <div class="cc-fill"></div>
+      <input type="range" class="cc-lo" min="{{ cc_min }}" max="{{ cc_max }}" step="{{ cc_step }}" value="{{ cc_from if cc_from is not none else cc_min }}" aria-label="Pojemność od, cm³">
+      <input type="range" class="cc-hi" min="{{ cc_min }}" max="{{ cc_max }}" step="{{ cc_step }}" value="{{ cc_to if cc_to is not none else cc_max }}" aria-label="Pojemność do, cm³">
+    </div>
+    <input type="hidden" name="cc_from" value="{{ cc_from if cc_from is not none else '' }}">
+    <input type="hidden" name="cc_to" value="{{ cc_to if cc_to is not none else '' }}">
+  </div>
+</div>
+<script>
+document.querySelectorAll('.cc-range').forEach(box => {
+  const lo = box.querySelector('.cc-lo'), hi = box.querySelector('.cc-hi');
+  const label = box.querySelector('.cc-label'), fill = box.querySelector('.cc-fill');
+  const outFrom = box.querySelector('[name=cc_from]'), outTo = box.querySelector('[name=cc_to]');
+  const min = +box.dataset.min, max = +box.dataset.max;
+  const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  function update(moved) {
+    if (+lo.value > +hi.value) (moved === hi ? hi : lo).value = (moved === hi ? lo : hi).value;   // handles never cross
+    const a = +lo.value, b = +hi.value;
+    outFrom.value = a > min ? a : '';
+    outTo.value = b < max ? b : '';
+    label.textContent = (a > min || b < max)
+      ? (a > min ? fmt(a) : 'min') + ' – ' + (b < max ? fmt(b) : 'max') + ' cm³' : 'dowolna';
+    fill.style.left = (100 * (a - min) / (max - min)) + '%';
+    fill.style.right = (100 * (max - b) / (max - min)) + '%';
+  }
+  lo.addEventListener('input', () => update(lo));
+  hi.addEventListener('input', () => update(hi));
+  update();
+});
+</script>
+{% endmacro %}

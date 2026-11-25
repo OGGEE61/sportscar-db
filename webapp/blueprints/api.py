@@ -6,9 +6,10 @@ import re
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
-from webapp.helpers import IS_PRODUCTION, NOW, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
+from validation import damage_in_text, is_import_offer
+from webapp.helpers import IS_PRODUCTION, NOW, WRONG_MODEL_NOTE, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
-from webapp.helpers import is_valid_first_registration_date
+from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
 from webapp.regions import CITY_TO_REGION
 from webapp.services.photos import save_photo
 from webapp.services.plates import normalize_plate
@@ -148,14 +149,16 @@ def api_mark_removed():
     conn = get_db()
 
     # 1. Fetch active observations of listings this scraper ingested
+    # Starts from this scraper's listings (idx_pending_variant), so it reads ~one model's rows
+    # instead of every observation of the site on each run.
     active_rows = conn.execute("""
-        SELECT DISTINCT o.source_listing_id
-        FROM listing_observations o
-        JOIN pending_listings pl
-          ON pl.source = o.source AND pl.source_listing_id = o.source_listing_id
-        WHERE o.source = ?
-          AND o.removed_at IS NULL
-          AND pl.make = ? AND pl.model = ? AND pl.variant = ?
+        SELECT pl.source_listing_id
+        FROM pending_listings pl
+        WHERE pl.source = ? AND pl.make = ? AND pl.model = ? AND pl.variant = ?
+          AND pl.source_listing_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM listing_observations o
+                      WHERE o.source = pl.source AND o.source_listing_id = pl.source_listing_id
+                        AND o.removed_at IS NULL)
     """, (source, make, model, variant)).fetchall()
     
     seen_set = set(seen_ids)
@@ -174,6 +177,8 @@ def api_mark_removed():
                   AND source_listing_id IN ({placeholders})
             """, [source] + chunk)
             marked += cur.rowcount
+            conn.execute(f"UPDATE pending_listings SET is_listing_active = 0, checked_at = datetime('now') "
+                         f"WHERE source = ? AND source_listing_id IN ({placeholders})", [source] + chunk)
 
     conn.commit()
     conn.close()
@@ -284,10 +289,12 @@ def api_reveal_queue():
           AND vin_confidence = 'found_in_schema'
         ORDER BY id DESC
     """).fetchall()
+    # A damaged car from the USA or Canada is still abroad: it has no Polish plate to reveal
     plates = conn.execute("""
         SELECT id, source_listing_id, variant FROM pending_listings
         WHERE source = 'otomoto' AND status IN ('pending', 'approved')
           AND COALESCE(registration_plate, '') = '' AND scraped_at >= ?
+          AND NOT """ + overseas_damaged_listing_sql("pending_listings") + """
         ORDER BY status = 'pending' DESC, id DESC
     """, (since,)).fetchall()
     conn.close()
@@ -302,11 +309,12 @@ def api_reveal_queue():
 def api_reveal_result():
     """Store a revealed VIN and/or plate on a pending listing (see /api/reveal_queue).
 
-    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both).
+    Body: {"id": <pending_listings.id>, "vin": "...", "plate": "..."} (either or both), or
+    {"id", "no_vin": true} when Otomoto answered that the ad has no VIN to show.
     Only fills what is empty: a VIN only on a pending listing and only if is_plausible_vin;
     a plate only if is_valid_registration_plate and not one the reviewer rejected for this VIN.
     An approved listing's car gets the plate too, if it has none.
-    Returns {"vin": bool, "plate": bool}: whether each was stored.
+    Returns {"vin": bool, "plate": bool}: whether each was stored (plus "no_vin": bool when sent).
     """
     if err := check_api_token(): return err
     p = request.get_json(force=True, silent=True) or {}
@@ -328,6 +336,14 @@ def api_reveal_result():
         conn.execute("UPDATE pending_listings SET vin = ? WHERE id = ? AND COALESCE(vin, '') = ''",
                      (vin, listing_id))
         stored["vin"] = True
+    # Otomoto answered that this ad has no VIN to show (none, or one the seller masked): the
+    # listing no longer waits for a reveal, so the job stops asking and the review queue's
+    # "reject without VIN" takes it like any other listing without a VIN. 'not_shown', not 'none'
+    # (no VIN flag in the page): scripts/maintenance/recheck_hidden_vins.py re-reads only the latter.
+    if p.get("no_vin") and not vin:
+        cur = conn.execute("UPDATE pending_listings SET vin_confidence = 'not_shown' WHERE id = ? AND status = 'pending' "
+                           "AND vin_confidence = 'found_in_schema' AND COALESCE(TRIM(vin), '') = ''", (listing_id,))
+        stored["no_vin"] = cur.rowcount > 0
     car_vin = row["vin"] or (vin if stored["vin"] else "")
     if plate and car_vin and conn.execute(
             "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
@@ -391,6 +407,109 @@ def api_next_scrapers():
     return jsonify({"keys": keys})
 
 
+@bp.route("/api/cepik_queue", methods=["POST"])
+def api_cepik_queue():
+    """Cars that still need a CEPiK report, for scripts/maintenance/cepik_remote.py on the VPS.
+
+    Body: {"limit": N} (default 40, at most 200). Returns {"cars": [{"vin", "plate",
+    "first_registration_date", "make", "model"}]}: cars never tried first, then failed lookups,
+    oldest attempt first. The job asks CEPiK itself and sends each answer to /api/cepik_result.
+    """
+    if err := check_api_token(): return err
+    from scripts.fetch_cepik import cars_to_check, ensure_sync_log
+    limit = min(max(safe_int((request.get_json(force=True, silent=True) or {}).get("limit")) or 40, 1), 200)
+    conn = get_db()
+    ensure_sync_log(conn)
+    rows = cars_to_check(conn, limit)
+    conn.close()
+    return jsonify({"cars": [{"vin": r["vin"], "plate": r["registration_plate"],
+                              "first_registration_date": r["first_registration_date"],
+                              "make": r["make"], "model": r["model"]} for r in rows]})
+
+
+@bp.route("/api/cepik_result", methods=["POST"])
+def api_cepik_result():
+    """Store what CEPiK answered for one car of /api/cepik_queue.
+
+    Body: {"vin", "plate", "report": {...} or null, "http_status": int or null}. A report (as
+    CepikClient.fetch_vehicle_data returns it) is saved like a local run saves it, rollback check
+    included. Without one: http_status 404 means CEPiK does not know this VIN + plate (the plate
+    goes back to /plates), anything else is a failed lookup that the next run retries.
+    Returns {"outcome": "saved" | "reverted" | "queued" | "error"}.
+    """
+    if err := check_api_token(): return err
+    from types import SimpleNamespace
+    from scripts.fetch_cepik import ensure_sync_log, record_cepik_failure, save_cepik_report
+    p = request.get_json(force=True, silent=True) or {}
+    vin = (p.get("vin") or "").strip().upper()
+    report = p.get("report")
+    conn = get_db()
+    try:
+        if not vin or not conn.execute("SELECT 1 FROM vehicles WHERE vin = ?", (vin,)).fetchone():
+            return jsonify({"error": "unknown vin"}), 404
+        ensure_sync_log(conn)
+        if report:
+            if not isinstance(report, dict) or (report.get("vin") or "").strip().upper() != vin:
+                return jsonify({"error": "report is not for this vin"}), 400
+            save_cepik_report(report, conn)
+            conn.execute("INSERT OR REPLACE INTO cepik_sync_log (vin, status, message, attempted_at) "
+                         "VALUES (?, 'success', 'OK', datetime('now'))", (vin,))
+            conn.commit()
+            return jsonify({"outcome": "saved"})
+        outcome = record_cepik_failure(conn, SimpleNamespace(last_status=safe_int(p.get("http_status"))),
+                                       vin, p.get("plate") or "")
+        return jsonify({"outcome": outcome})
+    except KeyError as e:
+        return jsonify({"error": f"report lacks {e}"}), 400
+    finally:
+        conn.close()
+
+
+@bp.route("/api/plate_check_queue", methods=["POST"])
+def api_plate_check_queue():
+    """CEPiK lookups for the pending /plates cards, for scripts/maintenance/cepik_remote.py on the VPS.
+
+    Body: {"limit": N} (default 60, at most 300). Returns {"checks": [{"card_id", "vin", "plate",
+    "first_registration_date"}]}: every card's likeliest plate and date pair not asked yet first
+    (webapp.services.plates.plate_check_tasks). Each answer goes to /api/plate_check_result.
+    """
+    if err := check_api_token(): return err
+    from webapp.services.plates import plate_check_tasks
+    limit = min(max(safe_int((request.get_json(force=True, silent=True) or {}).get("limit")) or 60, 1), 300)
+    conn = get_db()
+    checks = plate_check_tasks(conn, limit)
+    conn.close()
+    return jsonify({"checks": checks})
+
+
+@bp.route("/api/plate_check_result", methods=["POST"])
+def api_plate_check_result():
+    """Store CEPiK's answer to one lookup of /api/plate_check_queue.
+
+    Body: {"card_id", "vin", "plate", "first_registration_date", "report": {...} or null,
+    "http_status": int or null}. A report for this car approves the card (scripts.fetch_cepik.
+    record_plate_check). Returns {"outcome": "confirmed" | "not_found" | "other_car" | "error" | "gone"}.
+    """
+    if err := check_api_token(): return err
+    from scripts.fetch_cepik import record_plate_check
+    from webapp.services.plate_rules import plate_kind
+    p = request.get_json(force=True, silent=True) or {}
+    check = {"card_id": safe_int(p.get("card_id")), "vin": (p.get("vin") or "").strip().upper(),
+             "plate": normalize_plate(p.get("plate")), "first_registration_date": (p.get("first_registration_date") or "").strip()}
+    report = p.get("report")
+    if not check["card_id"] or not plate_kind(check["plate"]) or not is_valid_first_registration_date(check["first_registration_date"]):
+        return jsonify({"error": "bad card_id, plate or first_registration_date"}), 400
+    if report and (not isinstance(report, dict) or (report.get("vin") or "").strip().upper() != check["vin"]):
+        return jsonify({"error": "report is not for this vin"}), 400
+    conn = get_db()
+    try:
+        return jsonify({"outcome": record_plate_check(conn, check, report, safe_int(p.get("http_status")))})
+    except KeyError as e:
+        return jsonify({"error": f"report lacks {e}"}), 400
+    finally:
+        conn.close()
+
+
 @bp.route("/api/ingest_pending", methods=["POST"])
 def api_ingest_pending():
     if err := check_api_token(): return err
@@ -410,8 +529,12 @@ def api_ingest_pending():
     p["registration_plate"] = reg_plate = normalize_plate(reg_plate) or None
 
     conn = get_db()
-    if p.get("damaged") and sid:
-        conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id) VALUES (?, ?)", (source, sid))
+    # Damaged: the portal's own mark, or the ad's text offering the car as damaged. OR IGNORE keeps
+    # a mark the user dismissed on the car's page.
+    damage = "portal" if p.get("damaged") else damage_in_text(p.get("raw_title"), p.get("raw_description"))
+    if damage and sid:
+        conn.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id, reason) VALUES (?, ?, ?)",
+                     (source, sid, damage if damage == "portal" else "text: " + damage[:200]))
     # A plate the reviewer marked as wrong must not come back from the listing text
     if reg_plate and vin and conn.execute(
             "SELECT 1 FROM plate_review_queue WHERE vin=? AND status='rejected' AND reviewed_plate=? LIMIT 1",
@@ -430,8 +553,8 @@ def api_ingest_pending():
                seller_type, seller_name,
                vin, vin_confidence,
                registration_plate, first_registration_date, origin_market,
-               is_listing_active)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               is_listing_active, import_offer)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             source, sid, p.get("source_url"),
             p.get("raw_title"), p.get("raw_description"),
@@ -447,9 +570,22 @@ def api_ingest_pending():
             p.get("seller_type"), p.get("seller_name"),
             vin or None, vc,
             reg_plate, p.get("first_registration_date"), p.get("origin_market"),
-            1,
+            1, int(is_import_offer(p.get("raw_title"), p.get("raw_description"))),
         ))
         conn.commit()
+
+        # A new ad of a car hidden as a wrong model (the button on the car's page) is rejected on
+        # arrival with the same note: it neither reaches the review queue nor brings the car back
+        if cur.rowcount == 1 and vin:
+            hidden = conn.execute("SELECT review_notes FROM pending_listings WHERE vin = ? AND status = 'rejected' "
+                                  "AND review_notes LIKE ? LIMIT 1", (vin, WRONG_MODEL_NOTE + "%")).fetchone()
+            if hidden:
+                conn.execute("UPDATE pending_listings SET status = 'rejected', reviewed_at = datetime('now'), review_notes = ? "
+                             "WHERE source = ? AND source_listing_id = ?", (hidden["review_notes"], source, sid))
+                conn.commit()
+                conn.close()
+                # Before the known-VIN path below, which would approve it and add a sighting
+                return jsonify({"status": "ok", "id": cur.lastrowid, "tag": "wrong_model"})
 
         # ── Duplicate path ────────────────────────────────────────────────────
         if cur.rowcount == 0:
@@ -457,6 +593,10 @@ def api_ingest_pending():
                 "SELECT * FROM pending_listings WHERE source=? AND source_listing_id=?",
                 (source, sid)
             ).fetchone()
+            if existing:
+                # A scraper sends what its search shows: the listing is up right now
+                conn.execute("UPDATE pending_listings SET is_listing_active = 1, checked_at = datetime('now') "
+                             "WHERE id = ?", (existing["id"],))
             
             if existing:
                 # Update missing fields in pending_listings
@@ -485,7 +625,7 @@ def api_ingest_pending():
                     v_existing = conn.execute("SELECT * FROM vehicles WHERE vin=?", (existing_vin,)).fetchone()
                     if v_existing:
                         v_fields = [
-                            "body_type", "engine_cc", "power_hp", "drivetrain", 
+                            "body_type", "engine_cc", "power_hp", "fuel_type", "drivetrain", 
                             "transmission", "color_ext", "registration_plate", 
                             "first_registration_date"
                         ]

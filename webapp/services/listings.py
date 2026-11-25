@@ -176,13 +176,14 @@ def _approve_listing(conn, listing, overrides=None):
     else:
         initial_status = "unverified"
 
+    # An origin market a person decided on /review/origins (origin_checked_at) is not overwritten
     conn.execute("""
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
-           engine_cc, engine_cyl, power_hp, drivetrain, transmission,
+           engine_cc, engine_cyl, power_hp, fuel_type, drivetrain, transmission,
            color_ext, color_int, equipment, registration_plate, first_registration_date, origin_market,
            vin_status, source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
           make        = COALESCE(excluded.make, make),
           model       = COALESCE(excluded.model, model),
@@ -190,12 +191,14 @@ def _approve_listing(conn, listing, overrides=None):
           power_hp    = COALESCE(excluded.power_hp, power_hp),
           engine_cc   = COALESCE(excluded.engine_cc, engine_cc),
           engine_cyl  = COALESCE(excluded.engine_cyl, engine_cyl),
+          fuel_type   = COALESCE(excluded.fuel_type, fuel_type),
           body_type   = COALESCE(excluded.body_type, body_type),
           drivetrain  = COALESCE(excluded.drivetrain, drivetrain),
           transmission= COALESCE(excluded.transmission, transmission),
           registration_plate = COALESCE(excluded.registration_plate, registration_plate),
           first_registration_date = COALESCE(excluded.first_registration_date, first_registration_date),
-          origin_market = COALESCE(excluded.origin_market, origin_market),
+          origin_market = CASE WHEN origin_checked_at IS NULL
+                               THEN COALESCE(excluded.origin_market, origin_market) ELSE origin_market END,
           color_int   = COALESCE(excluded.color_int, color_int),
           equipment   = COALESCE(excluded.equipment, equipment),
           updated_at  = datetime('now')
@@ -209,6 +212,7 @@ def _approve_listing(conn, listing, overrides=None):
         final_engine_cc,
         final_engine_cyl,
         final_power_hp,
+        _get("fuel_type"),
         final_drivetrain,
         final_transmission,
         _get("color_ext"),

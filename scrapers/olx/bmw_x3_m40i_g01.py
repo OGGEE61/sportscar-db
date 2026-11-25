@@ -12,7 +12,7 @@ _scrapers_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _scrapers_dir not in sys.path:
     sys.path.insert(0, _scrapers_dir)
 from base_scraper import ScraperConfig, run
-from x3_g01 import reassign_x3_g01
+from x3_g01 import is_x3_g45, reassign_x3_g01
 
 
 def validate_x3_m40i(detail: dict) -> bool:
@@ -23,6 +23,9 @@ def validate_x3_m40i(detail: dict) -> bool:
     3. Must be M40i (not 20i, 30i, 20d, 30d).
     4. Power must match B58 (340–400 HP; reject 184/252 HP 4-cyl and 510 HP S58).
     """
+    if is_x3_g45(detail):
+        print("  [reject-g45] New X3 G45 (M50), not a G01.")
+        return False
     vin = (detail.get("vin") or "").strip().upper()
     if not vin or len(vin) < 11:
         print(f"  [reject-m40i] Brak poprawnego VIN (otrzymano: '{vin or 'BRAK'}') — odrzucono.")

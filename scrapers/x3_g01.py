@@ -7,9 +7,24 @@ the same URLs, so a car filed under the wrong one is still seen by the scraper i
 belongs to and neither marks the other's ads sold.
 """
 import importlib
+import re
 
 M_WMI = ("WBS", "5YM")
 REGULAR_WMI = ("WBA", "5UX")
+
+# The next X3 (G45, 2024-) has an M50 instead of the M40i (398 HP, also a regular-BMW VIN). Its
+# VIN model code ends in GP (WBA71GP...); the G01's ends in DP (WBA85DP, 5UX83DP) or is the
+# older TS/TY form (WBATS31, 5UXTY9C). The G01 had no M50.
+G45_VIN_CODE = "GP"
+_M50_TITLE = re.compile(r"\bx?m\s?50\b", re.I)
+
+
+def is_x3_g45(detail: dict) -> bool:
+    """True for an X3 G45: by VIN, or without a VIN by an M50 in the title."""
+    vin = (detail.get("vin") or "").strip().upper()
+    if len(vin) == 17:
+        return vin.startswith(REGULAR_WMI) and vin[5:7] == G45_VIN_CODE
+    return bool(_M50_TITLE.search(detail.get("title") or ""))
 
 # The module names of the two siblings in a market's package (olx/, otomoto/, autoplac/)
 _SIBLINGS = {"X3 M": "bmw_x3_m_f97", "M40i": "bmw_x3_m40i_g01"}
@@ -18,7 +33,7 @@ _SIBLINGS = {"X3 M": "bmw_x3_m_f97", "M40i": "bmw_x3_m40i_g01"}
 def classify_x3_g01(detail: dict) -> str | None:
     """'X3 M', 'M40i' or None when the VIN does not settle it (no VIN, diesel, other car)."""
     vin = (detail.get("vin") or "").strip().upper()
-    if len(vin) != 17 or "diesel" in (detail.get("fuel_type") or "").lower():
+    if len(vin) != 17 or "diesel" in (detail.get("fuel_type") or "").lower() or is_x3_g45(detail):
         return None
     if vin.startswith(M_WMI):
         return "X3 M"
@@ -53,6 +68,9 @@ def x3_g01_power_validator(kind: str):
     Ads without a stated power pass.
     """
     def validate(detail: dict) -> bool:
+        if is_x3_g45(detail):
+            print("  [reject-g45] New X3 G45 (M50), not a G01.")
+            return False
         power = detail.get("power_hp") or 0
         if kind == "M40i" and power > 430:
             print(f"  [reject-m40i] {power} KM > 430 KM and no VIN to prove it is an M40i -- not an M40i.")

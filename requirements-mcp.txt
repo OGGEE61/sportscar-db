@@ -1,0 +1,2 @@
+# Local only: the review MCP server (scripts/review_mcp.py). Not deployed.
+mcp==2.3.0

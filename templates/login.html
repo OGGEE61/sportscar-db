@@ -1,21 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Login - SportsCar DB{% endblock %}
+{% block title %}Logowanie – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center mt-5">
   <div class="col-md-4">
     <div class="card shadow-sm">
       <div class="card-body">
-        <h4 class="card-title text-center mb-4">Admin Login</h4>
+        <h4 class="card-title text-center mb-4">Podaj PIN</h4>
         {% if error %}
         <div class="alert alert-danger">{{ error }}</div>
         {% endif %}
         <form method="POST" action="/login">
           <div class="mb-3">
-            <label for="password" class="form-label">Password</label>
-            <input type="password" class="form-control" id="password" name="password" required autofocus>
+            <label for="password" class="form-label">PIN</label>
+            <input type="password" class="form-control form-control-lg text-center" id="password" name="password"
+                   inputmode="numeric" autocomplete="current-password" required autofocus>
           </div>
-          <button type="submit" class="btn btn-primary w-100">Login</button>
+          <button type="submit" class="btn btn-primary w-100">Wejdź</button>
         </form>
       </div>
     </div>

@@ -7,6 +7,8 @@
   {%- if c.flag_plate -%}
   <span class="badge flag flag-plate" title="{{ 'Tablica odczytana ze zdjęcia' if c.flag_plate_from_photo else 'Tablica rejestracyjna' }}">
     {%- if c.flag_plate_from_photo %}<i class="bi bi-camera me-1"></i>{% endif %}{{ c.flag_plate }}</span>
+  {%- elif is_abroad(c) -%}
+  <span class="badge flag flag-info" title="Uszkodzone auto z {{ c.flag_origin }}: najpewniej jeszcze nie sprowadzone do Polski, więc bez tablicy i poza statystykami cen"><i class="bi bi-airplane me-1"></i>W {{ 'Kanadzie' if c.flag_origin == 'Kanada' else 'USA' }}</span>
   {%- else -%}
   <span class="badge flag flag-warn" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
   {%- endif -%}
@@ -35,12 +37,20 @@
   <span class="badge flag flag-bad" title="CEPiK: przebieg w ogłoszeniu niższy od odczytu na badaniu{% if c.flag_rollback_km %} o {{ '{:,}'.format(c.flag_rollback_km).replace(',', ' ') }} km{% endif %}">Cofnięty licznik</span>
   {%- elif c.flag_cepik == 'ok' -%}
   <span class="badge flag flag-ok" title="Raport CEPiK pobrany, bez zastrzeżeń">CEPiK ✓</span>
-  {%- else -%}
+  {%- elif c.flag_cepik_mismatch -%}
+  <span class="badge flag flag-bad" title="CEPiK nie znalazł auta po VIN-ie, tablicy i dacie pierwszej rejestracji: któraś z tych danych jest błędna albo auto nie jest zarejestrowane w Polsce. Do wyjaśnienia w Tablicach.">Niezgodne z CEPiK</span>
+  {%- elif not is_abroad(c) -%}
   <span class="badge flag flag-muted" title="Brak raportu CEPiK">bez CEPiK</span>
   {%- endif -%}
 
+  {%- if c.flag_ad == 'active' -%}
+  <span class="badge flag flag-ok" title="Co najmniej jedno ogłoszenie tego auta jest aktualnie wystawione">Ogłoszenie aktywne</span>
+  {%- elif c.flag_ad -%}
+  <span class="badge flag flag-muted" title="Ostatnie ogłoszenie zniknęło z portalu (sprzedane albo zdjęte)">Zniknęło {{ c.flag_ad[8:10] }}.{{ c.flag_ad[5:7] }}</span>
+  {%- endif -%}
+
   {%- if c.flag_sold_damaged -%}
-  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone">Uszkodzony</span>
+  <span class="badge flag flag-bad" title="Ogłoszenie oznaczone na portalu jako uszkodzone albo opisane jako uszkodzone w treści">Uszkodzony</span>
   {%- endif -%}
   {%- if c.flag_damage_history -%}
   <span class="badge flag flag-bad" title="Szkoda w historii auta (raport VIN, aukcja, oględziny)"><i class="bi bi-exclamation-triangle-fill me-1"></i>Historia szkody{% if c.flag_damage_country %}: {{ c.flag_damage_country }}{% endif %}</span>
@@ -52,12 +62,20 @@
 {%- endmacro %}
 
 
+{# The star that adds a car to the favourites (/favorites) or takes it off; base.html handles the click #}
+{% macro fav_star(vin, on) -%}
+<button type="button" class="fav-toggle{% if on %} is-fav{% endif %}" data-vin="{{ vin }}" aria-pressed="{{ 'true' if on else 'false' }}"
+        title="{{ 'Usuń z ulubionych' if on else 'Dodaj do ulubionych' }}"><i class="bi {{ 'bi-star-fill' if on else 'bi-star' }}"></i></button>
+{%- endmacro %}
+
 {% macro vin_block(c, vin, link=True, full=True) -%}
 <div class="vin-block">
   <div class="vin-line">
+    {%- if c.car_id %}<span class="car-id" title="ID auta w bazie (do wyszukiwania w Bazie VIN-ów)">#{{ c.car_id }}</span>{% endif %}
     {%- if link %}<a href="/vehicle/{{ vin }}" class="vin-code">{{ vin if full else vin[:12] ~ '…' }}</a>
     {%- else %}<code class="vin-code">{{ vin }}</code>{% endif %}
     {{- plate_badge(c) }}
+    {{- fav_star(vin, c.flag_favorite) }}
   </div>
   <div>{{ car_flags(c, with_plate=False) }}</div>
 </div>

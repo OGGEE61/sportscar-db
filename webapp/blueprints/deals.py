@@ -1,7 +1,7 @@
-"""Deals around Poznań: the newest active listings near the city, priced against the market."""
+"""Poznań i okolice: the newest active listings near the city, each with its price against the market."""
 import time
 
-from flask import Blueprint, current_app, make_response, render_template, request
+from flask import Blueprint, current_app, make_response, redirect, render_template, request
 
 from db import get_db
 from webapp.services import deals
@@ -38,20 +38,31 @@ def _choices(args):
 
 
 @bp.route("/deals")
+def deals_redirect():
+    """The page's old address ("Okazje"), kept for bookmarks."""
+    query = request.query_string.decode()
+    return redirect("/poznan" + ("?" + query if query else ""), code=301)
+
+
+@bp.route("/poznan")
 def deals_page():
-    """Page shell only: the list loads from /api/deals."""
+    """Page shell only: the list loads from /api/poznan."""
     range_key, period_key, sort = _choices(request.args)
     return render_template("deals.html", range_key=range_key, period_key=period_key, sort=sort,
                            ranges=deals.RANGES, periods=deals.PERIODS)
 
 
-@bp.route("/api/deals")
+@bp.route("/api/poznan")
 def deals_list():
     range_key, period_key, sort = _choices(request.args)
     result = deals.poznan_deals(_listings(), range_key, period_key, sort)
+    conn = get_db()
+    try:
+        result["items"] = deals.add_flags(conn, result["items"])
+    finally:
+        conn.close()
     resp = make_response(render_template("_deals_list.html", **result, range_key=range_key,
                                          period_key=period_key, sort=sort,
-                                         deal_below=round(-deals.DEAL_BELOW * 100),
                                          compare_days=deals.COMPARE_DAYS))
     resp.headers["Cache-Control"] = "private, max-age=60"
     return resp

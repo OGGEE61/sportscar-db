@@ -2,22 +2,27 @@
 {% from "_pagination.html" import pager %}
 {% from "_source.html" import source_badge %}
 {% from "_car_flags.html" import vin_block %}
-{% block title %}Vehicles – SportsCar DB{% endblock %}
+{% from "_engine_filter.html" import engine_fields %}
+{% block title %}{{ "Ulubione" if favorites_only else "Baza VIN-ów" }} – SportsCar DB{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0">Vehicles</h2>
-  <a href="/add" class="btn btn-primary btn-sm">+ Add Vehicle</a>
+  <h2 class="mb-0">{% if favorites_only %}<i class="bi bi-star-fill text-warning me-2"></i>Ulubione{% else %}Baza VIN-ów{% endif %}</h2>
+  <a href="/add" class="btn btn-primary btn-sm">+ Dodaj auto</a>
 </div>
 
 <!-- Filters -->
 <form class="row g-2 mb-4" method="get">
-  <div class="col-md-2">
-    <input name="q" class="form-control" placeholder="Search VIN / make / model…" value="{{ q }}">
+  <div class="col-4 col-md-1">
+    <input name="id" class="form-control" inputmode="numeric" placeholder="ID auta" value="{{ car_id }}"
+           title="ID auta w bazie: numer #… przed VIN-em">
+  </div>
+  <div class="col-8 col-md-2">
+    <input name="q" class="form-control" placeholder="Szukaj: VIN / marka / model…" value="{{ q }}">
   </div>
   <div class="col-md-2">
     <select name="make" class="form-select">
-      <option value="">All makes</option>
+      <option value="">Wszystkie marki</option>
       {% for m in makes %}
       <option value="{{ m }}" {% if m == selected_make %}selected{% endif %}>{{ m }}</option>
       {% endfor %}
@@ -25,7 +30,7 @@
   </div>
   <div class="col-md-2">
     <select name="region" class="form-select">
-      <option value="">All voivodeships</option>
+      <option value="">Wszystkie województwa</option>
       {% for code, rname in regions.items() %}
       <option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ rname }}</option>
       {% endfor %}
@@ -33,15 +38,15 @@
   </div>
   <div class="col-md-2">
     <select name="status" class="form-select">
-      <option value="">All statuses</option>
-      <option value="verified"    {% if status=='verified'    %}selected{% endif %}>Verified</option>
-      <option value="unverified"  {% if status=='unverified'  %}selected{% endif %}>Unverified</option>
-      <option value="placeholder" {% if status=='placeholder' %}selected{% endif %}>Placeholder</option>
+      <option value="">Wszystkie statusy VIN</option>
+      <option value="verified"    {% if status=='verified'    %}selected{% endif %}>Zweryfikowany</option>
+      <option value="unverified"  {% if status=='unverified'  %}selected{% endif %}>Niezweryfikowany</option>
+      <option value="placeholder" {% if status=='placeholder' %}selected{% endif %}>Tymczasowy</option>
     </select>
   </div>
   <div class="col-md-1">
-    <select name="source" class="form-select" title="Source">
-      <option value="">All sources</option>
+    <select name="source" class="form-select" title="Źródło">
+      <option value="">Wszystkie źródła</option>
       <option value="otomoto" {% if source=='otomoto' %}selected{% endif %}>Otomoto</option>
       <option value="olx"     {% if source=='olx'     %}selected{% endif %}>OLX</option>
       <option value="autoplac" {% if source=='autoplac' %}selected{% endif %}>Autoplac</option>
@@ -49,27 +54,58 @@
   </div>
   <div class="col-md-2">
     <select name="sort" class="form-select">
-      <option value="last_seen" {% if sort=='last_seen' %}selected{% endif %}>Last seen</option>
-      <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Last updated</option>
-      <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Year ↓</option>
-      <option value="year_asc"   {% if sort=='year_asc'   %}selected{% endif %}>Year ↑</option>
-      <option value="power"      {% if sort=='power'      %}selected{% endif %}>Power ↓</option>
-      <option value="obs"        {% if sort=='obs'        %}selected{% endif %}>Observations ↓</option>
-      <option value="price"      {% if sort=='price'      %}selected{% endif %}>Price ↑</option>
+      {% if favorites_only %}<option value="fav_added" {% if sort=='fav_added' %}selected{% endif %}>Ostatnio dodane</option>{% endif %}
+      <option value="last_seen" {% if sort=='last_seen' %}selected{% endif %}>Ostatnio widziane</option>
+      <option value="updated_at" {% if sort=='updated_at' %}selected{% endif %}>Ostatnio zmienione</option>
+      <option value="year_desc"  {% if sort=='year_desc'  %}selected{% endif %}>Rocznik ↓</option>
+      <option value="year_asc"   {% if sort=='year_asc'   %}selected{% endif %}>Rocznik ↑</option>
+      <option value="power"      {% if sort=='power'      %}selected{% endif %}>Moc ↓</option>
+      <option value="obs"        {% if sort=='obs'        %}selected{% endif %}>Obserwacje ↓</option>
+      <option value="price"      {% if sort=='price'      %}selected{% endif %}>Cena ↑</option>
+      <option value="mileage"    {% if sort=='mileage'    %}selected{% endif %}>Przebieg ↑</option>
     </select>
   </div>
+  {{ engine_fields(fuel, cc_from, cc_to, fuels, "col-6 col-md-2", "col-6 col-md-3", cc_min, cc_max, cc_step) }}
+  <div class="col-6 col-md-2">
+    <select name="origin" class="form-select" title="Pochodzenie (auta o nieznanym pochodzeniu zostają na liście)">
+      <option value="">Każde pochodzenie</option>
+      {% for key, (label, _) in origin_filters.items() %}
+      <option value="{{ key }}" {% if key == history.origin %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="input-group" title="Przebieg z najnowszego ogłoszenia, km (auta bez podanego przebiegu znikają, gdy go ograniczysz)">
+      <input name="km_from" type="number" min="0" step="1" inputmode="numeric" class="form-control" placeholder="km od"
+             aria-label="Przebieg od, km" value="{{ history.km_from if history.km_from is not none else '' }}">
+      <input name="km_to" type="number" min="0" step="1" inputmode="numeric" class="form-control" placeholder="km do"
+             aria-label="Przebieg do, km" value="{{ history.km_to if history.km_to is not none else '' }}">
+    </div>
+  </div>
+  <div class="col-12 col-md-2">
+    <div class="input-group" title="Rok pierwszej rejestracji (auta bez podanej daty znikają, gdy ją ograniczysz)">
+      {% for key, label in (("reg_from", "Rej. od"), ("reg_to", "Rej. do")) %}
+      <select name="{{ key }}" class="form-select" aria-label="{{ 'Pierwsza rejestracja od roku' if key == 'reg_from' else 'Pierwsza rejestracja do roku' }}">
+        <option value="">{{ label }}</option>
+        {% for y in reg_years %}
+        <option value="{{ y }}" {% if y == history[key] %}selected{% endif %}>{{ 'od' if key == 'reg_from' else 'do' }} {{ y }}</option>
+        {% endfor %}
+      </select>
+      {% endfor %}
+    </div>
+  </div>
   <div class="col-md-1 d-flex gap-1">
-    <button class="btn btn-primary w-100" title="Apply filter"><i class="bi bi-funnel"></i></button>
-    <a href="/vehicles" class="btn btn-outline-secondary" title="Reset filter">↺</a>
+    <button class="btn btn-primary w-100" title="Filtruj"><i class="bi bi-funnel"></i></button>
+    <a href="{{ base_path }}" class="btn btn-outline-secondary" title="Wyczyść filtr">↺</a>
   </div>
 </form>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
-  <p class="text-muted small mb-0">{{ total }} result(s){% if pages > 1 %} · page {{ page }}/{{ pages }}{% endif %}</p>
+  <p class="text-muted small mb-0">wyników: {{ total }}{% if pages > 1 %} · strona {{ page }}/{{ pages }}{% endif %}</p>
   {% if selected_region %}
   <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
-    Region: {{ regions.get(selected_region, selected_region) }}
-    <a href="/vehicles?q={{ q }}&make={{ selected_make }}&status={{ status }}&sort={{ sort }}" class="text-decoration-none text-danger ms-1">✕</a>
+    Województwo: {{ regions.get(selected_region, selected_region) }}
+    <a href="{{ base_path }}?{{ clear_region_qs }}" class="text-decoration-none text-danger ms-1">✕</a>
   </span>
   {% endif %}
 </div>
@@ -87,7 +123,7 @@
       {% else %}
       <div class="bg-secondary rounded shadow-sm d-flex align-items-center justify-content-center"
            style="width: 120px; height: 80px;">
-        <span class="text-white opacity-50" style="font-size: 0.7em;">No photo</span>
+        <span class="text-white opacity-50" style="font-size: 0.7em;">Brak zdjęcia</span>
       </div>
       {% endif %}
     </a>
@@ -115,9 +151,15 @@
 
       <div class="text-muted small mb-1 d-flex flex-wrap gap-2 align-items-center">
         {% for s in (v.sources or '').split(',') if s %}{{ source_badge(s) }}{% endfor %}
+        {% if v.left_out %}
+        {% set why = 'Do sprowadzenia' if v.left_out == 'import_offer' else 'Z salonu' if v.left_out.startswith('dealer') else 'Inny model' %}
+        <span class="badge bg-warning text-dark" title="Poza statystykami: {{ why | lower }} (ceny tego auta nie liczą się do median ani okazji)">{{ why }}</span>
+        {% endif %}
         <span>{{ v.year }}</span>
+        {% if v.mileage %}<span class="border-start ps-2">{{ "{:,}".format(v.mileage).replace(",", " ") }} km</span>{% endif %}
         {% if v.power_hp %}<span class="border-start ps-2">{{ v.power_hp }} KM</span>{% endif %}
         {% if v.engine_cc %}<span class="border-start ps-2">{{ v.engine_cc }} cm³</span>{% endif %}
+        {% if v.fuel_type in fuels %}<span class="border-start ps-2">{{ fuels[v.fuel_type] }}</span>{% endif %}
         <span class="border-start ps-2">{{ v.obs_count }} obserwacji</span>
         <span class="border-start ps-2">{{ v.ad_count }} ogłoszeń</span>
       </div>
@@ -134,10 +176,9 @@
   </div>
   {% else %}
   <div class="list-group-item py-4 text-center text-muted">
-    No vehicles found.
+    {% if favorites_only %}Nie masz jeszcze ulubionych aut. Kliknij gwiazdkę przy aucie, żeby je tu dodać.{% else %}Nie znaleziono aut.{% endif %}
   </div>
   {% endfor %}
 </div>
-{% set qs = 'q=' ~ (q|urlencode) ~ '&make=' ~ (selected_make|urlencode) ~ '&status=' ~ status ~ '&region=' ~ selected_region ~ '&source=' ~ source ~ '&sort=' ~ sort %}
-{{ pager(page, pages, '/vehicles?' ~ qs ~ '&page=', 'Vehicles pages', ids=true) }}
+{{ pager(page, pages, base_path ~ '?' ~ (filter_qs ~ '&' if filter_qs else '') ~ 'page=', 'Strony listy aut', ids=true) }}
 {% endblock %}

@@ -28,6 +28,9 @@ except ImportError:
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "sportscar_market.db")
 
+# A car whose VIN is real, not a placeholder standing in for one (PLH…, UNVERIFIED…)
+REAL_VIN_SQL = "vin NOT LIKE 'PLH%' AND vin NOT LIKE 'UNVERIFIED%'"
+
 # Shared keep-alive session: avoids a new TLS handshake for every D1 query
 _D1_SESSION = _http.Session()
 
@@ -91,6 +94,36 @@ class D1Cursor:
         return iter(self.fetchall())
 
 
+class D1ClientError(RuntimeError):
+    """D1 refused the query (4xx): a bad query or the daily read limit. Not retried."""
+
+
+class _RowsRead:
+    """Rows D1 read for the current request or script, from each query's meta.rows_read.
+
+    The free plan allows 5 million rows read a day; past it every read fails until midnight UTC.
+    The web app reports the count per request (X-D1-Rows-Read header, a log line for heavy
+    requests), so a page or API call that reads too much shows up before the limit does.
+    """
+
+    def __init__(self):
+        import threading
+        self._local = threading.local()
+
+    def reset(self):
+        self._local.n = 0
+
+    def add(self, n):
+        self._local.n = getattr(self._local, "n", 0) + int(n)
+
+    @property
+    def count(self):
+        return getattr(self._local, "n", 0)
+
+
+ROWS_READ = _RowsRead()
+
+
 class D1Backend:
     """
     Cloudflare D1 REST API backend.
@@ -145,7 +178,11 @@ class D1Backend:
                     timeout=30,
                 )
                 if not resp.ok:
-                    raise RuntimeError(f"D1 API returned {resp.status_code}: {resp.text}")
+                    err = RuntimeError(f"D1 API returned {resp.status_code}: {resp.text}")
+                    if 400 <= resp.status_code < 500 and resp.status_code != 429:
+                        # A bad query or the daily read limit: retrying only makes the page hang
+                        raise D1ClientError(str(err))
+                    raise err
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -158,6 +195,7 @@ class D1Backend:
 
                 results = stmt_result.get("results") or []
                 meta = stmt_result.get("meta", {})
+                ROWS_READ.add(meta.get("rows_read") or 0)
                 last_row_id = meta.get("last_row_id")
                 changes = meta.get("changes", -1)
                 if last_row_id:
@@ -165,6 +203,8 @@ class D1Backend:
 
                 return D1Cursor(results, lastrowid=last_row_id, rowcount=changes)
 
+            except D1ClientError:
+                raise
             except Exception as exc:
                 last_exc = exc
                 if attempt < 2:
@@ -211,18 +251,20 @@ def get_db():
 # Schema init / migrations
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _dealer_m2_sql(o: str, v: str = "v") -> str:
-    """SQL twin of validation.is_dealer_new_m2 for observation `o` joined to vehicle `v`.
+def _dealer_sql(o: str, v: str = "v") -> str:
+    """SQL twin of validation.is_dealer_new for observation `o` joined to vehicle `v`.
 
-    Keep in step with the Python version; tests/test_validation.py checks they agree.
+    Keep in step with the Python version; tests/test_scraping.py checks they agree.
     """
     seen = f"date(COALESCE({o}.first_seen_at, {o}.observed_at))"
+    seen_year = f"CAST(strftime('%Y', {seen}) AS INTEGER)"
     reg = f"{v}.first_registration_date"
-    return f"""({v}.model = 'M2' AND {o}.mileage_km IS NOT NULL AND {o}.mileage_km < 20000 AND
-      CASE WHEN {reg} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date({reg}) IS NOT NULL
+    return f"""({o}.mileage_km IS NOT NULL AND {o}.mileage_km < 20000 AND
+      CASE WHEN {o}.mileage_km < 1000 AND {v}.year >= {seen_year} - 1 THEN 1
+           WHEN {reg} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date({reg}) IS NOT NULL
                 AND {reg} >= '1980' AND julianday({seen}) >= julianday({reg})
            THEN julianday({seen}) - julianday({reg}) < 365
-           ELSE {v}.year >= CAST(strftime('%Y', {seen}) AS INTEGER) END)"""
+           ELSE {v}.year >= {seen_year} END)"""
 
 
 def init_db():
@@ -553,24 +595,24 @@ def init_db():
         db.execute("ALTER TABLE scraper_logs ADD COLUMN session_status TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(12,'scraper_session_status')")
 
-    # Migration v14: listing_observations.excluded_reason marks dealer-stock M2 sightings
-    # (validation.is_dealer_new_m2). The rows and VINs stay, so the car is still known; the
-    # dashboard and model analytics skip them. A trigger flags new sightings on insert.
+    # Migration v14: listing_observations.excluded_reason marks sightings left out of the market
+    # data (dealer stock, a car filed under the wrong model). The rows and VINs stay, so the car is
+    # still known; the dashboard and model analytics skip them.
     have = {r[1] for r in db.execute("PRAGMA table_info(listing_observations)").fetchall()}
     if "excluded_reason" not in have:
         db.execute("ALTER TABLE listing_observations ADD COLUMN excluded_reason TEXT")
-        db.execute(
-            "UPDATE listing_observations SET excluded_reason = 'dealer_new_m2' WHERE id IN "
-            f"(SELECT o.id FROM listing_observations o JOIN vehicles v ON v.vin = o.vin WHERE {_dealer_m2_sql('o')})")
+    # Dealer stock (validation.is_dealer_new), any model: flagged on insert by this trigger.
+    # Migration v21 widened it from the M2 alone.
     db.execute("DROP TRIGGER IF EXISTS trg_obs_dealer_m2")
+    db.execute("DROP TRIGGER IF EXISTS trg_obs_dealer_new")
     db.execute(f"""
-    CREATE TRIGGER trg_obs_dealer_m2
+    CREATE TRIGGER trg_obs_dealer_new
     AFTER INSERT ON listing_observations
     BEGIN
-        UPDATE listing_observations SET excluded_reason = 'dealer_new_m2'
-        WHERE id = NEW.id AND EXISTS (
+        UPDATE listing_observations SET excluded_reason = 'dealer_new'
+        WHERE id = NEW.id AND excluded_reason IS NULL AND EXISTS (
             SELECT 1 FROM vehicles v JOIN listing_observations o ON o.id = NEW.id
-            WHERE v.vin = o.vin AND {_dealer_m2_sql('o')});
+            WHERE v.vin = o.vin AND {_dealer_sql('o')});
     END""")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(14,'obs_excluded_reason')")
 
@@ -631,6 +673,265 @@ def init_db():
             db.execute(f"ALTER TABLE condition_reports ADD COLUMN {col} TEXT")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(17,'condition_country_photo')")
 
+    # ── Migration 18: indexes against full scans (D1 free plan: 5M rows read a day) ──
+    # pending_listings by VIN (plates queue, CEPiK lists) and by model (mark_removed after each
+    # scraper run); unread logs for the navbar counter on every page.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pending_vin ON pending_listings(vin)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pending_variant ON pending_listings(source, make, model, variant)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_logs_unread ON scraper_logs(is_read) WHERE is_read = 0")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(18,'read_indexes')")
+
+    # ── Migration 19: newest/oldest sighting lookups and stored page aggregates ──
+    # A car's or a listing's newest (or first) sighting through an index instead of numbering every
+    # sighting in the database (model analytics, /vehicles, deals); app_cache keeps dashboard
+    # aggregates for hours so a cold serverless instance reads one row, not ~200k.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_obs_vin_observed ON listing_observations(vin, observed_at)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_obs_listing_observed ON listing_observations(source, source_listing_id, observed_at)")
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS app_cache (
+        key          TEXT PRIMARY KEY,
+        value        TEXT NOT NULL,
+        computed_at  REAL NOT NULL
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(19,'sighting_indexes_app_cache')")
+
+    # ── Migration 20: whether a listing is still up ──────────────────────────
+    # pending_listings.is_listing_active was never kept up to date (every row said 1). Now the
+    # scrapers set it (seen in a search: 1; gone from it, mark_removed: 0) and
+    # scripts/maintenance/recheck_rejected.py sets it from the listing page; checked_at says when.
+    # Once: listings whose every sighting was marked removed are gone since the last such stamp.
+    p_cols = {r[1] for r in db.execute("PRAGMA table_info(pending_listings)").fetchall()}
+    if "checked_at" not in p_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN checked_at TEXT")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 20").fetchone():
+        db.execute("""
+            UPDATE pending_listings SET is_listing_active = 0,
+                   checked_at = (SELECT MAX(o.removed_at) FROM listing_observations o
+                                 WHERE o.source = pending_listings.source
+                                   AND o.source_listing_id = pending_listings.source_listing_id)
+            WHERE source_listing_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM listing_observations o WHERE o.source = pending_listings.source
+                            AND o.source_listing_id = pending_listings.source_listing_id)
+              AND NOT EXISTS (SELECT 1 FROM listing_observations o WHERE o.source = pending_listings.source
+                                AND o.source_listing_id = pending_listings.source_listing_id
+                                AND o.removed_at IS NULL)
+        """)
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(20,'listing_checked_at')")
+
+    # Migration v21: the dealer-stock rule covers every model, plus delivery mileage (a car from
+    # this or last model year under 1 000 km). Once: flag stored sightings it now matches.
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 21").fetchone():
+        db.execute(f"""
+            UPDATE listing_observations SET excluded_reason = 'dealer_new'
+            WHERE excluded_reason IS NULL AND id IN (
+                SELECT o.id FROM listing_observations o JOIN vehicles v ON v.vin = o.vin
+                WHERE o.excluded_reason IS NULL AND {_dealer_sql('o')})
+        """)
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(21,'dealer_new_all_models')")
+
+    # Migration v22: cars the user marked as favourites (the star next to a VIN; /favorites)
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS favorites (
+        vin        TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(22,'favorites')")
+
+    # Migration v23: damage stated only in an ad's text. Sellers often leave the portal's
+    # "damaged" box unticked; validation.damage_in_text finds wording that offers the car as
+    # damaged. `reason` says how an ad got here ('portal', or 'text: <quote>'); `dismissed` is the
+    # user's "this is not damage" (the car's page), kept so that the next scrape does not bring
+    # the mark back. Once: stored listings are checked.
+    d_cols = {r[1] for r in db.execute("PRAGMA table_info(damaged_listings)").fetchall()}
+    if "reason" not in d_cols:
+        db.execute("ALTER TABLE damaged_listings ADD COLUMN reason TEXT")
+    if "dismissed" not in d_cols:
+        db.execute("ALTER TABLE damaged_listings ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 23").fetchone():
+        from validation import damage_in_text
+        db.execute("UPDATE damaged_listings SET reason = 'portal' WHERE reason IS NULL")
+        for r in db.execute("SELECT source, source_listing_id, raw_title, raw_description FROM pending_listings "
+                            "WHERE status IN ('approved', 'pending') AND source_listing_id IS NOT NULL").fetchall():
+            if quote := damage_in_text(r["raw_title"], r["raw_description"]):
+                db.execute("INSERT OR IGNORE INTO damaged_listings (source, source_listing_id, reason) VALUES (?, ?, ?)",
+                           (r["source"], r["source_listing_id"], "text: " + quote[:200]))
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(23,'damage_from_text')")
+
+    # Migration v24: wrong PINs in a row and the lock they lead to (webapp/blueprints/auth.py);
+    # login_locks keeps each lock for the /logs page.
+    # One row for the whole app, not per address: a guesser can change addresses.
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS login_guard (
+        id           INTEGER PRIMARY KEY CHECK (id = 1),
+        failures     INTEGER NOT NULL DEFAULT 0,
+        locked_until TEXT
+    )""")
+    db.execute("INSERT OR IGNORE INTO login_guard (id) VALUES (1)")
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS login_locks (
+        id        INTEGER PRIMARY KEY,
+        locked_at TEXT NOT NULL DEFAULT (datetime('now')),
+        address   TEXT
+    )""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(24,'login_guard')")
+
+    # Migration v25: the car's fuel (petrol / diesel / lpg / hybrid), for the filters on /vehicles
+    # and /models. Ads carry it (pending_listings.fuel_type); the car takes it when it is approved.
+    # Once: filled from the newest ad that states it. One read of the ads and updates by
+    # primary key in chunks of 50, because a join per car would scan the ads for every car on D1.
+    v_cols = {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}
+    if "fuel_type" not in v_cols:
+        db.execute("ALTER TABLE vehicles ADD COLUMN fuel_type TEXT")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 25").fetchone():
+        newest = {}
+        for r in db.execute("SELECT vin, fuel_type FROM pending_listings WHERE status = 'approved' "
+                            "AND COALESCE(fuel_type, '') != '' AND vin IS NOT NULL ORDER BY id").fetchall():
+            newest[r["vin"]] = r["fuel_type"]      # a later ad overwrites an earlier one
+        groups = {}
+        for vin, fuel in newest.items():
+            groups.setdefault(fuel, []).append(vin)
+        for fuel, vins in groups.items():
+            for i in range(0, len(vins), 50):      # D1 allows 100 bound variables a query
+                chunk = vins[i:i + 50]
+                db.execute(f"UPDATE vehicles SET fuel_type = ? WHERE fuel_type IS NULL "
+                           f"AND vin IN ({','.join('?' for _ in chunk)})", (fuel, *chunk))
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(25,'vehicle_fuel_type')")
+
+    # Migration v26: brokers' import offers (validation.is_import_offer): a car still abroad, priced at
+    # an estimate. The ad is flagged on arrival (/api/ingest_pending) and this trigger leaves each of
+    # its sightings out of the market data, whichever path adds the sighting. Like dealer stock, the
+    # sightings and the VIN stay; a car with a sighting of an ordinary ad stays visible.
+    # Once: ads already stored are checked in Python, flagged and their sightings excluded, by key
+    # in chunks of 50 (D1 allows 100 bound variables a query).
+    p_cols = {r[1] for r in db.execute("PRAGMA table_info(pending_listings)").fetchall()}
+    if "import_offer" not in p_cols:
+        db.execute("ALTER TABLE pending_listings ADD COLUMN import_offer INTEGER NOT NULL DEFAULT 0")
+    db.execute("DROP TRIGGER IF EXISTS trg_obs_import_offer")
+    db.execute("""
+    CREATE TRIGGER trg_obs_import_offer
+    AFTER INSERT ON listing_observations
+    BEGIN
+        UPDATE listing_observations SET excluded_reason = 'import_offer'
+        WHERE id = NEW.id AND excluded_reason IS NULL AND EXISTS (
+            SELECT 1 FROM pending_listings p WHERE p.source = NEW.source
+              AND p.source_listing_id = NEW.source_listing_id AND p.import_offer = 1);
+    END""")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version = 26").fetchone():
+        from validation import is_import_offer
+        offers = [r for r in db.execute("SELECT id, source, source_listing_id, raw_title, raw_description "
+                                        "FROM pending_listings WHERE import_offer = 0").fetchall()
+                  if is_import_offer(r["raw_title"], r["raw_description"])]
+        ids = [r["id"] for r in offers]
+        for i in range(0, len(ids), 50):
+            chunk = ids[i:i + 50]
+            db.execute(f"UPDATE pending_listings SET import_offer = 1 WHERE id IN ({','.join('?' for _ in chunk)})", chunk)
+        by_source = {}
+        for r in offers:
+            if r["source_listing_id"]:
+                by_source.setdefault(r["source"], []).append(r["source_listing_id"])
+        for source, sids in by_source.items():
+            for i in range(0, len(sids), 50):
+                chunk = sids[i:i + 50]
+                db.execute(f"UPDATE listing_observations SET excluded_reason = 'import_offer' WHERE excluded_reason IS NULL "
+                           f"AND source = ? AND source_listing_id IN ({','.join('?' for _ in chunk)})", (source, *chunk))
+        db.execute("INSERT INTO schema_migrations(version,name) VALUES(26,'import_offers')")
+
+    # Migration v27: Bielik's analysis per car (enrich_with_bielik.py), made from all its ads at once,
+    # so a car seen on several portals gets one summary instead of only its newest ad's. Same fields
+    # as pending_listings' per-ad analysis, plus how many ads it was made from.
+    v_cols = {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}
+    for col, decl in (("ai_suggested_market", "TEXT"), ("ai_conflict", "INTEGER"), ("ai_reasoning", "TEXT"),
+                      ("ai_equipment", "TEXT"), ("ai_interior_color", "TEXT"), ("ai_ad_count", "INTEGER"),
+                      ("ai_processed_at", "TEXT")):
+        if col not in v_cols:
+            db.execute(f"ALTER TABLE vehicles ADD COLUMN {col} {decl}")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(27,'vehicle_ai_analysis')")
+
+    # Migration v28: a car's origin market as a person decided it on the origin review page
+    # (/review/origins), where the stored market and Bielik's disagree. Once set, scraping does not
+    # overwrite origin_market and Bielik does not flag the car again. The partial index keeps the
+    # page and its counter to the flagged cars.
+    if "origin_checked_at" not in {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}:
+        db.execute("ALTER TABLE vehicles ADD COLUMN origin_checked_at TEXT")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_ai_conflict ON vehicles(vin) WHERE ai_conflict = 1")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(28,'origin_checked')")
+
+    # Migration v29: the CEPiK lookup tables, so far created on first use (scripts/fetch_cepik.py).
+    # Every car list now reads cepik_sync_log (the "Niezgodne z CEPiK" marker), so it must exist.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_sync_log (
+            vin TEXT PRIMARY KEY,
+            status TEXT,
+            message TEXT,
+            attempted_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS cepik_plate_checks (
+            vin TEXT NOT NULL,
+            plate TEXT NOT NULL,
+            first_registration_date TEXT NOT NULL,
+            found INTEGER NOT NULL,
+            checked_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (vin, plate, first_registration_date)
+        )
+    """)
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(29,'cepik_tables')")
+
+    # ── Migration 30: "Dane sprawdzone" ──────────────────────────────────────
+    # When the user (alone or with the review MCP server) checked the car's plate, first
+    # registration date, origin and damage. The partial index serves the queue of cars not
+    # checked yet, newest first, without reading the checked ones.
+    if "data_checked_at" not in {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}:
+        db.execute("ALTER TABLE vehicles ADD COLUMN data_checked_at TEXT")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_unchecked ON vehicles(created_at) WHERE data_checked_at IS NULL")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(30,'data_checked')")
+
+    # ── Migration 31: the car's ID ───────────────────────────────────────────
+    # A short number to find a car by (the VIN base's search, the review MCP server). Only cars
+    # with a real VIN get one: a placeholder (PLH…, UNVERIFIED…) gets it once resolved. The trigger
+    # numbers every new car whichever path inserts it; resolve_placeholder() carries the number over
+    # to the corrected VIN. The UPDATE numbers the cars that have none, oldest first; it runs on
+    # every init_db, so a car left without an ID is caught there too.
+    if "car_id" not in {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}:
+        db.execute("ALTER TABLE vehicles ADD COLUMN car_id INTEGER")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicles_car_id ON vehicles(car_id)")
+    db.execute(f"""
+        UPDATE vehicles SET car_id = n.car_id
+        FROM (SELECT vin, (SELECT COALESCE(MAX(car_id), 0) FROM vehicles)
+                          + ROW_NUMBER() OVER (ORDER BY created_at, vin) AS car_id
+              FROM vehicles WHERE car_id IS NULL AND {REAL_VIN_SQL}) AS n
+        WHERE vehicles.vin = n.vin
+    """)
+    db.execute("DROP TRIGGER IF EXISTS trg_vehicles_car_id")
+    db.execute("""
+        CREATE TRIGGER trg_vehicles_car_id
+        AFTER INSERT ON vehicles
+        WHEN NEW.car_id IS NULL AND NEW.vin NOT LIKE 'PLH%' AND NEW.vin NOT LIKE 'UNVERIFIED%'
+        BEGIN
+            UPDATE vehicles SET car_id = (SELECT COALESCE(MAX(car_id), 0) + 1 FROM vehicles) WHERE vin = NEW.vin;
+        END""")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(31,'car_id')")
+
+    # ── Migration 32: "Do sprawdzenia" ───────────────────────────────────────
+    # Cars a review left uncertain (a plate nobody could read, a date CEPiK did not confirm, a damage
+    # to look for), each with what is known and what is missing, for the user to check by hand.
+    # A car has at most one open note per topic; resolved notes stay as a record.
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS review_notes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            vin         TEXT NOT NULL,
+            topic       TEXT NOT NULL,
+            note        TEXT NOT NULL,
+            ad_url      TEXT,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT
+        )""")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_review_notes_open ON review_notes(vin, topic) WHERE resolved_at IS NULL")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_review_notes_resolved ON review_notes(resolved_at)")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(32,'review_notes')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
@@ -662,8 +963,11 @@ def resolve_placeholder(old_vin: str, new_vin: str,
             raise ValueError(f"VIN not found: {old_vin}")
         # Copy every column except the identity/status ones, so nothing set on
         # the placeholder (photo, plate, equipment, AI summary, ...) is lost.
-        skip = {"vin", "vin_status", "vin_verified_at", "vin_verified_by", "source_method", "updated_at"}
+        # The ID is not copied: two rows cannot share it (and INSERT OR IGNORE would then drop the
+        # new row). It is moved over once the old row is gone, below.
+        skip = {"vin", "vin_status", "vin_verified_at", "vin_verified_by", "source_method", "updated_at", "car_id"}
         cols = [k for k in row.keys() if k not in skip]
+        new_existed = db.execute("SELECT 1 FROM vehicles WHERE vin=?", (new_vin,)).fetchone() is not None
         db.execute(f"""
             INSERT OR IGNORE INTO vehicles (vin, vin_status, source_method, {', '.join(cols)})
             VALUES (?, 'unverified', ?, {', '.join('?' * len(cols))})
@@ -675,20 +979,28 @@ def resolve_placeholder(old_vin: str, new_vin: str,
                 UPDATE vehicles SET {', '.join(f'{c} = COALESCE({c}, ?)' for c in fill)}
                 WHERE vin = ?
             """, (*[row[c] for c in fill], new_vin))
-        for tbl in ("listing_observations", "condition_reports", "tags", "plate_review_queue"):
+        for tbl in ("listing_observations", "condition_reports", "tags", "plate_review_queue", "review_notes"):
             if tbl == "tags":
                 # tags has UNIQUE(vin, tag): drop duplicates the real VIN already has
                 db.execute("""
                     DELETE FROM tags WHERE vin=? AND tag IN (SELECT tag FROM tags WHERE vin=?)
                 """, (old_vin, new_vin))
-            db.execute(f"UPDATE {tbl} SET vin=? WHERE vin=?", (new_vin, old_vin))
+            # review_notes allows one open note per car and topic: one the real VIN already has wins
+            verb = "UPDATE OR IGNORE" if tbl == "review_notes" else "UPDATE"
+            db.execute(f"{verb} {tbl} SET vin=? WHERE vin=?", (new_vin, old_vin))
         db.execute("UPDATE pending_listings SET vin=? WHERE vin=?", (new_vin, old_vin))
+        db.execute("UPDATE OR IGNORE favorites SET vin=? WHERE vin=?", (new_vin, old_vin))
+        db.execute("DELETE FROM favorites WHERE vin=?", (old_vin,))
         db.execute("""
             UPDATE cepik_reports SET vin=? WHERE vin=?
               AND NOT EXISTS (SELECT 1 FROM cepik_reports WHERE vin=?)
         """, (new_vin, old_vin, new_vin))
         db.execute("DELETE FROM cepik_reports WHERE vin=?", (old_vin,))
         db.execute("DELETE FROM vehicles WHERE vin=?", (old_vin,))
+        # A corrected VIN keeps the car's ID (a resolved placeholder had none, and keeps the one the
+        # trigger gave it); a car that already existed under the new VIN keeps its own
+        if not new_existed and row["car_id"] is not None:
+            db.execute("UPDATE vehicles SET car_id=? WHERE vin=?", (row["car_id"], new_vin))
         db.execute("""
             INSERT INTO vin_correction_log(old_vin,new_vin,reason,corrected_by,source_method)
             VALUES(?,?,?,?,?)

@@ -36,7 +36,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from validation import VIN_RE, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
+from validation import OVERSEAS_ORIGINS, VIN_RE, damage_in_text, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
 
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -201,6 +201,37 @@ def parse_price(text: str) -> Optional[int]:
         return None
 
 
+_NBP_RATES: dict = {}
+
+
+def pln_rate(currency: str) -> Optional[float]:
+    """PLN per 1 unit of the currency (NBP average rate), asked once per process; None if unknown."""
+    cur = (currency or "PLN").upper()
+    if cur == "PLN":
+        return 1.0
+    if cur not in _NBP_RATES:
+        rate = None
+        try:
+            r = requests.get(f"https://api.nbp.pl/api/exchangerates/rates/a/{cur.lower()}/?format=json",
+                             timeout=15)
+            if r.status_code == 200:
+                rate = float(r.json()["rates"][0]["mid"])
+        except Exception:
+            pass
+        _NBP_RATES[cur] = rate
+    return _NBP_RATES[cur]
+
+
+def price_in_pln(amount: Optional[int], currency: Optional[str]) -> tuple:
+    """(price in PLN, price in EUR) of an ad priced in `currency`. A price in a foreign currency is
+    converted, never stored as if it were zloty: without a rate the PLN price stays empty."""
+    cur = (currency or "PLN").upper()
+    if not amount or cur == "PLN":
+        return amount, None
+    rate = pln_rate(cur)
+    return (round(amount * rate) if rate else None), (amount if cur == "EUR" else None)
+
+
 def load_cookies() -> dict:
     """Load cookies from otomoto_cookies.json.
 
@@ -331,6 +362,31 @@ def refresh_session(cookies: dict, log_errors: bool = True) -> dict:
         return cookies
 
 
+# parametersDict keys by which otomoto says an ad has a VIN behind "Wyświetl VIN". Most ads carry
+# both; ads moved over from OLX (OLX_ID in the URL) carry only with_vin. Otomoto renames these
+# now and then, so any other key with "vin" as a word and a yes value counts too, and is logged so
+# it can be added here.
+VIN_FLAG_KEYS = ("has_vin", "with_vin")
+_VIN_WORD = re.compile(r"(?:^|_)vin(?:_|$)")
+_YES = ("1", "true", "tak", "yes")
+
+
+def vin_behind_reveal(params_dict: dict) -> bool:
+    """True if an otomoto ad's parametersDict says it has a VIN to reveal."""
+    def yes(key):
+        values = (params_dict.get(key) or {}).get("values") or [{}]
+        return str(values[0].get("value", "")).strip().lower() in _YES
+
+    if any(yes(k) for k in VIN_FLAG_KEYS):
+        return True
+    # "vin" itself holds the encrypted VIN, not a flag
+    unknown = [k for k in params_dict if k not in VIN_FLAG_KEYS and k != "vin" and _VIN_WORD.search(k) and yes(k)]
+    if unknown:
+        print(f"    [vin] unknown VIN flag {', '.join(unknown)}: taken as a VIN behind the button "
+              f"(add it to VIN_FLAG_KEYS)")
+    return bool(unknown)
+
+
 def _decrypt_vin(encrypted: str, advert_id: str) -> Optional[str]:
     """Decrypt an otomoto encrypted VIN using the advert's numeric ID as key material.
 
@@ -408,7 +464,7 @@ _VIN_QUERY = """
 # side by side (the Otomoto and OLX scrapes) see each other's counts and pauses.
 VIN_REVEAL_DELAY_S = (4.0, 8.0)
 VIN_REVEALS_PER_RUN = 10
-REVEALS_PER_DAY = 30
+REVEALS_PER_DAY = 60     # 45 until 2026-11-17 (30 until 11-13): a week without a 403, the last were on 11-10 before any budget
 VIN_RETRY_AFTER_S = 24 * 3600
 PLATE_RETRY_AFTER_S = 7 * 24 * 3600
 BLOCK_PAUSE_S = 24 * 3600
@@ -528,6 +584,8 @@ def _worth_revealing(cfg, detail: dict) -> bool:
     judge a car before the VIN is known. The validator sees `before_reveal`, so one that needs the VIN
     to decide can let the car through for now.
     """
+    if _dealer_stock(detail):
+        return False
     if cfg.reassign:
         return True
     if _outside_search(cfg, detail):
@@ -717,6 +775,7 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
 
     # Price
     price_val = (ad.get("price") or {}).get("regularPrice", {}).get("value")
+    price_currency = (ad.get("price") or {}).get("regularPrice", {}).get("currencyCode")
 
     # Photos (extract up to 10 photos for license plate detection and gallery)
     photos = ad.get("photos", [])
@@ -833,6 +892,7 @@ def _fetch_olx_detail(html: str, url: str) -> dict:
         "photo_urls":              photo_urls,
         "raw_description":         desc_clean,
         "price_from_detail":       price_val,
+        "price_currency":          price_currency,
         "location_from_detail":    location_str,
         "origin_market":           origin_market,
     }
@@ -964,6 +1024,7 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
         "photo_urls":              photo_urls,
         "raw_description":         desc_clean,
         "price_from_detail":       ((ad.get("priceInfo") or {}).get("primary") or {}).get("price"),
+        "price_currency":          (ad.get("priceInfo") or {}).get("currency"),
         "location_from_detail":    location_str,
         "origin_market":           resolve_market(vin_found, desc_clean, make=ad.get("brand") or ""),
     }
@@ -976,22 +1037,40 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
 
     Data lives in __NEXT_DATA__ (Otomoto), __PRERENDERED_STATE__ (OLX) or ng-state (autoplac).
     """
+    return fetch_listing(url, cookies)[1]
+
+
+# A listing taken down answers 410 Gone (otomoto, OLX) or 404 (autoplac)
+GONE_STATUSES = (404, 410)
+
+
+def fetch_listing(url: str, cookies: dict = None) -> tuple:
+    """(state, detail) of a listing page: ("active", parse_detail(...)), ("gone", {}) when the
+    site says the listing was taken down, or ("error", {}) when it cannot tell (network error,
+    403, 5xx)."""
     try:
         r = requests.get(
             url, headers=HEADERS, cookies=cookies or {},
             timeout=15, impersonate="chrome"
         )
+    except Exception as e:
+        print(f"    [detail error] {_safe(str(e))}")
+        return "error", {}
+    if r.status_code != 200:
+        print(f"    [detail] HTTP {r.status_code}")
+        return ("gone" if r.status_code in GONE_STATUSES else "error"), {}
+    return "active", parse_detail(r.text, url)
 
-        if r.status_code != 200:
-            print(f"    [detail] HTTP {r.status_code}")
-            return {}
 
+def parse_detail(html: str, url: str) -> dict:
+    """Structured data from a listing page's HTML (the site is told by the URL)."""
+    try:
         if "olx.pl" in url:
-            return _fetch_olx_detail(r.text, url)
+            return _fetch_olx_detail(html, url)
         if "autoplac.pl" in url:
-            return _fetch_autoplac_detail(r.text, url)
+            return _fetch_autoplac_detail(html, url)
 
-        nd_m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
+        nd_m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
         if not nd_m:
             return {}
 
@@ -1094,7 +1173,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
         vin_confidence = "none"
         invalid_vin    = None
         advert_id      = advert.get("id", "")
-        has_vin        = bool((pd).get("has_vin"))
+        has_vin        = vin_behind_reveal(pd)
 
         # Tier 1: decrypt the encrypted value in params["vin"] or pd["vin"]
         enc_vin = params.get("vin") or _pd_val("vin") or ""
@@ -1206,6 +1285,7 @@ def fetch_detail(url: str, cookies: dict = None) -> dict:
             "photo_urls":              photo_urls,
             "raw_description":         description_text,
             "price_from_detail":       price_from_detail,
+            "price_currency":          (advert.get("price") or {}).get("currency"),
             "location_from_detail":    location_from_detail,
             "origin_market":           origin_market,
         }
@@ -1465,6 +1545,18 @@ def _otomoto_searches() -> dict:
             print(f"  [search check] otomoto searches not loaded: {_safe(str(e))[:120]}")
         _OTOMOTO_SEARCHES = searches
     return _OTOMOTO_SEARCHES
+
+
+def _still_overseas(detail: dict) -> bool:
+    """A damaged car from the USA or Canada: sold before it is shipped, so no Polish plate yet."""
+    if detail.get("origin_market") not in OVERSEAS_ORIGINS:
+        return False
+    return bool(detail.get("damaged") or damage_in_text(detail.get("title"), detail.get("raw_description")))
+
+
+def _dealer_stock(detail: dict) -> bool:
+    """True for a nearly new car (validation.is_dealer_new): skipped for every model."""
+    return is_dealer_new(detail.get("year"), detail.get("mileage_km"), detail.get("first_registration_date"))
 
 
 def _outside_search(cfg: ScraperConfig, detail: dict) -> Optional[str]:
@@ -1738,13 +1830,16 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     if why := _outside_search(car, detail):
                         print(f"  [skip] Not a {car.variant or car.model}: {why}")
                         continue
+                    if _dealer_stock(detail):
+                        print(f"  [skip] Dealer stock: {detail.get('year')}, {detail.get('mileage_km')} km")
+                        continue
                     if not vetted and cfg.validator and not cfg.validator(detail):
                         continue
 
                     # Only for listings that are kept and not yet approved: the plates of approved
                     # ones come from the reveal job, at the end of its queue. detail is the cached
                     # dict, so a scraper sharing the search won't ask again.
-                    if detail.get("plate_behind_reveal") and logged_in and not approved:
+                    if detail.get("plate_behind_reveal") and logged_in and not approved and not _still_overseas(detail):
                         if why := reveal_skip_reason("plate", listing_id):
                             print(f"    Plate: not revealed ({why})")
                         else:
@@ -1755,7 +1850,9 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                                 print(f"    Plate (api):  {plate}")
     
                 photo         = detail.get("photo_url") or thumbnail
-                final_price   = detail.get("price_from_detail") or price_pln
+                final_price, price_eur = price_in_pln(detail.get("price_from_detail"),
+                                                      detail.get("price_currency"))
+                final_price   = final_price or (price_pln if not detail.get("price_currency") else None)
                 final_loc     = detail.get("location_from_detail") or location_city
     
                 # Market extraction from VIN if not already set by description
@@ -1790,6 +1887,7 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "color_ext":         detail.get("color_ext"),
                     "damaged":           bool(detail.get("damaged")),
                     "price_pln":         final_price,
+                    "price_eur":         price_eur,
                     "mileage_km":        detail.get("mileage_km"),
                     "location_city":     final_loc,
                     "photos":            detail.get("photo_urls") or ([photo] if photo else []),

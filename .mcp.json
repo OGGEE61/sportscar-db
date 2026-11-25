@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sportscar-review": {
+      "command": ".venv/bin/python",
+      "args": ["scripts/review_mcp.py"]
+    }
+  }
+}

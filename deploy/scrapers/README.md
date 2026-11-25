@@ -11,6 +11,12 @@ these reveals ("Show VIN", "Show plate"), so the scrapes and the job share one b
 for 24 hours after an HTTP 403 (see the block above `VIN_REVEAL_DELAY_S` in
 [base_scraper.py](../../scrapers/base_scraper.py)).
 
+`scripts/maintenance/cepik_remote.py` runs every night: it asks the app which cars still lack a
+CEPiK report (`/api/cepik_queue`), asks the state register (moj.gov.pl) from here, and sends each
+answer back (`/api/cepik_result`). The VPS holds no database credentials, so nothing is written
+to the database directly. Up to 60 cars a night; when the register stops answering, the run stops
+and the next night continues.
+
 How it works: the host's cron (`/etc/cron.d/sportscar-scrapers`, from [crontab](crontab)) calls
 [run.sh](run.sh), which starts one fresh container from the `sportscar-scraper` image. Only one
 job per source runs at a time; a run that finds the previous one still going is skipped.

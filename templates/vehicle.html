@@ -21,7 +21,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 vehicle-header">
   <div class="d-flex flex-wrap gap-3 align-items-start min-w-0">
     {% if vehicle.photo %}
-    <img src="{{ media_url(vehicle.photo) }}" alt="photo" class="vehicle-hero-img"
+    <img src="{{ media_url(vehicle.photo) }}" alt="zdjęcie" class="vehicle-hero-img"
          style="width:160px;height:110px;object-fit:cover;border-radius:6px;flex-shrink:0;">
     {% endif %}
     <div>
@@ -39,23 +39,43 @@
             {% else %}bg-secondary text-white{% endif %}"
             style="padding-top:2px; padding-bottom:2px; border:none;"
             onchange="this.form.submit()">
-          <option value="unverified" class="bg-white text-dark" {% if vehicle.vin_status == 'unverified' %}selected{% endif %}>unverified</option>
-          <option value="verified" class="bg-white text-dark" {% if vehicle.vin_status == 'verified' %}selected{% endif %}>verified</option>
-          <option value="placeholder" class="bg-white text-dark" {% if vehicle.vin_status == 'placeholder' %}selected{% endif %}>placeholder</option>
+          <option value="unverified" class="bg-white text-dark" {% if vehicle.vin_status == 'unverified' %}selected{% endif %}>niezweryfikowany</option>
+          <option value="verified" class="bg-white text-dark" {% if vehicle.vin_status == 'verified' %}selected{% endif %}>zweryfikowany</option>
+          <option value="placeholder" class="bg-white text-dark" {% if vehicle.vin_status == 'placeholder' %}selected{% endif %}>tymczasowy</option>
         </select>
+      </form>
+      {# Plate, first registration date, origin and damage checked by hand (or with the review MCP server) #}
+      <form method="post" action="/vehicle/{{ vehicle.vin }}/data_checked" class="d-inline-block ms-2">
+        {% if vehicle.data_checked_at %}
+        <input type="hidden" name="checked" value="0">
+        <span class="badge bg-success" title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia sprawdzone {{ vehicle.data_checked_at[:10] }}">
+          <i class="bi bi-check2-all me-1"></i>Dane sprawdzone</span>
+        <button type="submit" class="btn btn-link btn-sm p-0 ms-1 small">cofnij</button>
+        {% else %}
+        <input type="hidden" name="checked" value="1">
+        <button type="submit" class="btn btn-outline-success btn-sm py-0"
+                title="Tablica, data pierwszej rejestracji, rynek i uszkodzenia są sprawdzone">
+          <i class="bi bi-check2 me-1"></i>Oznacz dane jako sprawdzone</button>
+        {% endif %}
       </form>
     </div>
   </div>
-  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Back</a>
+  <a href="/vehicles" class="btn btn-outline-secondary btn-sm">← Wróć</a>
 </div>
+{% if wrong_model %}
+<div class="alert alert-warning py-2">
+  <i class="bi bi-eye-slash me-1"></i>Auto ukryte jako błędnie przypisany model: <strong>{{ wrong_model }}</strong>.
+  <a href="#wrong-model" class="alert-link ms-1">Przywróć</a>
+</div>
+{% endif %}
 
 <div class="row g-4">
   <div class="col-lg-5">
     {% if photos %}
-    <div class="section-label">Photos ({{ photos|length }})</div>
+    <div class="section-label">Zdjęcia ({{ photos|length }})</div>
     <div class="photo-strip mb-3">
       {% for url in photos %}
-      <img src="{{ url }}" alt="Photo {{ loop.index }}"
+      <img src="{{ url }}" alt="Zdjęcie {{ loop.index }}"
            onclick="window.open('{{ url }}','_blank')"
            onerror="this.style.display='none'">
       {% endfor %}
@@ -63,7 +83,7 @@
     {% endif %}
 
     {% if raw_desc %}
-    <div class="section-label">Original description</div>
+    <div class="section-label">Oryginalny opis</div>
     <div class="raw-desc mb-3">{{ raw_desc|plain_text }}</div>
     {% endif %}
 
@@ -73,7 +93,7 @@
       <div class="ai-summary-header d-flex align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-2">
           <span class="ai-sparkle-pill"><i class="bi bi-stars"></i> Bielik AI</span>
-          <span class="fw-semibold text-dark small">Ekspertyza ogłoszenia</span>
+          <span class="fw-semibold text-dark small">{% if ai_data.ad_count and ai_data.ad_count > 1 %}Ekspertyza {{ ai_data.ad_count }} ogłoszeń tego auta{% else %}Ekspertyza ogłoszenia{% endif %}</span>
         </div>
         {% if ai_data and ai_data.market %}
         <span class="badge bg-white text-secondary border">Rynek: <strong class="text-dark">{{ ai_data.market }}</strong></span>
@@ -84,6 +104,14 @@
         <div class="ai-text mb-2">{{ ai_data.summary }}</div>
         {% else %}
         <div class="text-muted small fst-italic mb-2">Brak wygenerowanego podsumowania tekstowego dla tego pojazdu.</div>
+        {% endif %}
+
+        {% if vehicle.ai_conflict %}
+        <div class="alert alert-warning py-2 small mb-2">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          W bazie rynek <strong>{{ vehicle.origin_market }}</strong>, a Bielik wskazuje <strong>{{ vehicle.ai_suggested_market }}</strong>.
+          <a href="/review/origins#car-{{ vehicle.vin }}" class="alert-link">Rozstrzygnij</a>
+        </div>
         {% endif %}
 
         {% if ai_data and ai_data.reasoning %}
@@ -107,7 +135,7 @@
     </div>
 
     {% if equipment %}
-    <div class="section-label mt-4">Equipment (Otomoto)</div>
+    <div class="section-label mt-4">Wyposażenie (Otomoto)</div>
     <div class="mb-4">
       <div class="d-flex flex-wrap gap-2">
         {% for eq in equipment %}
@@ -123,22 +151,22 @@
 <!-- Vehicle details -->
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span>Vehicle details</span>
+    <span>Dane auta</span>
     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editDetailsModal">
-      Edit
+      Edytuj
     </button>
   </div>
   <div class="card-body">
     <div class="row g-2">
       {% set fields = [
-        ("Year", vehicle.year), ("Body type", vehicle.body_type),
-        ("Engine cc", vehicle.engine_cc), ("Cylinders", vehicle.engine_cyl),
-        ("Power HP", vehicle.power_hp), ("Drivetrain", vehicle.drivetrain),
-        ("Transmission", vehicle.transmission), ("Ext. color", vehicle.color_ext),
-        ("Int. color", vehicle.color_int), ("Reg. Plate", vehicle.registration_plate),
-        ("First Reg", vehicle.first_registration_date), ("Source method", vehicle.source_method),
-        ("Created", vehicle.created_at[:16] if vehicle.created_at else None),
-        ("Updated", vehicle.updated_at[:16] if vehicle.updated_at else None),
+        ("Rok", vehicle.year), ("Nadwozie", vehicle.body_type),
+        ("Pojemność (cm³)", vehicle.engine_cc), ("Cylindry", vehicle.engine_cyl),
+        ("Moc (KM)", vehicle.power_hp), ("Napęd", vehicle.drivetrain),
+        ("Skrzynia biegów", vehicle.transmission), ("Kolor nadwozia", vehicle.color_ext),
+        ("Kolor wnętrza", vehicle.color_int), ("Tablica rej.", vehicle.registration_plate),
+        ("Pierwsza rejestracja", vehicle.first_registration_date), ("Źródło danych", vehicle.source_method),
+        ("Dodano", vehicle.created_at[:16] if vehicle.created_at else None),
+        ("Zmieniono", vehicle.updated_at[:16] if vehicle.updated_at else None),
       ] %}
       {% for label, val in fields %}
       <div class="col-6 col-md-3">
@@ -148,7 +176,7 @@
       {% endfor %}
     </div>
     {% if vehicle.notes %}
-    <div class="mt-2"><span class="text-muted small">Notes:</span> {{ vehicle.notes }}</div>
+    <div class="mt-2"><span class="text-muted small">Notatki:</span> {{ vehicle.notes }}</div>
     {% endif %}
   </div>
 </div>
@@ -159,24 +187,24 @@
     <div class="modal-content">
       <form method="post" action="/vehicle/{{ vehicle.vin }}/update_details">
         <div class="modal-header">
-          <h5 class="modal-title">Edit Vehicle Details</h5>
+          <h5 class="modal-title">Edytuj dane auta</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body row g-2">
-          <div class="col-6"><label class="small text-muted">Year</label><input type="number" name="year" class="form-control form-control-sm" value="{{ vehicle.year or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Body Type</label><input type="text" name="body_type" class="form-control form-control-sm" value="{{ vehicle.body_type or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Engine cc</label><input type="number" name="engine_cc" class="form-control form-control-sm" value="{{ vehicle.engine_cc or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Cylinders</label><input type="number" name="engine_cyl" class="form-control form-control-sm" value="{{ vehicle.engine_cyl or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Power HP</label><input type="number" name="power_hp" class="form-control form-control-sm" value="{{ vehicle.power_hp or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Drivetrain</label><input type="text" name="drivetrain" class="form-control form-control-sm" value="{{ vehicle.drivetrain or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Transmission</label><input type="text" name="transmission" class="form-control form-control-sm" value="{{ vehicle.transmission or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Ext. color</label><input type="text" name="color_ext" class="form-control form-control-sm" value="{{ vehicle.color_ext or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Int. color</label><input type="text" name="color_int" class="form-control form-control-sm" value="{{ vehicle.color_int or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">Reg. Plate</label><input type="text" name="registration_plate" class="form-control form-control-sm plate-field" value="{{ vehicle.registration_plate or '' }}"></div>
-          <div class="col-6"><label class="small text-muted">First Reg</label><input type="text" name="first_registration_date" class="form-control form-control-sm" value="{{ vehicle.first_registration_date or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Rok</label><input type="number" name="year" class="form-control form-control-sm" value="{{ vehicle.year or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Nadwozie</label><input type="text" name="body_type" class="form-control form-control-sm" value="{{ vehicle.body_type or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Pojemność (cm³)</label><input type="number" name="engine_cc" class="form-control form-control-sm" value="{{ vehicle.engine_cc or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Cylindry</label><input type="number" name="engine_cyl" class="form-control form-control-sm" value="{{ vehicle.engine_cyl or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Moc (KM)</label><input type="number" name="power_hp" class="form-control form-control-sm" value="{{ vehicle.power_hp or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Napęd</label><input type="text" name="drivetrain" class="form-control form-control-sm" value="{{ vehicle.drivetrain or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Skrzynia biegów</label><input type="text" name="transmission" class="form-control form-control-sm" value="{{ vehicle.transmission or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Kolor nadwozia</label><input type="text" name="color_ext" class="form-control form-control-sm" value="{{ vehicle.color_ext or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Kolor wnętrza</label><input type="text" name="color_int" class="form-control form-control-sm" value="{{ vehicle.color_int or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Tablica rej.</label><input type="text" name="registration_plate" class="form-control form-control-sm plate-field" value="{{ vehicle.registration_plate or '' }}"></div>
+          <div class="col-6"><label class="small text-muted">Pierwsza rejestracja</label><input type="text" name="first_registration_date" class="form-control form-control-sm" value="{{ vehicle.first_registration_date or '' }}"></div>
         </div>
         <div class="modal-footer p-1">
-          <button type="submit" class="btn btn-primary btn-sm w-100">Save changes</button>
+          <button type="submit" class="btn btn-primary btn-sm w-100">Zapisz zmiany</button>
         </div>
       </form>
     </div>
@@ -187,17 +215,17 @@
 <!-- Resolve placeholder -->
 {% if vehicle.vin_status == 'placeholder' %}
 <div class="card mb-4 border-warning">
-  <div class="card-header bg-warning text-dark">Resolve placeholder VIN</div>
+  <div class="card-header bg-warning text-dark">Podaj prawdziwy VIN</div>
   <div class="card-body">
     <form method="post" action="/vehicle/{{ vehicle.vin }}/resolve" class="row g-2">
       <div class="col-md-5">
-        <input name="new_vin" class="form-control" placeholder="Real VIN (17 chars)" maxlength="17" required>
+        <input name="new_vin" class="form-control" placeholder="Prawdziwy VIN (17 znaków)" maxlength="17" required>
       </div>
       <div class="col-md-5">
-        <input name="reason" class="form-control" placeholder="Reason" value="placeholder resolved">
+        <input name="reason" class="form-control" placeholder="Powód" value="placeholder resolved">
       </div>
       <div class="col-md-2">
-        <button class="btn btn-warning w-100">Resolve</button>
+        <button class="btn btn-warning w-100">Zapisz</button>
       </div>
     </form>
   </div>
@@ -334,17 +362,17 @@
 
 <!-- Tags -->
 <div class="card mb-4">
-  <div class="card-header">Tags</div>
+  <div class="card-header">Tagi</div>
   <div class="card-body">
     {% for t in tags %}
     {% if t.tag == 'photo extracted' %}
     <span class="badge bg-light text-dark border font-monospace me-1 align-middle" title="Numer rejestracyjny odczytany ze zdjęcia">
-      <i class="bi bi-camera text-secondary me-1"></i>photo extracted
+      <i class="bi bi-camera text-secondary me-1"></i>tablica ze zdjęcia
       <form method="post" action="/vehicle/{{ vehicle.vin }}/delete_tag" class="d-inline">
         <input type="hidden" name="tag" value="{{ t.tag }}">
         <button type="submit" class="btn-close ms-1"
                 style="font-size:.5rem;vertical-align:middle;"
-                title="Remove tag" onclick="event.stopPropagation()"></button>
+                title="Usuń tag" onclick="event.stopPropagation()"></button>
       </form>
     </span>
     {% else %}
@@ -354,19 +382,19 @@
         <input type="hidden" name="tag" value="{{ t.tag }}">
         <button type="submit" class="btn-close btn-close-white ms-1"
                 style="font-size:.5rem;vertical-align:middle;"
-                title="Remove tag" onclick="event.stopPropagation()"></button>
+                title="Usuń tag" onclick="event.stopPropagation()"></button>
       </form>
     </span>
     {% endif %}
     {% endfor %}
     {% if not vehicle.registration_plate %}
-    <span class="badge bg-warning text-dark me-1 align-middle" title="Registration plate is missing">Missing plates</span>
+    <span class="badge bg-warning text-dark me-1 align-middle" title="Brak tablicy rejestracyjnej">Brak tablicy</span>
     {% endif %}
     {% if not tags and vehicle.registration_plate %}
-    <span class="text-muted">No tags</span>
+    <span class="text-muted">Brak tagów</span>
     {% endif %}
     <form method="post" action="/vehicle/{{ vehicle.vin }}/add_tag" class="d-inline-flex gap-1 ms-2 align-middle">
-      <input name="tag" class="form-control form-control-sm" placeholder="Add tag…" style="width:140px;">
+      <input name="tag" class="form-control form-control-sm" placeholder="Dodaj tag…" style="width:140px;">
       <button class="btn btn-sm btn-outline-secondary">+</button>
     </form>
   </div>
@@ -376,7 +404,7 @@
 {% if price_timeline != '[]' %}
 <div class="card mb-4 shadow-sm">
   <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-    <span class="fw-semibold small text-uppercase text-secondary">Price History by platform</span>
+    <span class="fw-semibold small text-uppercase text-secondary">Historia cen wg portalu</span>
     <span id="priceChips" class="d-flex flex-wrap justify-content-end gap-1 small"></span>
   </div>
   <div class="card-body py-2 px-3" style="height: 230px; position: relative;">
@@ -387,21 +415,21 @@
 
 <!-- Ad groups / observations -->
 <div class="card mb-4">
-  <div class="card-header">Listings ({{ ad_groups|length }} ads + {{ ungrouped|length }} ungrouped)</div>
+  <div class="card-header">Ogłoszenia ({{ ad_groups|length }} + pozostałe obserwacje: {{ ungrouped|length }})</div>
   <div class="card-body p-0">
     {% for key, obs_list in ad_groups.items() %}
     <div class="border-bottom p-3">
       <div class="fw-semibold mb-2 small text-muted">
-        {{ source_badge(obs_list[0].source) }} Ad: <code>{{ obs_list[0].source_listing_id }}</code>
+        {{ source_badge(obs_list[0].source) }} Ogłoszenie: <code>{{ obs_list[0].source_listing_id }}</code>
         {% set url = obs_list[0].source_url if obs_list else None %}
         {% if url %}
-        <a href="{{ url }}" target="_blank" class="ms-2 text-decoration-none" title="Open listing">&#8599;</a>
+        <a href="{{ url }}" target="_blank" class="ms-2 text-decoration-none" title="Otwórz ogłoszenie">&#8599;</a>
         {% endif %}
       </div>
       <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr>
-            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>City</th><th>Reg. Plate</th><th>Seller</th><th>Removed</th><th></th>
+            <th>Zobaczono</th><th>Cena (zł)</th><th>Przebieg</th><th>Miasto</th><th>Tablica rej.</th><th>Sprzedawca</th><th>Zniknęło</th><th></th>
           </tr></thead>
           <tbody>
             {% for o in obs_list %}
@@ -411,7 +439,7 @@
               <td>{{ "{:,}".format(o.mileage_km) if o.mileage_km else '—' }}</td>
               <td>{{ location_cell(o.location_city, o.location_region) }}</td>
               <td>{{ o.registration_plate or '—' }}</td>
-              <td>{{ o.seller_type or '—' }}</td>
+              <td>{{ {'private': 'prywatny', 'dealer': 'dealer'}.get(o.seller_type, o.seller_type) or '—' }}</td>
               <td>{{ o.removed_at[:10] if o.removed_at else '' }}</td>
               <td>
                 {% if o.source_url %}
@@ -427,11 +455,11 @@
     {% endfor %}
     {% if ungrouped %}
     <div class="p-3">
-      <div class="fw-semibold mb-2 small text-muted">Ungrouped observations</div>
+      <div class="fw-semibold mb-2 small text-muted">Pozostałe obserwacje</div>
       <div class="table-responsive">
         <table class="table table-sm mb-0">
           <thead class="table-light"><tr>
-            <th>Observed</th><th>Price PLN</th><th>Mileage</th><th>Reg. Plate</th><th>Source</th><th>Method</th><th></th>
+            <th>Zobaczono</th><th>Cena (zł)</th><th>Przebieg</th><th>Tablica rej.</th><th>Źródło</th><th>Metoda</th><th></th>
           </tr></thead>
           <tbody>
             {% for o in ungrouped %}
@@ -455,30 +483,30 @@
     </div>
     {% endif %}
     {% if not ad_groups and not ungrouped %}
-    <p class="text-muted p-3 mb-0">No observations yet.</p>
+    <p class="text-muted p-3 mb-0">Brak obserwacji.</p>
     {% endif %}
   </div>
 </div>
 
 <!-- Add observation -->
 <div class="card mb-4">
-  <div class="card-header">Add observation</div>
+  <div class="card-header">Dodaj obserwację</div>
   <div class="card-body">
     <form method="post" action="/vehicle/{{ vehicle.vin }}/add_observation" class="row g-2">
-      <div class="col-md-2"><input name="source" class="form-control" placeholder="Source" value="manual"></div>
-      <div class="col-md-2"><input name="source_listing_id" class="form-control" placeholder="Listing ID"></div>
+      <div class="col-md-2"><input name="source" class="form-control" placeholder="Źródło" value="manual"></div>
+      <div class="col-md-2"><input name="source_listing_id" class="form-control" placeholder="ID ogłoszenia"></div>
       <div class="col-md-3"><input name="source_url" class="form-control" placeholder="URL"></div>
-      <div class="col-md-2"><input name="price_pln" class="form-control" type="number" placeholder="Price PLN"></div>
-      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Mileage km"></div>
-      <div class="col-md-2"><input name="location_city" class="form-control" placeholder="City"></div>
+      <div class="col-md-2"><input name="price_pln" class="form-control" type="number" placeholder="Cena (zł)"></div>
+      <div class="col-md-2"><input name="mileage_km" class="form-control" type="number" placeholder="Przebieg (km)"></div>
+      <div class="col-md-2"><input name="location_city" class="form-control" placeholder="Miasto"></div>
       <div class="col-md-2">
         <select name="seller_type" class="form-select">
-          <option value="private">Private</option>
+          <option value="private">Prywatny</option>
           <option value="dealer">Dealer</option>
         </select>
       </div>
-      <div class="col-md-6"><input name="notes" class="form-control" placeholder="Notes"></div>
-      <div class="col-md-2"><button class="btn btn-outline-primary w-100">Add</button></div>
+      <div class="col-md-6"><input name="notes" class="form-control" placeholder="Notatki"></div>
+      <div class="col-md-2"><button class="btn btn-outline-primary w-100">Dodaj</button></div>
     </form>
   </div>
 </div>
@@ -580,10 +608,10 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
 <!-- Correction log -->
 {% if corrections %}
 <div class="card mb-4">
-  <div class="card-header">VIN correction history</div>
+  <div class="card-header">Historia poprawek VIN</div>
   <div class="table-responsive">
     <table class="table table-sm mb-0">
-      <thead class="table-light"><tr><th>Date</th><th>Old VIN</th><th>New VIN</th><th>Reason</th><th>By</th></tr></thead>
+      <thead class="table-light"><tr><th>Data</th><th>Stary VIN</th><th>Nowy VIN</th><th>Powód</th><th>Kto</th></tr></thead>
       <tbody>
         {% for c in corrections %}
         <tr>
@@ -600,26 +628,83 @@ document.querySelector('#history-form input[name="photo"]')?.addEventListener('c
 </div>
 {% endif %}
 
+<!-- Damage mark -->
+{% if damage_marks %}
+{% set active_marks = damage_marks | selectattr("dismissed", "equalto", 0) | list %}
+<div class="card mb-4 {{ 'border-danger' if active_marks else '' }}" id="damage-mark">
+  <div class="card-header">Oznaczenie „Uszkodzony”</div>
+  <div class="card-body">
+    <ul class="small mb-2 ps-3">
+      {% for m in damage_marks %}
+      <li>
+        {{ m.source }} {{ m.source_listing_id }}:
+        {% if (m.reason or '').startswith('text: ') %}z treści ogłoszenia: <em>„…{{ m.reason[6:] }}…”</em>
+        {% else %}ogłoszenie oznaczone na portalu jako uszkodzone{% endif %}
+        {% if m.dismissed %}<span class="badge bg-secondary ms-1">zdjęte</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/damage_mark">
+      {% if active_marks %}
+      <input type="hidden" name="dismissed" value="1">
+      <span class="small text-muted me-2">Uszkodzone auta nie liczą się do median i średnich cen.</span>
+      <button class="btn btn-outline-secondary btn-sm">To nie jest uszkodzone auto</button>
+      {% else %}
+      <input type="hidden" name="dismissed" value="0">
+      <button class="btn btn-outline-danger btn-sm">Przywróć oznaczenie</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Wrong model -->
+<div class="card mb-4 border-warning" id="wrong-model">
+  <div class="card-header bg-warning-subtle">To nie ten model</div>
+  <div class="card-body">
+    {% if wrong_model %}
+    <p class="small mb-2">Auto jest ukryte jako błędnie przypisane: <strong>{{ wrong_model }}</strong>.</p>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/restore_model">
+      <button class="btn btn-outline-secondary btn-sm">Przywróć auto</button>
+    </form>
+    {% else %}
+    <p class="small text-muted mb-2">
+      Gdy to auto nie jest modelem, pod który trafiło (np. M8 wystawione jako M5). Auto znika z list i statystyk,
+      jego ogłoszenia są odrzucane, a nowe z tym VIN-em nie wejdą do Kolejki. Nic nie jest kasowane: można to cofnąć.
+    </p>
+    <form method="post" action="/vehicle/{{ vehicle.vin }}/wrong_model" class="row g-2 align-items-center">
+      <div class="col-md-6">
+        <input name="reason" class="form-control form-control-sm" maxlength="200" required
+               placeholder="Czym jest naprawdę, np. „M8 Gran Coupé, nie M5”">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-warning btn-sm">Ukryj auto</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
 <!-- Delete vehicle -->
 <div class="card mb-4 border-danger">
-  <div class="card-header bg-danger text-white">Delete vehicle</div>
+  <div class="card-header bg-danger text-white">Usuń auto</div>
   <div class="card-body">
     {% if request.args.get('delete_error') %}
-    <div class="alert alert-danger py-1 mb-2">VIN did not match — vehicle not deleted.</div>
+    <div class="alert alert-danger py-1 mb-2">VIN się nie zgadza — auta nie usunięto.</div>
     {% endif %}
     <p class="small text-muted mb-2">
-      This permanently removes the vehicle and all its observations, tags, and condition reports.
-      Type the VIN to confirm.
+      Usuwa na zawsze auto i wszystkie jego obserwacje, tagi i raporty stanu.
+      Wpisz VIN, aby potwierdzić.
     </p>
     <form method="post" action="/vehicle/{{ vehicle.vin }}/delete"
           class="row g-2 align-items-center"
-          onsubmit="return confirm('Delete {{ vehicle.vin }} permanently?')">
+          onsubmit="return confirm('Usunąć {{ vehicle.vin }} na zawsze?')">
       <div class="col-auto">
         <input name="confirm_vin" class="form-control form-control-sm font-monospace"
                placeholder="{{ vehicle.vin }}" style="width:200px;">
       </div>
       <div class="col-auto">
-        <button class="btn btn-danger btn-sm">Delete permanently</button>
+        <button class="btn btn-danger btn-sm">Usuń na zawsze</button>
       </div>
     </form>
   </div>

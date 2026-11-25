@@ -15,7 +15,9 @@ from app import app
 CRASHED = "WBSJF0C55KB000001"   # verified, plate from a photo, CEPiK rollback, damage history
 PLAIN = "WBSJF0C55KB000002"     # unverified, no plate, no CEPiK report, ad marked damaged
 
-PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/deals?km=50&days=30")
+OVERSEAS = "WBSJF0C55KB000003"  # from the USA, ad marked damaged, no plate: still abroad
+
+PAGES = ("/api/dashboard/recent", "/vehicles", "/models?model=m5_f90", "/api/poznan?km=50&days=30")
 
 
 class TestSameFlagsEverywhere(unittest.TestCase):
@@ -38,6 +40,8 @@ class TestSameFlagsEverywhere(unittest.TestCase):
             conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, source_url, price_pln, "
                          "location_city, observed_at) VALUES (?, 'otomoto', ?, 'https://x', 300000, 'Poznań', datetime('now', '-1 days'))",
                          (vin, f"id-{vin}"))
+            conn.execute("INSERT INTO pending_listings (source, source_listing_id, vin, status) VALUES ('otomoto', ?, ?, 'approved')",
+                         (f"id-{vin}", vin))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'photo extracted')", (CRASHED,))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'CEPiK: Ważne OC i SKP')", (CRASHED,))
         conn.execute("INSERT INTO tags (vin, tag) VALUES (?, 'po lakierniku')", (CRASHED,))
@@ -66,6 +70,104 @@ class TestSameFlagsEverywhere(unittest.TestCase):
             for marker in ("VIN ✓", "PO1234X", "bi-camera", "Kanada</span>", "po lakierniku</span>", "Cofnięty licznik", "Historia szkody: Belgia",
                            "VIN niepewny", "Brak tablicy", "bez CEPiK", "Uszkodzony</span>"):
                 self.assertIn(marker, html, f"{marker} missing on {path}")
+
+    def add_overseas(self, plate=None):
+        conn = db.get_db()
+        conn.execute("INSERT INTO vehicles (vin, make, model, variant, year, registration_plate, model_id, origin_market) "
+                     "VALUES (?, 'BMW', 'M5', 'F90 M5', 2019, ?, 'm5_f90', 'USA')", (OVERSEAS, plate))
+        conn.execute("INSERT INTO listing_observations (vin, source, source_listing_id, source_url, price_pln, mileage_km, "
+                     "location_city, observed_at) VALUES (?, 'otomoto', 'id-us', 'https://x', 150000, 90000, 'Poznań', "
+                     "datetime('now', '-1 days'))", (OVERSEAS,))
+        conn.execute("INSERT INTO pending_listings (source, source_listing_id, vin, status, origin_market, scraped_at) "
+                     "VALUES ('otomoto', 'id-us', ?, 'approved', 'USA', datetime('now'))", (OVERSEAS,))
+        conn.execute("INSERT INTO damaged_listings (source, source_listing_id) VALUES ('otomoto', 'id-us')")
+        conn.commit()
+        conn.close()
+
+    def overseas_block(self, html):
+        block = html[html.index(OVERSEAS):]
+        return block[:block.index("</td>")] if "</td>" in block else block[:2000]
+
+    def test_damaged_car_from_usa_is_still_abroad(self):
+        self.add_overseas()
+        for path in PAGES:
+            html = self.flags_on(path)
+            if OVERSEAS not in html:
+                continue   # deals leave damaged cars out
+            block = self.overseas_block(html)
+            self.assertIn("W USA", block, path)
+            self.assertNotIn("Brak tablicy", block, path)   # no Polish plate expected
+            self.assertNotIn("bez CEPiK", block, path)      # nothing to look up
+        models = self.client.get("/models?model=m5_f90").get_data(as_text=True)
+        self.assertNotIn("90,000 km", models)               # its mileage is not in the averages
+
+    def test_a_plate_means_it_was_brought_in(self):
+        self.add_overseas(plate="WI12345")
+        block = self.overseas_block(self.flags_on("/vehicles"))
+        self.assertIn("WI12345", block)
+        self.assertNotIn("W USA", block)
+        self.assertIn("90,000 km", self.client.get("/models?model=m5_f90").get_data(as_text=True))
+
+    def test_no_plate_reveal_for_a_car_still_abroad(self):
+        self.add_overseas()
+        with mock.patch.dict(os.environ, {"API_TOKEN": "t"}):
+            out = self.client.post("/api/reveal_queue", json={"plates_since": "2000-01-01"},
+                                   headers={"Authorization": "Bearer t"}).get_json()
+        sids = [p["source_listing_id"] for p in out["plates"]]
+        self.assertNotIn("id-us", sids)
+        self.assertIn(f"id-{PLAIN}", sids)                  # damaged, but not from overseas
+
+    def test_logout_is_a_post(self):
+        os.environ["ADMIN_PASSWORD"] = "secret"
+        with self.client.session_transaction() as sess:
+            sess["logged_in"] = True
+        self.assertEqual(self.client.get("/logout").status_code, 405)      # a link cannot log out
+        self.assertEqual(self.client.get("/vehicles").status_code, 200)
+        self.assertIn('<form method="post" action="/logout"', self.client.get("/vehicles").get_data(as_text=True))
+        self.assertEqual(self.client.post("/logout").status_code, 302)
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)    # back to the login page
+
+    def test_pin_gate(self):
+        os.environ["ADMIN_PASSWORD"] = "48151623"
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)                 # pages need the PIN
+        self.assertEqual(self.client.get("/api/dashboard/recent").status_code, 401)     # and so does the data
+        self.assertEqual(self.client.post("/review/bulk_reject").status_code, 302)      # and every action
+        self.assertIn("Podaj PIN", self.client.get("/login").get_data(as_text=True))
+        wrong = self.client.post("/login", data={"password": "0000"})
+        self.assertIn("Nieprawidłowy PIN. Pozostało prób: 9", wrong.get_data(as_text=True))
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)
+        right = self.client.post("/login", data={"password": "48151623"})
+        self.assertEqual(right.status_code, 302)
+        self.assertIn("Expires=", right.headers["Set-Cookie"])       # stays logged in after the browser closes
+        self.assertEqual(self.client.get("/vehicles").status_code, 200)
+
+    def test_ten_wrong_pins_lock_the_login(self):
+        os.environ["ADMIN_PASSWORD"] = "48151623"
+        for n in range(9):
+            page = self.client.post("/login", data={"password": "0000"})
+            self.assertIn(f"Pozostało prób: {9 - n}", page.get_data(as_text=True))
+        self.assertEqual(self.client.post("/login", data={"password": "0000"}, headers={"X-Forwarded-For": "203.0.113.7"}).status_code, 429)
+        # Locked: the right PIN does not get in
+        self.assertEqual(self.client.post("/login", data={"password": "48151623"}).status_code, 429)
+        self.assertEqual(self.client.get("/vehicles").status_code, 302)
+
+        conn = db.get_db()      # the hour passed
+        conn.execute("UPDATE login_guard SET locked_until = '2020-01-01T00:00:00+00:00'")
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.client.post("/login", data={"password": "48151623"}).status_code, 302)
+        logs = self.client.get("/logs").get_data(as_text=True)      # the owner sees the lock
+        self.assertIn("Blokady logowania", logs)
+        self.assertIn("203.0.113.7", logs)
+
+    def test_right_pin_resets_the_count(self):
+        os.environ["ADMIN_PASSWORD"] = "48151623"
+        for _ in range(9):
+            self.client.post("/login", data={"password": "0000"})
+        self.client.post("/login", data={"password": "48151623"})
+        self.client.post("/logout")
+        self.assertIn("Pozostało prób: 9", self.client.post("/login", data={"password": "0000"}).get_data(as_text=True))
+        self.assertNotIn("Blokady logowania", self.client.get("/login").get_data(as_text=True))
 
     def test_plate_on_the_vin_line_markers_under_it(self):
         html = self.flags_on("/vehicles")

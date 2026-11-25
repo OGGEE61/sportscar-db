@@ -1,12 +1,23 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pager %}
 {% from "_source.html" import source_badge, source_filter %}
-{% block title %}Scraper Logs - SportsCar DB{% endblock %}
+{% block title %}Logi scraperów – SportsCar DB{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Scraper Logs</h2>
+    <h2>Logi scraperów</h2>
     {{ source_filter("/logs?", source) }}
 </div>
+
+{% if locks %}
+<div class="alert alert-warning">
+    <strong>Blokady logowania</strong> (10 błędnych PIN-ów z rzędu, ostatnie {{ locks|length }}):
+    <ul class="mb-0">
+        {% for l in locks %}
+        <li>{{ l.locked_at }} UTC, ostatnia próba z adresu {{ l.address or 'nieznanego' }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
 
 <div class="card shadow-sm">
     <div class="card-body p-0">
@@ -31,9 +42,9 @@
                     <td class="text-nowrap">{{ log.run_date }}</td>
                     <td>
                         {% if log.status == 'success' %}
-                        <span class="badge bg-success">Success</span>
+                        <span class="badge bg-success">Sukces</span>
                         {% elif log.status == 'error' %}
-                        <span class="badge bg-danger">Error</span>
+                        <span class="badge bg-danger">Błąd</span>
                         {% else %}
                         <span class="badge bg-secondary">{{ log.status }}</span>
                         {% endif %}
@@ -58,5 +69,5 @@
         </table>
     </div>
 </div>
-{{ pager(page, pages, '/logs?source=' ~ source ~ '&page=', 'Log pages') }}
+{{ pager(page, pages, '/logs?source=' ~ source ~ '&page=', 'Strony logów') }}
 {% endblock %}

@@ -91,8 +91,10 @@ def cepik_dashboard():
     stats["missing_count"] = missing_count
     stats["eligible_count"] = stats["total_reports"] + missing_count
 
-    fix_items = _fix_candidates(conn, q if tab == "fix" else "")
-    stats["fix_count"] = len(fix_items) if tab == "fix" and not q else len(_fix_candidates(conn, ""))
+    # Computed once (it was twice per page view): the full list gives the count, a search filters it
+    all_fix = _fix_candidates(conn, "")
+    fix_items = _fix_candidates(conn, q) if tab == "fix" and q else all_fix
+    stats["fix_count"] = len(all_fix)
 
     reports = []
     missing_items = []
