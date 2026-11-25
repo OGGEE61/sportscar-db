@@ -66,6 +66,14 @@
   </li>
 </ul>
 
+<!-- Search: car ID (#123), VIN or plate -->
+<form method="get" action="/plates" class="d-flex gap-2 my-3" style="max-width: 420px;">
+  <input type="hidden" name="status" value="{{ status_filter }}">
+  <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="ID auta (#123), VIN albo tablica" aria-label="Szukaj">
+  <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i></button>
+  {% if q %}<a href="/plates?status={{ status_filter }}" class="btn btn-sm btn-link">wyczyść</a>{% endif %}
+</form>
+
 <!-- Scan alert -->
 <div id="scan-alert" class="alert alert-light border shadow-sm d-none align-items-center gap-2 py-3 mb-4 rounded-3 text-dark">
   <div class="spinner-border spinner-border-sm text-dark" role="status"></div>
@@ -120,7 +128,7 @@
               {% endif %}
             </td>
             <td>
-              <div class="fw-semibold text-dark">{{ c.make or 'Pojazd' }} {{ c.model or '' }}</div>
+              <div class="fw-semibold text-dark">{% if c.car_id %}<span class="car-id" title="ID auta w bazie">#{{ c.car_id }}</span> {% endif %}{{ c.make or 'Pojazd' }} {{ c.model or '' }}</div>
               <div class="text-muted small">
                 {% if c.year %}{{ c.year }} r.{% endif %}
                 {% if c.location_city %} · {{ c.location_city }}{% endif %}
@@ -222,7 +230,7 @@
               {% endif %}
             </td>
             <td>
-              <div class="fw-semibold text-dark">{{ c.make or 'Pojazd' }} {{ c.model or '' }}</div>
+              <div class="fw-semibold text-dark">{% if c.car_id %}<span class="car-id" title="ID auta w bazie">#{{ c.car_id }}</span> {% endif %}{{ c.make or 'Pojazd' }} {{ c.model or '' }}</div>
             </td>
             <td>
               <span class="font-monospace small text-muted">{{ c.vin or '—' }}</span>
@@ -283,7 +291,7 @@
         <!-- Card header -->
         <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center py-2 px-3">
           <div class="d-flex align-items-center gap-2">
-            <span class="fw-bold text-dark">{{ c.make or 'Samochód' }} {{ c.model or '' }}</span>
+            <span class="fw-bold text-dark">{% if c.car_id %}<span class="car-id" title="ID auta w bazie">#{{ c.car_id }}</span> {% endif %}{{ c.make or 'Samochód' }} {{ c.model or '' }}</span>
             {% if c.year %}<span class="badge bg-light text-dark border">{{ c.year }}</span>{% endif %}
           </div>
           <div class="d-flex align-items-center gap-2">
