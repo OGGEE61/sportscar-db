@@ -129,6 +129,26 @@ body {
   padding: 0.25em 0.5em;
 }
 
+/* The "Przegląd" menu: the work pages, styled like the bar's links */
+.app-navbar .dropdown-menu {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  padding: 0.35rem;
+  min-width: 13rem;
+}
+.app-navbar .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+  color: #475569;
+  font-weight: 500;
+}
+.app-navbar .dropdown-item:hover { color: #1d4ed8; background-color: #eff6ff; }
+.app-navbar .dropdown-item.active { color: #1d4ed8; background-color: #dbeafe; font-weight: 600; }
+
 /* Between lg and xl the bar is tight: smaller gaps and text, still one line */
 @media (min-width: 992px) and (max-width: 1199.98px) {
   .app-navbar .nav-link {
