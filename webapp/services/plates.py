@@ -145,30 +145,45 @@ def card_plates(reading, ad_plate) -> list:
     return plates
 
 
-def plate_check_plan(conn) -> dict:
+def swapped_date(date: str):
+    """The date with day and month swapped, for a date an ad may have written the other way round
+    (2019-01-03 for 3 January or 1 March), or None when the swap is the same date, not a date, or
+    the day is the 1st (most often an ad giving only the month)."""
+    year, month, day = date.split("-")
+    if day == "01" or day == month or int(day) > 12:
+        return None
+    swapped = f"{year}-{day}-{month}"
+    return swapped if is_valid_first_registration_date(swapped) else None
+
+
+def plate_check_plan(conn, vin=None) -> dict:
     """For every pending /plates card ({card id: plan}): its car, the plates and first registration
     dates to try (the car's date first, then other dates its ads give), the pairs already asked and
-    those still to ask, likeliest first, at most MAX_LOOKUPS_PER_CARD pairs in all."""
-    cards = conn.execute("""
+    those still to ask, likeliest first, at most MAX_LOOKUPS_PER_CARD pairs in all. After the ads'
+    dates come the same dates with day and month swapped, as the last guesses. With `vin`, only that
+    car's cards (the car's page)."""
+    pending = "SELECT vin FROM plate_review_queue WHERE status = 'pending'" + (" AND vin = ?" if vin else "")
+    args = (vin,) if vin else ()
+    cards = conn.execute(f"""
         SELECT q.id, q.vin, q.listing_id, q.detected_plate, v.registration_plate AS car_plate, v.make, v.year,
                v.origin_market, v.first_registration_date AS car_date
         FROM plate_review_queue q JOIN vehicles v ON v.vin = q.vin
-        WHERE q.status = 'pending' AND q.vin NOT LIKE 'PLH%' AND q.vin NOT LIKE 'UNVERIFIED%'
+        WHERE q.status = 'pending' AND q.vin NOT LIKE 'PLH%' AND q.vin NOT LIKE 'UNVERIFIED%' {"AND q.vin = ?" if vin else ""}
         ORDER BY q.id
-    """).fetchall()
+    """, args).fetchall()
     ad_dates = defaultdict(list)
-    for r in conn.execute("""
+    for r in conn.execute(f"""
         SELECT vin, first_registration_date FROM pending_listings
-        WHERE vin IN (SELECT vin FROM plate_review_queue WHERE status = 'pending') AND first_registration_date <> ''
+        WHERE vin IN ({pending}) AND first_registration_date <> ''
         ORDER BY id DESC
-    """):
+    """, args):
         if is_valid_first_registration_date(r["first_registration_date"]) and r["first_registration_date"] not in ad_dates[r["vin"]]:
             ad_dates[r["vin"]].append(r["first_registration_date"])
     asked = defaultdict(set)
-    for r in conn.execute("""
+    for r in conn.execute(f"""
         SELECT vin, plate, first_registration_date FROM cepik_plate_checks
-        WHERE vin IN (SELECT vin FROM plate_review_queue WHERE status = 'pending')
-    """):
+        WHERE vin IN ({pending})
+    """, args):
         asked[r["vin"]].add((r["plate"], r["first_registration_date"]))
 
     plan = {}
@@ -176,9 +191,10 @@ def plate_check_plan(conn) -> dict:
         car_date = c["car_date"] if is_valid_first_registration_date(c["car_date"]) else None
         dates = ([car_date] if car_date else []) + [d for d in ad_dates[c["vin"]] if d != car_date]
         plates = card_plates(c["detected_plate"], c["car_plate"])
-        pairs = sorted(((p, d, i + j, i) for i, p in enumerate(plates) for j, d in enumerate(dates)),
+        swaps = [s for s in map(swapped_date, dates) if s and s not in dates]
+        pairs = sorted(((p, d, j >= len(dates), i + j, i) for i, p in enumerate(plates) for j, d in enumerate(dates + swaps)),
                        key=lambda pair: pair[2:])[:MAX_LOOKUPS_PER_CARD]
-        pairs = [(p, d) for p, d, _, _ in pairs]
+        pairs = [(p, d) for p, d, *_ in pairs]
         plan[c["id"]] = {**dict(c), "plates": plates, "dates": dates,
                          "asked": [pair for pair in pairs if pair in asked[c["vin"]]],
                          "todo": [pair for pair in pairs if pair not in asked[c["vin"]]]}

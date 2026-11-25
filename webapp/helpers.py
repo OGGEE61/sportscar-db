@@ -1,6 +1,7 @@
 
 """Shared helpers: parsing, paths and environment flags (validation lives in /validation.py)."""
 import html
+import re
 import os
 from datetime import datetime, timezone
 
@@ -18,10 +19,18 @@ def script_json(obj):
     return htmlsafe_json_dumps(obj)
 
 
+_BREAK_TAG = re.compile(r"<\s*(br\s*/?|/p|/li|/div|/h[1-6])\s*>", re.I)
+_ANY_TAG = re.compile(r"</?[a-zA-Z][^<>]{0,200}>")
+
+
 def plain_text(value):
-    """Scraped description as plain text: decode HTML entities left over from
-    tag stripping (&nbsp;, &amp;); the template's autoescape does the rest."""
-    return html.unescape(value) if value else value
+    """Scraped description as plain text: some portals keep the ad's HTML (<p>, <br>), so line-ending
+    tags become line breaks and other tags are dropped, then HTML entities (&nbsp;, &amp;) are
+    decoded; the template's autoescape does the rest."""
+    if not value:
+        return value
+    text = _ANY_TAG.sub("", _BREAK_TAG.sub("\n", value))
+    return re.sub(r"\n{3,}", "\n\n", html.unescape(text)).strip()
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IS_PRODUCTION = bool(os.environ.get("VERCEL"))

@@ -16,7 +16,8 @@ TEST_DB_PATH = os.path.join(ROOT, "tests", "test_plate_checks.db")
 
 import db
 from app import app
-from webapp.services.plates import MAX_LOOKUPS_PER_CARD, plate_card_hints, plate_check_plan, plate_check_tasks
+from webapp.services.plates import (MAX_LOOKUPS_PER_CARD, plate_card_hints, plate_check_plan, plate_check_tasks,
+                                    swapped_date)
 
 TOKEN = {"Authorization": "Bearer test-token"}
 OCR, AD, IMPORT = "WBS8M9C50J5K99001", "WBS8M9C50J5K99002", "WBS8M9C50J5K99003"
@@ -88,8 +89,16 @@ class TestPlan(PlateCheckCase):
         ocr = self.plan()[OCR]
         self.assertEqual(ocr["plates"], ["KR7VG22", "KR7V622"])
         self.assertEqual(ocr["dates"], ["2018-05-10", "2018-06-01"])
+        # then the swapped day and month of 2018-05-10, last (2018-06-01 has none: the 1st is often a month alone)
         self.assertEqual(ocr["todo"], [("KR7VG22", "2018-05-10"), ("KR7VG22", "2018-06-01"), ("KR7V622", "2018-05-10"),
-                                       ("KR7V622", "2018-06-01")])
+                                       ("KR7V622", "2018-06-01"), ("KR7VG22", "2018-10-05"), ("KR7V622", "2018-10-05")])
+
+    def test_a_date_is_swapped_only_when_it_can_be_read_both_ways(self):
+        self.assertEqual(swapped_date("2019-01-03"), "2019-03-01")
+        self.assertIsNone(swapped_date("2019-03-13"))       # no 13th month
+        self.assertIsNone(swapped_date("2019-04-04"))       # the same date
+        self.assertIsNone(swapped_date("2020-02-01"))       # most likely only the month
+        self.assertIsNone(swapped_date("2099-11-12"))       # 2099-12-11 is in the future
 
     def test_a_pair_the_nightly_car_check_missed_is_not_asked_again(self):
         from scripts.fetch_cepik import record_cepik_failure
@@ -177,7 +186,7 @@ class TestHints(PlateCheckCase):
         self.assertIn("Auto sprowadzone (USA)", imp)
         ocr = " ".join(plate_card_hints(plan[OCR]))
         self.assertIn("różne daty pierwszej rejestracji: 2018-05-10, 2018-06-01", ocr)
-        self.assertIn("Czeka na automatyczne sprawdzenie w CEPiK: 4 kombinacje", ocr)
+        self.assertIn("Czeka na automatyczne sprawdzenie w CEPiK: 6 kombinacji", ocr)
         self.assertNotIn("sam rok", ocr)
         conn = db.get_db()
         conn.execute("UPDATE vehicles SET first_registration_date = '2018-01-01' WHERE vin = ?", (OCR,))

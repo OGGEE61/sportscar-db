@@ -4,12 +4,13 @@ from datetime import datetime
 from urllib.parse import urlencode
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from db import get_db, resolve_placeholder
+from webapp import invalidate_notifications
 from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WRONG_MODEL_NOTE, car_flags_sql, damaged_ad_sql,
                             engine_filter, safe_float, safe_int, script_json)
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services import verification
 from webapp.services.photos import store_photo
-from webapp.services.plates import normalize_plate
+from webapp.services.plates import card_plates, normalize_plate, plate_card_hints, plate_check_plan
 from validation import MIN_FIRST_REGISTRATION_YEAR, OVERSEAS_ORIGINS
 
 bp = Blueprint("vehicles", __name__)
@@ -229,6 +230,94 @@ def _vehicles_page(favorites_only: bool):
 # VIN DETAIL
 # ─────────────────────────────────────────────────────────────────────────────
 
+def ad_summaries(observations):
+    """The car's ads for its page, from its observations (newest first): one entry per ad with its
+    first and last sighting, current and first price, and only the sightings where price, mileage
+    or plate changed (every scraper run adds one); live ads first. Also the observations without an
+    ad id."""
+    groups, ungrouped = {}, []
+    for o in observations:
+        if o["source_listing_id"]:
+            groups.setdefault((o["source"], o["source_listing_id"]), []).append(o)
+        else:
+            ungrouped.append(o)
+    ads = []
+    for (source, listing_id), obs in groups.items():
+        oldest, newest = obs[-1], obs[0]
+        changes, last = [], None
+        for o in reversed(obs):
+            key = (o["price_pln"], o["mileage_km"], o["registration_plate"])
+            if key != last:
+                changes.append(o)
+                last = key
+        ads.append({
+            "source": source, "listing_id": listing_id, "newest": newest,
+            "url": next((o["source_url"] for o in obs if o["source_url"]), None),
+            "first_seen": (oldest["first_seen_at"] or oldest["observed_at"] or "")[:10],
+            "last_seen": (newest["last_seen_at"] or newest["observed_at"] or "")[:10],
+            "removed_at": (newest["removed_at"] or "")[:10],
+            "price": next((o["price_pln"] for o in obs if o["price_pln"]), None),
+            "first_price": next((o["price_pln"] for o in reversed(obs) if o["price_pln"]), None),
+            "changes": changes[::-1], "observations": obs,
+        })
+    ads.sort(key=lambda a: a["last_seen"], reverse=True)
+    ads.sort(key=lambda a: bool(a["removed_at"]))
+    return ads, ungrouped
+
+
+def to_check_context(conn, vin, message=None, ok=True, needs_force=False):
+    """What waits for a person on the car's page: its pending /plates card (with the plate the rules
+    suggest and the hints why CEPiK may not know the car) and its open "Do sprawdzenia" notes."""
+    card = conn.execute("""
+        SELECT id, detected_plate, crop_path, photo_url, confidence, created_at
+        FROM plate_review_queue WHERE vin = ? AND status = 'pending' ORDER BY id DESC LIMIT 1
+    """, (vin,)).fetchone()
+    if card:
+        card = dict(card)
+        plan = plate_check_plan(conn, vin).get(card["id"])
+        reading = normalize_plate(card["detected_plate"])
+        card["hints"] = plate_card_hints(plan) if plan else []
+        card["checks_left"] = len(plan["todo"]) if plan else 0
+        card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [reading])[0]
+    return {"vin": vin, "card": card, "notes": verification.review_notes(conn, vin=vin),
+            "topics": verification.NOTE_TOPICS, "message": message, "ok": ok, "needs_force": needs_force}
+
+
+@bp.route("/vehicle/<path:vin>/to_check")
+def vehicle_to_check(vin):
+    """The "Do sprawdzenia" panel of the car's page (loaded by htmx after the page)."""
+    conn = get_db()
+    try:
+        return render_template("_vehicle_to_check.html", **to_check_context(conn, vin))
+    finally:
+        conn.close()
+
+
+@bp.route("/vehicle/<path:vin>/plate_card", methods=["POST"])
+def vehicle_plate_card(vin):
+    """Approve or reject the car's /plates card from its page, as on /plates; answers with the
+    panel again."""
+    from webapp.blueprints.plates import review_card
+    card_id = safe_int(request.form.get("card_id"))
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT vin FROM plate_review_queue WHERE id = ?", (card_id,)).fetchone()
+        if not row or row["vin"] != vin:
+            return "Ta karta nie należy do tego auta", 400
+        payload, status = review_card(conn, card_id, request.form.get("action"), request.form.get("plate"),
+                                      request.form.get("force") == "1")
+        invalidate_notifications()
+        if status == 200:
+            message = (f"Tablica {payload['plate']} zatwierdzona." if payload["action"] == "approve"
+                       else "Karta odrzucona" + (f": tablica {payload['removed']} usunięta z auta." if payload.get("removed") else "."))
+        else:
+            message = payload.get("message")
+        return render_template("_vehicle_to_check.html", **to_check_context(
+            conn, vin, message=message, ok=status == 200, needs_force=payload.get("status") == "needs_confirmation"))
+    finally:
+        conn.close()
+
+
 @bp.route("/vehicle/<path:vin>")
 def vehicle_detail(vin):
     conn = get_db()
@@ -253,16 +342,7 @@ def vehicle_detail(vin):
     sold_damaged = conn.execute(
         "SELECT 1 FROM listing_observations x WHERE x.vin = ? AND " + damaged_ad_sql("x") + " LIMIT 1", (vin,)).fetchone() is not None
 
-    # Group observations by source_listing_id so UI can show timelines
-    ad_groups = {}
-    ungrouped = []
-    for o in observations:
-        slid = o["source_listing_id"]
-        if slid:
-            key = f"{o['source']}::{slid}"
-            ad_groups.setdefault(key, []).append(o)
-        else:
-            ungrouped.append(o)
+    ads, ungrouped = ad_summaries(observations)
 
     conditions = conn.execute(
         "SELECT * FROM condition_reports WHERE vin=? ORDER BY report_date DESC, id DESC", (vin,)).fetchall()
@@ -341,7 +421,7 @@ def vehicle_detail(vin):
         damage_marks=damage_marks,
         sold_damaged=sold_damaged,
         damage_reports=damage_reports,
-        ad_groups=ad_groups,
+        ads=ads,
         ungrouped=ungrouped,
         observations=observations,
         conditions=conditions,
