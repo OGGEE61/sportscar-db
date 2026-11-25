@@ -1164,7 +1164,8 @@ class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
         conn = db.get_db()
         conn.execute("UPDATE pending_listings SET photos=? WHERE vin=?", (json.dumps(["https://img/1.jpg"]), self.VIN))
         conn.commit()
-        with mock.patch.object(detect_plates, "find_best_plate_shot", return_value=shot):
+        effect = {"side_effect": shot} if isinstance(shot, Exception) else {"return_value": shot}
+        with mock.patch.object(detect_plates, "find_best_plate_shot", **effect):
             out = detect_plates.fill_missing_crops(conn)
         conn.close()
         return out
@@ -1197,6 +1198,54 @@ class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
         rows, _ = self.queue()
         self.assertEqual([(r["detected_plate"], r["crop_path"]) for r in rows], [("AB12345", "")])
         self.assertEqual(self.scan(None)["queued_without_crop"], 0)
+
+
+    def test_a_card_whose_photos_are_gone_waits_instead_of_being_marked_empty(self):
+        self.car(approved_from_photo=False)
+        self.fail(404)
+        with mock.patch.dict(sys.modules, {"numpy": mock.MagicMock()}):
+            from scripts import detect_plates
+        out = self.scan(detect_plates.PhotosUnavailable("1"))
+        self.assertEqual(out["waiting_for_ad"], 1)
+        rows, _ = self.queue()
+        self.assertEqual([r["crop_path"] for r in rows], [None])       # still waiting, not "nothing found"
+
+
+class TestDeadPhotoLinks(ScrapingTestCase):
+    """Stored photo links die when a seller replaces the photos: the scan takes the ad's current gallery,
+    and photos it cannot get at all are not taken for "no plate"."""
+
+    def setUp(self):
+        super().setUp()
+        with mock.patch.dict(sys.modules, {"numpy": mock.MagicMock()}):
+            from scripts import detect_plates
+        self.dp = detect_plates
+        self.conn = db.get_db()
+        self.addCleanup(self.conn.close)
+        self.listing = {"id": 7, "vin": "WBS11DM0308D29561", "source_url": "https://www.otomoto.pl/oferta/7",
+                        "photos": '["https://img/old1.jpg", "https://img/old2.jpg"]'}
+
+    def shot(self, gallery, live_urls):
+        candidate = {"detected_plate": "WE1234A", "is_standard_format": True, "shot_quality_score": 0.9,
+                     "confidence": 0.9, "crop_path": "data:x"}
+        with mock.patch.object(self.dp, "download_image", side_effect=lambda u: object() if u in live_urls else None), \
+             mock.patch.object(self.dp, "process_image", return_value=[dict(candidate)]), \
+             mock.patch.object(self.dp, "fetch_listing_gallery_photos", return_value=gallery) as fetch:
+            return self.dp.find_best_plate_shot(self.listing, self.conn), fetch
+
+    def test_dead_stored_links_are_replaced_by_the_current_gallery(self):
+        best, fetch = self.shot(["https://img/new1.jpg"], {"https://img/new1.jpg"})
+        fetch.assert_called_once_with("https://www.otomoto.pl/oferta/7")
+        self.assertEqual((best["detected_plate"], best["photo_url"]), ("WE1234A", "https://img/new1.jpg"))
+
+    def test_working_links_do_not_fetch_the_ad(self):
+        best, fetch = self.shot([], {"https://img/old2.jpg"})
+        fetch.assert_not_called()
+        self.assertEqual(best["photo_url"], "https://img/old2.jpg")
+
+    def test_photos_that_cannot_be_had_are_unavailable_not_empty(self):
+        with self.assertRaises(self.dp.PhotosUnavailable):
+            self.shot([], set())
 
 
 class DealerStockExclusionTest(ScrapingTestCase):

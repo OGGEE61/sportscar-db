@@ -295,8 +295,16 @@ def fetch_listing_gallery_photos(source_url: str) -> List[str]:
     return []
 
 
+class PhotosUnavailable(Exception):
+    """None of the listing's photos could be downloaded, even from its current gallery: nothing was
+    scanned, which is not the same as no plate in the photos."""
+
+
 def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional[Dict]:
-    """Scan the listing photos and return the best plate shot (front/rear), or None."""
+    """Scan the listing photos and return the best plate shot (front/rear), or None when none shows a
+    plate. The photo list is stored when the ad is first scraped; when the seller has replaced the
+    photos since, the old files are gone from the portal's CDN (404), so then the ad's current gallery
+    is fetched and scanned instead. Raises PhotosUnavailable when no photo downloads at all."""
     lid = str(listing.get("id") or listing.get("source_listing_id") or "")
     vin = (listing.get("vin") or "").strip().upper()
     source_url = listing.get("source_url") or ""
@@ -329,20 +337,33 @@ def find_best_plate_shot(listing: dict, db_conn: sqlite3.Connection) -> Optional
     if not photo_urls:
         return None
 
-    # Check up to 12 photos for the best shot (front / rear)
-    photo_urls = photo_urls[:12]
-    all_candidates = []
+    def scan(urls):
+        """Up to 12 photos scanned for plates: their candidates and how many photos downloaded."""
+        found, downloaded = [], 0
+        for idx, purl in enumerate(urls[:12]):
+            img = download_image(purl)
+            if img is None:
+                continue
+            downloaded += 1
+            for c in process_image(img, f"{lid}_{idx}"):
+                c["photo_url"] = purl
+                found.append(c)
+        return found, downloaded
 
-    for idx, purl in enumerate(photo_urls):
-        img_id_prefix = f"{lid}_{idx}"
-        img = download_image(purl)
-        if img is None:
-            continue
-
-        cands = process_image(img, img_id_prefix)
-        for c in cands:
-            c["photo_url"] = purl
-            all_candidates.append(c)
+    all_candidates, downloaded = scan(photo_urls)
+    if not downloaded and source_url:
+        gallery = fetch_listing_gallery_photos(source_url)
+        if gallery and gallery != photo_urls:
+            print(f"    [gallery refreshed] zapisane zdjęcia niedostępne, {len(gallery)} aktualnych z ogłoszenia (ID: {lid})")
+            all_candidates, downloaded = scan(gallery)
+            if downloaded:
+                try:
+                    db_conn.execute("UPDATE pending_listings SET photos = ? WHERE id = ?", (json.dumps(gallery), lid))
+                    db_conn.commit()
+                except Exception:
+                    pass
+    if not downloaded:
+        raise PhotosUnavailable(lid)
 
     if not all_candidates:
         return None
@@ -430,14 +451,20 @@ def fill_missing_crops(conn) -> Dict:
     """).fetchall()
     print(f"\n[plate_scanner] {len(rows)} pozycji w kolejce bez wycinka...")
 
-    filled = 0
+    filled = waiting = 0
     for q in rows:
         listing = conn.execute("""
             SELECT id, source_listing_id, vin, photos, source_url FROM pending_listings
             WHERE vin = ? AND photos IS NOT NULL AND photos NOT IN ('', '[]')
             ORDER BY id DESC LIMIT 1
         """, (q["vin"],)).fetchone()
-        best = find_best_plate_shot(dict(listing), conn) if listing else None
+        try:
+            best = find_best_plate_shot(dict(listing), conn) if listing else None
+        except PhotosUnavailable:
+            # The photos are gone from the portal: the card waits for the car's next ad instead of
+            # being marked as having no plate in its photos
+            waiting += 1
+            continue
         if not best:
             conn.execute("UPDATE plate_review_queue SET crop_path = '' WHERE id = ?", (q["id"],))
             conn.commit()
@@ -465,7 +492,9 @@ def fill_missing_crops(conn) -> Dict:
         note = "zgodna z ogłoszeniem" if same else f"ogłoszenie: {q['detected_plate']}"
         print(f"  {q['vin']}: {best['detected_plate']} ({note})")
 
-    return {"queued_without_crop": len(rows), "crops_filled": filled}
+    if waiting:
+        print(f"  {waiting} kart ze zdjęciami niedostępnymi na portalu: czekają na nowe ogłoszenie")
+    return {"queued_without_crop": len(rows), "crops_filled": filled, "waiting_for_ad": waiting}
 
 
 def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Dict:
@@ -541,16 +570,25 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
 
     total_scanned = 0
     total_found = 0
+    unavailable = 0
 
     for r in rows:
         item = dict(r)
         lid = item.get('id')
         print(f"  Skanuję {item.get('make')} {item.get('model')} ({item.get('vin') or 'Brak VIN'}, ID: {lid})...")
-        cands = scan_listing_for_plates(item, conn)
+        try:
+            cands = scan_listing_for_plates(item, conn)
+            found = len(cands)
+        except PhotosUnavailable:
+            # -1: the photos are gone from the portal (not "no plate"); the car's next ad is a new
+            # listing and gets scanned then
+            print("    [photos unavailable] zdjęcia usunięte z portalu, pomijam")
+            cands, found = [], -1
+            unavailable += 1
         total_scanned += 1
         total_found += len(cands)
         try:
-            conn.execute("INSERT OR REPLACE INTO plate_scan_log (listing_id, plates_found) VALUES (?, ?)", (str(lid), len(cands)))
+            conn.execute("INSERT OR REPLACE INTO plate_scan_log (listing_id, plates_found) VALUES (?, ?)", (str(lid), found))
             conn.commit()
         except Exception:
             pass
@@ -559,6 +597,7 @@ def run_plate_detection_batch(limit: int = 15, rescan_empty: bool = False) -> Di
     return {
         "scanned_count": total_scanned,
         "found_plates": total_found,
+        "photos_unavailable": unavailable,
         **crops,
     }
 
@@ -573,6 +612,7 @@ if __name__ == "__main__":
     print(f"Uruchamiam detekcję tablic rejestracyjnych (limit: {args.limit}, rescan_empty: {args.rescan_empty})...")
     res = run_plate_detection_batch(limit=args.limit, rescan_empty=args.rescan_empty)
     print(f"\nZakończono! Przeskanowano {res['scanned_count']} aut, znaleziono {res['found_plates']} propozycji tablic.")
+    print(f"Zdjęcia niedostępne na portalu: {res['photos_unavailable']} ogłoszeń (zapisane, nie są brane za brak tablicy).")
     print(f"Wycinki dla kolejki: {res['crops_filled']}/{res['queued_without_crop']}.")
 
     # A plate CEPiK confirms needs no review
