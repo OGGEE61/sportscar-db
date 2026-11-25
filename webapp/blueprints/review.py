@@ -111,8 +111,10 @@ def decide_origin(conn, vin, market):
 def review_origins():
     conn = get_db()
     cars, ads = origin_conflicts(conn)
+    notes_open = verification.open_note_count(conn)
     conn.close()
-    return render_template("review_origins.html", cars=cars, ads=ads, markets=MARKETS, unknown=ORIGIN_UNKNOWN)
+    return render_template("review_origins.html", cars=cars, ads=ads, markets=MARKETS, unknown=ORIGIN_UNKNOWN,
+                           notes_open=notes_open)
 
 
 @bp.route("/review/origins/<vin>", methods=["POST"])
@@ -127,19 +129,23 @@ def review_origin_decide(vin):
         return error, status
     if request.headers.get("HX-Request"):
         # The card is swapped out; the counter is updated out of band
-        return f'<span id="origin-conflict-count" hx-swap-oob="true">{left}</span>'
+        return f'<span class="badge bg-warning text-dark" id="origin-conflict-count" hx-swap-oob="true">{left}</span>'
     flash(f"Zapisano rynek: {market}.", "success")
     return redirect(url_for("review.review_origins"))
 
 
 @bp.route("/review/notes")
 def review_notes():
-    """"Do sprawdzenia": cars a review left uncertain (?status=resolved: the latest ticked off)."""
+    """"Do sprawdzenia": cars a review left uncertain (?status=resolved: the latest ticked off). Its
+    other tab is the origin conflicts (/review/origins)."""
     resolved = request.args.get("status") == "resolved"
     conn = get_db()
     notes = verification.review_notes(conn, resolved=resolved)
+    notes_open = len(notes) if not resolved else verification.open_note_count(conn)
+    origins = _origin_conflict_count(conn)
     conn.close()
-    return render_template("review_notes.html", notes=notes, resolved=resolved, topics=verification.NOTE_TOPICS)
+    return render_template("review_notes.html", notes=notes, resolved=resolved, topics=verification.NOTE_TOPICS,
+                           notes_open=notes_open, origin_conflicts=origins)
 
 
 @bp.route("/review/notes/<int:note_id>", methods=["POST"])

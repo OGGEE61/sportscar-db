@@ -1,13 +1,11 @@
 {% extends "base.html" %}
+{% from "_check_tabs.html" import check_tabs %}
 {% from "_source.html" import source_badge %}
-{% block title %}Rozbieżności rynku – SportsCar DB{% endblock %}
+{% block title %}Rozbieżności rynku – Do sprawdzenia – SportsCar DB{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-  <h2 class="mb-0">Rozbieżności rynku <span class="badge bg-warning text-dark fs-6 align-middle" id="origin-conflict-count">{{ cars|length }}</span></h2>
-  <a href="/review" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Kolejka</a>
-</div>
-<p class="text-muted small mb-4">
+{{ check_tabs('origins', notes_open, cars|length) }}
+<p class="text-muted small mb-3">
   Auta, przy których rynek pochodzenia zapisany w bazie różni się od tego, co Bielik wyczytał z ogłoszeń.
   Twoja decyzja zostaje zapamiętana: kolejne pobranie ogłoszenia jej nie nadpisze, a Bielik nie zgłosi auta ponownie.
 </p>
@@ -17,7 +15,7 @@
   <div class="card-body">
     <div class="d-flex justify-content-between flex-wrap gap-2">
       <div>
-        <a href="/vehicle/{{ c.vin }}" class="fw-semibold">{{ c.make }} {{ c.model }}{% if c.variant %} {{ c.variant }}{% endif %}</a>
+        <a href="/vehicle/{{ c.vin }}" class="fw-semibold">{% if c.car_id %}<span class="car-id">#{{ c.car_id }}</span> {% endif %}{{ c.make }} {{ c.model }}{% if c.variant %} {{ c.variant }}{% endif %}</a>
         {% if c.year %}<span class="text-muted">{{ c.year }}</span>{% endif %}
         <div class="font-monospace small text-muted">{{ c.vin }}</div>
       </div>

@@ -1,0 +1,13 @@
+{# Tabs of the "Do sprawdzenia" page: the review notes and the origin conflicts are one place to check data. #}
+{% macro check_tabs(active, notes_open, origin_conflicts) -%}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+  <h2 class="mb-0">Do sprawdzenia</h2>
+</div>
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link {% if active == 'notes' %}active{% endif %}" href="/review/notes">
+    Notatki <span class="badge bg-secondary">{{ notes_open }}</span></a></li>
+  <li class="nav-item"><a class="nav-link {% if active == 'origins' %}active{% endif %}" href="/review/origins">
+    Rozbieżności rynku <span class="badge bg-warning text-dark" id="origin-conflict-count">{{ origin_conflicts }}</span></a></li>
+  <li class="nav-item"><a class="nav-link {% if active == 'resolved' %}active{% endif %}" href="/review/notes?status=resolved">Sprawdzone</a></li>
+</ul>
+{%- endmacro %}
