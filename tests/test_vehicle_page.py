@@ -91,6 +91,16 @@ class TestToCheckPanel(VehiclePageCase):
         self.assertEqual(self.card()[0], "pending")
 
 
+class TestHeader(VehiclePageCase):
+    def test_the_title_starts_with_the_cars_id(self):
+        conn = db.get_db()
+        car_id = conn.execute("SELECT car_id FROM vehicles WHERE vin = ?", (CAR,)).fetchone()[0]
+        conn.close()
+        page = self.client.get(f"/vehicle/{CAR}").get_data(as_text=True)
+        title = page[page.index('class="vehicle-title"'):page.index("</h1>")]
+        self.assertIn(f"#{car_id}", title)
+
+
 class TestAdsAndDescription(VehiclePageCase):
     def test_an_ad_shows_only_its_changes_and_keeps_every_sighting_folded(self):
         page = self.client.get(f"/vehicle/{CAR}").get_data(as_text=True)

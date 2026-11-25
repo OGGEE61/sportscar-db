@@ -68,10 +68,10 @@
         title="{{ 'Usuń z ulubionych' if on else 'Dodaj do ulubionych' }}"><i class="bi {{ 'bi-star-fill' if on else 'bi-star' }}"></i></button>
 {%- endmacro %}
 
-{% macro vin_block(c, vin, link=True, full=True) -%}
+{% macro vin_block(c, vin, link=True, full=True, with_id=True) -%}
 <div class="vin-block">
   <div class="vin-line">
-    {%- if c.car_id %}<span class="car-id" title="ID auta w bazie (do wyszukiwania w Bazie VIN-ów)">#{{ c.car_id }}</span>{% endif %}
+    {%- if with_id and c.car_id %}<span class="car-id" title="ID auta w bazie (do wyszukiwania w Bazie VIN-ów)">#{{ c.car_id }}</span>{% endif %}
     {%- if link %}<a href="/vehicle/{{ vin }}" class="vin-code">{{ vin if full else vin[:12] ~ '…' }}</a>
     {%- else %}<code class="vin-code">{{ vin }}</code>{% endif %}
     {{- plate_badge(c) }}
