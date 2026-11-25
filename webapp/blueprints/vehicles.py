@@ -278,7 +278,8 @@ def to_check_context(conn, vin, message=None, ok=True, needs_force=False):
         reading = normalize_plate(card["detected_plate"])
         card["hints"] = plate_card_hints(plan) if plan else []
         card["checks_left"] = len(plan["todo"]) if plan else 0
-        card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [reading])[0]
+        # Only a reading that can be a Polish plate is offered; a junk one (a dealer badge) leaves the field empty
+        card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [""])[0]
     return {"vin": vin, "card": card, "notes": verification.review_notes(conn, vin=vin),
             "topics": verification.NOTE_TOPICS, "message": message, "ok": ok, "needs_force": needs_force}
 

@@ -37,14 +37,16 @@
                 class="d-flex flex-wrap gap-2 align-items-center">
             <input type="hidden" name="card_id" value="{{ card.id }}">
             {% if needs_force %}<input type="hidden" name="force" value="1">{% endif %}
-            <input name="plate" value="{{ card.suggested }}" class="form-control form-control-sm font-monospace plate-input"
+            <input name="plate" value="{{ card.suggested }}" placeholder="np. WE1234A" class="form-control form-control-sm font-monospace plate-input"
                    aria-label="Tablica" autocomplete="off">
             <button name="action" value="approve" class="btn btn-sm btn-success">
               <i class="bi bi-check-lg"></i> {{ 'Zatwierdź mimo to' if needs_force else 'Zatwierdź' }}</button>
-            <button name="action" value="reject" class="btn btn-sm btn-outline-danger"
-                    hx-confirm="Odrzucić kartę? Odczyt zniknie z auta, a auto zostanie w bazie bez tablicy.">
-              <i class="bi bi-x-lg"></i> Odrzuć</button>
+            <button name="action" value="reject" class="btn btn-sm btn-outline-danger" formnovalidate
+                    title="Na zdjęciach nie ma prawdziwej tablicy: odczyt znika z auta, auto zostaje w bazie z VIN-em"
+                    hx-confirm="Tablicy nie widać? Odczyt zniknie z auta, a auto zostanie w bazie z VIN-em, oznaczone „Brak tablicy”. Gdy kolejne ogłoszenie pokaże tablicę, wróci tu nowa karta.">
+              <i class="bi bi-x-lg"></i> Brak tablicy</button>
           </form>
+          <div class="small text-muted mt-1">Widać tablicę: wpisz ją i zatwierdź. Nie widać (plakietka dealera, zamazana): „Brak tablicy”.</div>
           {% if card.hints %}
           <ul class="small text-muted mb-0 mt-2 ps-3">
             {% for hint in card.hints %}<li>{{ hint }}</li>{% endfor %}

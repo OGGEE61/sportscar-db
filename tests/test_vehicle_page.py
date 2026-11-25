@@ -74,6 +74,11 @@ class TestToCheckPanel(VehiclePageCase):
         self.assertIn("Plakietka dealera zamiast tablicy.", panel)
         self.assertNotIn("Do sprawdzenia", self.panel(OTHER))     # nothing waits for a person
 
+    def test_a_reading_that_cannot_be_polish_is_not_offered(self):
+        panel = self.panel()
+        self.assertIn('name="plate" value=""', panel)          # MXY1265 is a configurator's sample plate
+        self.assertIn("Brak tablicy</button>", panel)
+
     def test_rejecting_the_card_on_the_page_clears_the_plate(self):
         r = self.client.post(f"/vehicle/{CAR}/plate_card", data={"card_id": self.card_id, "action": "reject"})
         self.assertIn("tablica MXY1265 usunięta z auta", r.get_data(as_text=True))
