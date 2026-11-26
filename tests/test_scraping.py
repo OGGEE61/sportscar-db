@@ -1154,6 +1154,23 @@ class TestConfirmQueueWithCepik(CepikCarMixin, ScrapingTestCase):
         self.assertIn("Nieczytelna", self.client.get("/plates").get_data(as_text=True))
 
 
+class TestCepikNullFields(unittest.TestCase):
+    """CEPiK answers with null in some fields; a found car must not be lost over them (2026-11-25:
+    'NoneType' object has no attribute 'lower' for a car CEPiK knew)."""
+
+    def test_null_names_and_values_in_the_history_are_read(self):
+        from scripts.fetch_cepik import CepikClient
+        timeline = {"events": [
+            {"eventDate": "2024-05-01", "eventName": "Badanie techniczne",
+             "eventDetails": [{"name": None, "value": "Stan drogomierza 120 000 km"}, {"name": "Uwagi", "value": None}]},
+            {"eventDate": "2023-01-01", "eventName": None, "eventDetails": [{"name": None, "value": None}]}],
+            "technicalInspectionStatus": None}
+        report = CepikClient()._parse_cepik_response("WDB4633461X211725", "WE1234A", "2003-05-01",
+                                                     {"technicalInspectionStatus": None}, timeline)
+        self.assertEqual(report["tech_inspection_status"], "Brak")
+        self.assertEqual(report["last_odometer_km"], 120000)
+
+
 class TestFillMissingCrops(CepikCarMixin, ScrapingTestCase):
     """A listing plate re-queued after a CEPiK miss gets a crop and a photo reading from the scanner."""
 
