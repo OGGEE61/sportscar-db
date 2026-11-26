@@ -3,6 +3,7 @@ from webapp.helpers import is_valid_registration_plate, safe_float, safe_int
 from webapp.regions import CITY_TO_REGION
 from webapp.model_catalog import assign_model_id
 from webapp.services.plates import normalize_plate
+from validation import north_american_equipment
 def infer_vehicle_specs(make, model, variant="", raw_title=""):
     """Infer known model specs for performance cars if fields are empty."""
     text = f"{make or ''} {model or ''} {variant or ''} {raw_title or ''}".lower()
@@ -176,14 +177,18 @@ def _approve_listing(conn, listing, overrides=None):
     else:
         initial_status = "unverified"
 
+    # Equipment only North American cars have: a hint for the Weryfikacja page, kept until a newer ad shows another
+    hint_market, hint_reasons = north_american_equipment(listing.get("raw_description"))
+    hint = "Kody wyposażenia z ogłoszenia: " + "; ".join(hint_reasons) if hint_market else None
+
     # An origin market a person decided on /review/origins (origin_checked_at) is not overwritten
     conn.execute("""
         INSERT INTO vehicles
           (vin, make, model, variant, year, body_type,
            engine_cc, engine_cyl, power_hp, fuel_type, drivetrain, transmission,
            color_ext, color_int, equipment, registration_plate, first_registration_date, origin_market,
-           vin_status, source_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           vin_status, source_method, origin_hint_market, origin_hint)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(vin) DO UPDATE SET
           make        = COALESCE(excluded.make, make),
           model       = COALESCE(excluded.model, model),
@@ -201,6 +206,8 @@ def _approve_listing(conn, listing, overrides=None):
                                THEN COALESCE(excluded.origin_market, origin_market) ELSE origin_market END,
           color_int   = COALESCE(excluded.color_int, color_int),
           equipment   = COALESCE(excluded.equipment, equipment),
+          origin_hint_market = COALESCE(excluded.origin_hint_market, origin_hint_market),
+          origin_hint = COALESCE(excluded.origin_hint, origin_hint),
           updated_at  = datetime('now')
     """, (
         vin,
@@ -223,6 +230,8 @@ def _approve_listing(conn, listing, overrides=None):
         _get("origin_market"),
         initial_status,
         f"scraper-{listing['source']}",
+        hint_market,
+        hint,
     ))
 
     conn.execute("""

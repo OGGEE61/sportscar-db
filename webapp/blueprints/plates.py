@@ -5,8 +5,8 @@ from flask import Blueprint, jsonify, render_template, request
 from db import get_db
 from webapp import invalidate_notifications
 from webapp.services.plate_rules import plate_candidates
-from webapp.services.plates import (approve_plate, clear_plate, normalize_plate, plate_card_hints, plate_check_plan,
-                                    restore_plate)
+from webapp.services.plates import (REGISTERED_HINTS, approve_plate, clear_plate, normalize_plate, plate_card_hints,
+                                    plate_check_plan, registered_rank, restore_plate)
 
 bp = Blueprint("plates", __name__)
 
@@ -43,7 +43,8 @@ def plate_cards(conn, status_filter):
                v.registration_plate AS car_plate,
                COALESCE(NULLIF(v.first_registration_date, ''), p.first_registration_date) AS first_reg,
                p.photos AS photos_json,
-               p.source AS listing_source
+               p.source AS listing_source,
+               (SELECT MAX(p3.registered_in_pl) FROM pending_listings p3 WHERE p3.vin = q.vin) AS registered_in_pl
         FROM plate_review_queue q
         LEFT JOIN vehicles v ON v.vin = q.vin
         -- The queue entry's listing, else the newest listing of its VIN. An OR in the join made
@@ -64,11 +65,13 @@ def plate_cards(conn, status_filter):
         for c in cards:
             card = plan.get(c["id"])
             c["hints"] = plate_card_hints(card) if card else []
+            if c["registered_in_pl"] in REGISTERED_HINTS:
+                c["hints"].insert(0, REGISTERED_HINTS[c["registered_in_pl"]])
             c["checks_left"] = len(card["todo"]) if card else 0
             c["dates"], c["cepik_asked"] = (card["dates"], card["asked"]) if card else ([], [])
             reading = normalize_plate(c["detected_plate"])
             c["reading"], c["suggested_plate"] = reading, (plate_candidates(reading)[:1] or [reading])[0]
-        cards.sort(key=lambda c: c["checks_left"] > 0)
+        cards.sort(key=lambda c: (c["checks_left"] > 0, registered_rank(c["registered_in_pl"])))
     return cards
 
 

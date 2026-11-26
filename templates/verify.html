@@ -76,7 +76,7 @@
     <div class="verify-detail d-flex flex-wrap align-items-center gap-3 small">
       {% if c.card_crop %}<img src="{{ c.card_crop }}" alt="Wycinek tablicy" class="verify-crop" loading="lazy">{% endif %}
       <span>Odczyt ze zdjęcia: <span class="font-monospace">{{ c.card_reading or '—' }}</span></span>
-      <span class="text-muted">karta {{ c.card_id }}: zatwierdź, sprawdź w CEPiK albo „Brak tablicy” na stronie auta</span>
+      <span class="text-muted">zatwierdź, sprawdź w CEPiK albo „Brak tablicy” na stronie auta</span>
       <a href="/plates?q={{ c.car_id }}" class="ms-auto">w Tablicach</a>
     </div>
     {% endif %}

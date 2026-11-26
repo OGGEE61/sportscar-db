@@ -60,7 +60,7 @@ def review_queue():
 
 
 def _origin_conflict_count(conn):
-    return conn.execute("SELECT COUNT(*) FROM vehicles WHERE ai_conflict = 1").fetchone()[0]
+    return conn.execute(f"SELECT COUNT(*) FROM ({verification.ORIGIN_OPEN_VINS})").fetchone()[0]
 
 
 def origin_conflicts(conn):
@@ -69,14 +69,15 @@ def origin_conflicts(conn):
     # Both queries read only the flagged cars through idx_vehicles_ai_conflict and idx_pending_vin.
     # Sorting and the status filter are done here: in SQL the planner takes the make/model and
     # status indexes instead, which read the whole tables.
-    cars = sorted(conn.execute("""
-        SELECT car_id, vin, make, model, variant, year, origin_market, ai_suggested_market, ai_reasoning, ai_ad_count
-        FROM vehicles WHERE ai_conflict = 1
+    cars = sorted(conn.execute(f"""
+        SELECT car_id, vin, make, model, variant, year, origin_market, ai_suggested_market, ai_reasoning, ai_ad_count,
+               ai_conflict, origin_hint_market, origin_hint
+        FROM vehicles WHERE vin IN ({verification.ORIGIN_OPEN_VINS})
     """).fetchall(), key=lambda c: (c["make"] or "", c["model"] or "", c["vin"]))
     ads = {}
-    for ad in conn.execute("""
+    for ad in conn.execute(f"""
         SELECT vin, source, source_url, scraped_at, status FROM pending_listings
-        WHERE vin IN (SELECT vin FROM vehicles WHERE ai_conflict = 1)
+        WHERE vin IN ({verification.ORIGIN_OPEN_VINS})
     """):
         if ad["status"] in ("approved", "pending"):
             ads.setdefault(ad["vin"], []).append(ad)

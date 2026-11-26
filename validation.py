@@ -242,3 +242,39 @@ def is_import_offer(title, description) -> bool:
     text = " ".join(_TAGS.sub(" ", f"{title or ''} {description or ''}").replace("\\", "")
                     .replace("&nbsp;", " ").lower().split())
     return bool(_IMPORT_OFFER.search(text))
+
+
+# Equipment that only North American cars have, as the ads list it (BMW option codes with their Polish
+# names, Mercedes codes with their English ones). An ad that names one is very likely an import from
+# the USA or Canada even when it says nothing about the origin. These are hints for a person to decide
+# on (the Weryfikacja page), not an origin market: a European car can be described with a US build
+# sheet copied from a decoder.
+NORTH_AMERICAN_EQUIPMENT = (
+    ("Kanada", "wersja na Kanadę", r"wersja krajowa\W{0,3}\(?kanad|canad(?:a|ian) version|\b460\s+canada"),
+    ("USA", "wersja na USA", r"wersja krajowa\W{0,3}\(?(?:usa|stany)|\bu\.?\s?s\.?a?\.? version|\b494\s+u\.?s\.?\b"),
+    ("USA", "tuner satelitarny (SiriusXM, tylko USA i Kanada)",
+     r"(?:tuner|radio|odbiornik)\w*\s+satelit|satelit\w*\s+(?:tuner|radio)|satellite (?:radio|tuner)|sirius"),
+    ("USA", "VIN widoczny przez szybę (8SM, wymóg USA)",
+     r"\b(?:s0?)?8sm\b|numer identyfikacyjny\w*\s+(?:samochodu|pojazdu)?\s*widoczn|identification label under windshield"),
+    ("USA", "licznik w milach z opisami po angielsku", r"instrument with miles"),
+)
+
+
+def north_american_equipment(description: str):
+    """(market, reasons) when the ad lists equipment only North American cars have, else (None, []).
+    Canada wins over the USA when both appear (a Canadian car has the satellite tuner too)."""
+    text = (description or "").lower()
+    found = [(market, reason) for market, reason, pattern in NORTH_AMERICAN_EQUIPMENT if re.search(pattern, text)]
+    if not found:
+        return None, []
+    market = "Kanada" if any(m == "Kanada" for m, _ in found) else "USA"
+    return market, [reason for _, reason in found]
+
+
+def yes_no(value):
+    """1 / 0 for a portal's yes-or-no field ("1"/"0", True/False), None when it is missing or unclear."""
+    if value is True or value in ("1", 1):
+        return 1
+    if value is False or value in ("0", 0):
+        return 0
+    return None

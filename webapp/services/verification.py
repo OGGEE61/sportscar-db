@@ -69,7 +69,8 @@ def cars_to_check(conn, limit, offset=0):
     total = conn.execute("SELECT COUNT(*) FROM vehicles WHERE data_checked_at IS NULL").fetchone()[0]
     cars = conn.execute("""
         SELECT v.car_id, v.vin, v.make, v.model, v.variant, v.year, v.registration_plate, v.first_registration_date,
-               v.origin_market, v.ai_suggested_market, v.ai_conflict, v.created_at
+               v.origin_market, v.ai_suggested_market, v.ai_conflict, v.created_at,
+               v.origin_hint_market, v.origin_hint, v.origin_checked_at
         FROM vehicles v
         WHERE v.data_checked_at IS NULL AND v.vin NOT LIKE 'PLH%' AND v.vin NOT LIKE 'UNVERIFIED%'
           AND EXISTS (SELECT 1 FROM pending_listings p WHERE p.vin = v.vin AND p.status = 'approved')
@@ -140,6 +141,20 @@ def set_note_resolved(conn, note_id, resolved):
 
 NORTH_AMERICA = "('USA', 'USA/Kanada', 'Kanada')"
 
+
+def origin_open_sql(a="v"):
+    """The condition (on alias a) of a car whose origin market waits for a person: Bielik disagrees with
+    the stored one, or the ads list North American equipment (origin_hint_market) while the market is not
+    North American and nobody decided it yet."""
+    return (f"({a}.ai_conflict = 1 OR ({a}.origin_hint_market IS NOT NULL AND {a}.origin_checked_at IS NULL "
+            f"AND COALESCE({a}.origin_market, '') NOT IN {NORTH_AMERICA}))")
+
+
+# The same as a set of VINs, through the two partial indexes (an OR would read the whole table)
+ORIGIN_OPEN_VINS = f"""SELECT vin FROM vehicles WHERE ai_conflict = 1
+                       UNION SELECT ov.vin FROM vehicles ov WHERE ov.origin_hint_market IS NOT NULL
+                         AND ov.origin_checked_at IS NULL AND COALESCE(ov.origin_market, '') NOT IN {NORTH_AMERICA}"""
+
 # What can be left to check on a car: its label and the SQL listing the VINs it applies to. Each
 # reads through an index, except "damage" and "unchecked", which read the vehicles table (a few
 # thousand rows).
@@ -148,7 +163,7 @@ VERIFY_ISSUES = {
     "cepik": ("CEPiK nie zna", """SELECT l.vin FROM cepik_sync_log l JOIN vehicles cv ON cv.vin = l.vin
                                   WHERE l.status = 'not_found' AND cv.data_checked_at IS NULL
                                     AND NOT EXISTS (SELECT 1 FROM cepik_reports r WHERE r.vin = l.vin)"""),
-    "origin": ("Rynek", "SELECT vin FROM vehicles WHERE ai_conflict = 1"),
+    "origin": ("Rynek", ORIGIN_OPEN_VINS),
     "notes": ("Notatki", "SELECT vin FROM review_notes WHERE resolved_at IS NULL"),
     "damage": ("Z Ameryki, bez szkody", f"""SELECT dv.vin FROM vehicles dv
                                             WHERE dv.origin_market IN {NORTH_AMERICA} AND dv.data_checked_at IS NULL
@@ -195,7 +210,7 @@ def verify_cars(conn, issue="open", q="", page=1):
     total = conn.execute(f"SELECT COUNT(*) FROM vehicles v WHERE v.vin IN ({cars_sql}){search}", params).fetchone()[0]
     cars = [dict(r) for r in conn.execute(f"""
         SELECT v.vin, v.make, v.model, v.variant, v.year, v.origin_market, v.ai_suggested_market, v.ai_reasoning,
-               v.ai_conflict AS has_origin, {car_flags_sql("v")},
+               v.ai_conflict, v.origin_hint_market, v.origin_hint, {origin_open_sql("v")} AS has_origin, {car_flags_sql("v")},
                (SELECT q.id FROM plate_review_queue q WHERE q.vin = v.vin AND q.status = 'pending' ORDER BY q.id DESC LIMIT 1) AS card_id,
                (SELECT q.crop_path FROM plate_review_queue q WHERE q.vin = v.vin AND q.status = 'pending' ORDER BY q.id DESC LIMIT 1) AS card_crop,
                (SELECT q.detected_plate FROM plate_review_queue q WHERE q.vin = v.vin AND q.status = 'pending' ORDER BY q.id DESC LIMIT 1) AS card_reading,
