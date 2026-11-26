@@ -53,7 +53,8 @@ server = MCPServer(
         "'Pierwsza rejestracja za granicą'). A confirmed lookup approves the card by itself. "
         "Name every car by its ID (the 'id' field, written #123, the number shown before the VIN in the "
         "app and searchable in Baza VIN-ów) together with make and model, e.g. '#512 BMW M2 F87', so the "
-        "user can find exactly which car you mean; a /plates card also by its card number. "
+        "user can find exactly which car you mean. A /plates card has no number of its own: the plate tools "
+        "take the car's ID (or VIN), and a car has at most one card waiting. "
         "The user is the verifier: never change anything (no write tool, CEPiK lookup included) before the "
         "user approved that change in the chat. Propose decisions in batches, one line per car with the "
         "evidence; when unsure, leave the car unchecked and say why. "
@@ -82,13 +83,36 @@ def _ad(conn, card):
     """, (card["listing_id"], card["vin"])).fetchone()
 
 
-def _pending_card(conn, card_id):
-    return next((c for c in plate_cards(conn, "pending") if c["id"] == card_id), None)
+def _find_car(conn, car):
+    """The car named by its ID (123 or #123, as the app shows it) or its VIN."""
+    key = str(car).strip().lstrip("#")
+    return (conn.execute("SELECT * FROM vehicles WHERE car_id = ?", (int(key),)) if key.isdigit()
+            else conn.execute("SELECT * FROM vehicles WHERE vin = ?", (key.upper(),))).fetchone()
+
+
+def _pending_card(conn, car):
+    """The car's card waiting on /plates (a car has at most one), or None."""
+    row = _find_car(conn, car)
+    return row and next((c for c in plate_cards(conn, "pending") if c["vin"] == row["vin"]), None)
+
+
+def _card_id(conn, car, pending=True):
+    """The id of the car's waiting card or, with pending=False, of its last reviewed one."""
+    row = _find_car(conn, car)
+    if not row:
+        return None
+    hit = conn.execute("SELECT id FROM plate_review_queue WHERE vin = ? AND " +
+                       ("status = 'pending'" if pending else "status != 'pending'") + " ORDER BY id DESC LIMIT 1",
+                       (row["vin"],)).fetchone()
+    return hit and hit["id"]
+
+
+NO_CARD = "Auto {car} nie ma tablicy czekającej na weryfikację (albo nie ma takiego auta)."
 
 
 def _summary(card):
     return {
-        "id": card["car_id"], "card_id": card["id"], "vin": card["vin"],
+        "id": card["car_id"], "vin": card["vin"],
         "car": " ".join(str(x) for x in (card["make"], card["model"], card["variant"], card["year"]) if x),
         "photo_reading": card["reading"], "suggested_plate": card["suggested_plate"],
         "plate_in_ad": normalize_plate(card["car_plate"]) or None,
@@ -135,18 +159,18 @@ def list_plate_cards(limit: int = 20, offset: int = 0, only_needing_person: bool
 
 
 @server.tool(annotations=READ, structured_output=False)
-def show_plate_card(card_id: int, photos: int = 4) -> list:
-    """One pending card in full: the ad (title, description, link, price, city, dates), the CEPiK pairs
+def show_plate_card(car: str, photos: int = 4) -> list:
+    """The car's pending /plates card in full (`car`: its ID, 123 or #123, or its VIN): the ad (title, description, link, price, city, dates), the CEPiK pairs
     already asked, the plate crop the photo reading came from, and up to `photos` ad photos (max 10),
     the one the plate was found on first."""
     conn = _db()
     try:
-        card = _pending_card(conn, card_id)
+        card = _pending_card(conn, car)
         ad = _ad(conn, card) if card else None
     finally:
         conn.close()
     if not card:
-        return [f"Karta {card_id} nie czeka na weryfikację (zatwierdzona, odrzucona albo nie istnieje)."]
+        return [NO_CARD.format(car=car)]
     info = {**_summary(card), "cepik_asked": [{"plate": p, "date": d} for p, d in card["cepik_asked"]]}
     if ad:
         description = ad["raw_description"] or ""
@@ -171,8 +195,9 @@ _cepik = None
 
 
 @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True))
-def check_plate_in_cepik(card_id: int, plate: str, first_registration_date: str) -> str:
-    """Ask CEPiK (the state vehicle register) about a pending card's car with this plate and first
+def check_plate_in_cepik(car: str, plate: str, first_registration_date: str) -> str:
+    """Ask CEPiK (the state vehicle register) about a car with a pending /plates card (`car`: its ID or
+    VIN) with this plate and first
     registration date (YYYY-MM-DD, exact day). When CEPiK knows this same car, the card is approved with
     the plate, the report is saved and the car takes that date. A miss is remembered, so the same pair
     is not asked again; it means the plate, the date or both are wrong (or the car is not registered in
@@ -187,7 +212,9 @@ def check_plate_in_cepik(card_id: int, plate: str, first_registration_date: str)
     plate = normalize_plate(plate)
     conn = _db()
     try:
-        outcome, report = check_card_in_cepik(conn, card_id, plate, first_registration_date, client)
+        card_id = _card_id(conn, car)
+        outcome, report = (check_card_in_cepik(conn, card_id, plate, first_registration_date, client) if card_id
+                           else ("not_pending", None))
     finally:
         conn.close()
     if outcome == "bad_plate":
@@ -195,11 +222,11 @@ def check_plate_in_cepik(card_id: int, plate: str, first_registration_date: str)
     if outcome == "bad_date":
         return "Niepoprawna data: RRRR-MM-DD, od 1980, nie z przyszłości."
     if outcome == "not_pending":
-        return f"Karta {card_id} nie czeka na weryfikację."
+        return NO_CARD.format(car=car)
     if outcome == "asked":
         return f"{plate} z datą {first_registration_date} było już sprawdzane dla tego auta: CEPiK go nie znalazł."
     if outcome == "confirmed":
-        return json.dumps({"outcome": "Potwierdzone przez CEPiK: karta zatwierdzona, raport zapisany.",
+        return json.dumps({"outcome": "Potwierdzone przez CEPiK: tablica zatwierdzona, raport zapisany.",
                            "report": {k: report.get(k) for k in (
                                "make", "model", "year_of_manufacture", "first_registration_date", "registration_status",
                                "total_owners", "last_odometer_km", "last_odometer_date", "is_stolen")}},
@@ -208,13 +235,17 @@ def check_plate_in_cepik(card_id: int, plate: str, first_registration_date: str)
         "not_found": "CEPiK nie zna auta z tą tablicą i datą (zapamiętane, nie będzie pytane ponownie).",
         "other_car": "CEPiK zwrócił inne auto niż to (zapamiętane, bez zatwierdzenia).",
         "error": "CEPiK nie odpowiedział (przerwa albo limit). Spróbuj później.",
-        "gone": f"Karta {card_id} została w międzyczasie rozpatrzona.",
+        "gone": f"Tablica auta {car} została w międzyczasie rozpatrzona.",
     }[outcome]
 
 
-def _review(card_id: int, action: str, plate=None) -> str:
+def _review(car: str, action: str, plate=None) -> str:
     conn = _db()
     try:
+        card_id = _card_id(conn, car, pending=action != "revert")
+        if not card_id:
+            return json.dumps({"status": "error", "message": NO_CARD.format(car=car) if action != "revert"
+                               else f"Auto {car} nie ma rozpatrzonej tablicy do cofnięcia."}, ensure_ascii=False)
         payload, _status = review_card(conn, card_id, action, plate)
     finally:
         conn.close()
@@ -222,24 +253,25 @@ def _review(card_id: int, action: str, plate=None) -> str:
 
 
 @server.tool(annotations=WRITE)
-def approve_plate(card_id: int, plate: str) -> str:
-    """Approve a /plates card with this plate, without CEPiK: the car keeps it. Prefer
+def approve_plate(car: str, plate: str) -> str:
+    """Approve the car's pending /plates card (`car`: its ID or VIN) with this plate, without CEPiK: the car keeps it. Prefer
     check_plate_in_cepik; use this only when the user agrees (e.g. the plate is clearly visible but the
     first registration date is unknown)."""
-    return _review(card_id, "approve", plate)
+    return _review(car, "approve", plate)
 
 
 @server.tool(annotations=WRITE)
-def reject_plate(card_id: int) -> str:
-    """Reject a /plates card: the plate is missing, unreadable or foreign, and the car loses the plate it
+def reject_plate(car: str) -> str:
+    """Reject the car's pending /plates card (`car`: its ID or VIN): the plate is missing, unreadable or foreign, and the car loses the plate it
     had. Only when the user agrees."""
-    return _review(card_id, "reject")
+    return _review(car, "reject")
 
 
 @server.tool(annotations=WRITE)
-def undo_plate_review(card_id: int) -> str:
-    """Put an approved or rejected /plates card back to pending, undoing what the review did to the car."""
-    return _review(card_id, "revert")
+def undo_plate_review(car: str) -> str:
+    """Put the car's last approved or rejected /plates card (`car`: its ID or VIN) back to pending,
+    undoing what the review did to the car."""
+    return _review(car, "revert")
 
 
 @server.tool(annotations=READ)
@@ -318,7 +350,7 @@ def list_cars_to_check(limit: int = 10, offset: int = 0) -> str:
     for c in cars:
         vin, date, notes = c["vin"], c["first_registration_date"], []
         if vin in cards:
-            notes.append(f"tablica czeka na weryfikację (karta {cards[vin][0]['id']})")
+            notes.append("tablica czeka na weryfikację")
         elif not c["registration_plate"]:
             notes.append("brak tablicy")
         if not date:
@@ -348,9 +380,7 @@ def show_car(vin: str, photos: int = 4) -> list:
     history, its live ads (up to 5, newest first, with descriptions), and up to `photos` photos (max 10)."""
     conn = _db()
     try:
-        key = vin.strip().lstrip("#")
-        car = (conn.execute("SELECT * FROM vehicles WHERE car_id = ?", (int(key),)) if key.isdigit()
-               else conn.execute("SELECT * FROM vehicles WHERE vin = ?", (vin.strip(),))).fetchone()
+        car = _find_car(conn, vin)
         if not car:
             return [f"Nie ma auta {vin} (ani takiego VIN-u, ani ID)."]
         vin = car["vin"]
@@ -371,7 +401,7 @@ def show_car(vin: str, photos: int = 4) -> list:
     info = {
         "id": car.get("car_id"), "vin": vin, "car": _car_name(car), "data_checked_at": car.get("data_checked_at"),
         "plate": {"stored": car["registration_plate"],
-                  "cards": [{"card_id": c["id"], "status": c["status"], "photo_reading": c["detected_plate"],
+                  "cards": [{"status": c["status"], "photo_reading": c["detected_plate"],
                              "reviewed_plate": c["reviewed_plate"]} for c in cards]},
         "first_registration_date": {"stored": car["first_registration_date"],
                                     "in_ads": sorted({a["first_registration_date"] for a in ads if a["first_registration_date"]})},

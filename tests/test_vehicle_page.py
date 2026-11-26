@@ -69,7 +69,8 @@ class TestToCheckPanel(VehiclePageCase):
     def test_the_page_loads_the_panel_with_the_card_its_hints_and_the_notes(self):
         self.assertIn(f'hx-get="/vehicle/{CAR}/to_check"', self.client.get(f"/vehicle/{CAR}").get_data(as_text=True))
         panel = self.panel()
-        self.assertIn(f"karta {self.card_id}", panel)
+        self.assertIn("Tablica do potwierdzenia", panel)
+        self.assertNotIn(f"karta {self.card_id}", panel)       # cards have no number of their own; the car has its ID
         self.assertIn("MXY1265 nie ma formatu polskiej tablicy", panel)
         self.assertIn("Plakietka dealera zamiast tablicy.", panel)
         self.assertNotIn("Do sprawdzenia", self.panel(OTHER))     # nothing waits for a person

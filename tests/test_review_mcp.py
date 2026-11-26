@@ -57,6 +57,9 @@ class ReviewMcpCase(unittest.TestCase):
             conn.execute("INSERT INTO plate_review_queue (listing_id, vin, photo_url, crop_path, detected_plate, status) "
                          "VALUES (?, ?, ?, ?, ?, 'pending')", (lid, vin, photos[1] if photos else None, crop, reading))
         self.known, self.foreign = [r["id"] for r in conn.execute("SELECT id FROM plate_review_queue ORDER BY id")]
+        # The tools name a car by its ID, as the app shows it, or by its VIN: never by a card number
+        self.known_car = "#%d" % conn.execute("SELECT car_id FROM vehicles WHERE vin = ?", (KNOWN,)).fetchone()[0]
+        self.foreign_car = FOREIGN
         conn.commit()
         conn.close()
 
@@ -98,7 +101,7 @@ class TestCards(ReviewMcpCase):
                 raise OSError("gone")
             return mock.Mock(content=jpeg(), raise_for_status=lambda: None)
         with mock.patch.object(mcp_server.requests, "get", side_effect=get):
-            content = mcp_server.show_plate_card(self.known, photos=5)
+            content = mcp_server.show_plate_card(self.known_car, photos=5)
         info = json.loads(content[0])
         self.assertTrue(info["ad"]["description"].startswith("Pierwsza rejestracja 10.05.2018"))
         self.assertLessEqual(len(info["ad"]["description"]), mcp_server.DESCRIPTION_CHARS + 1)
@@ -109,15 +112,15 @@ class TestCards(ReviewMcpCase):
         self.assertTrue(any("zdjęcie niedostępne" in c for c in content if isinstance(c, str)))
 
     def test_show_a_card_no_longer_pending(self):
-        mcp_server.reject_plate(self.foreign)
-        self.assertIn("nie czeka", mcp_server.show_plate_card(self.foreign)[0])
+        mcp_server.reject_plate(self.foreign_car)
+        self.assertIn("nie ma tablicy czekającej", mcp_server.show_plate_card(self.foreign_car)[0])
 
 
 class TestCepik(ReviewMcpCase):
     def test_a_confirmed_lookup_approves_the_card(self):
         patch, client = self.cepik(report(KNOWN))
         with patch:
-            answer = json.loads(mcp_server.check_plate_in_cepik(self.known, "kr 7vg22", "2018-05-10"))
+            answer = json.loads(mcp_server.check_plate_in_cepik(self.known_car, "kr 7vg22", "2018-05-10"))
         client.fetch_vehicle_data.assert_called_once_with(KNOWN, "KR7VG22", "2018-05-10")
         self.assertEqual(answer["report"]["total_owners"], 2)
         self.assertEqual(self.card(self.known), ("approved", "KR7VG22", "KR7VG22"))
@@ -125,30 +128,38 @@ class TestCepik(ReviewMcpCase):
     def test_a_miss_is_remembered_and_not_asked_again(self):
         patch, client = self.cepik(None, status=404)
         with patch:
-            self.assertIn("nie zna", mcp_server.check_plate_in_cepik(self.known, "KR7VG22", "2018-05-10"))
-            self.assertIn("już sprawdzane", mcp_server.check_plate_in_cepik(self.known, "KR7VG22", "2018-05-10"))
+            self.assertIn("nie zna", mcp_server.check_plate_in_cepik(self.known_car, "KR7VG22", "2018-05-10"))
+            self.assertIn("już sprawdzane", mcp_server.check_plate_in_cepik(self.known_car, "KR7VG22", "2018-05-10"))
         self.assertEqual(client.fetch_vehicle_data.call_count, 1)
         self.assertEqual(self.card(self.known)[0], "pending")
 
     def test_no_lookup_for_a_foreign_plate_a_bad_date_or_a_reviewed_card(self):
         patch, client = self.cepik(report(FOREIGN))
         with patch:
-            self.assertIn("nie jest polską", mcp_server.check_plate_in_cepik(self.foreign, "8ZY5033", "2018-05-10"))
-            self.assertIn("Niepoprawna data", mcp_server.check_plate_in_cepik(self.known, "KR7VG22", "2018"))
-            mcp_server.reject_plate(self.foreign)
-            self.assertIn("nie czeka", mcp_server.check_plate_in_cepik(self.foreign, "KR7VG22", "2018-05-10"))
+            self.assertIn("nie jest polską", mcp_server.check_plate_in_cepik(self.foreign_car, "8ZY5033", "2018-05-10"))
+            self.assertIn("Niepoprawna data", mcp_server.check_plate_in_cepik(self.known_car, "KR7VG22", "2018"))
+            mcp_server.reject_plate(self.foreign_car)
+            self.assertIn("nie ma tablicy czekającej", mcp_server.check_plate_in_cepik(self.foreign_car, "KR7VG22", "2018-05-10"))
         client.fetch_vehicle_data.assert_not_called()
 
 
 class TestDecisions(ReviewMcpCase):
     def test_approve_reject_and_undo_are_the_screens_own(self):
-        self.assertEqual(json.loads(mcp_server.approve_plate(self.known, "KR7VG22"))["status"], "ok")
+        self.assertEqual(json.loads(mcp_server.approve_plate(self.known_car, "KR7VG22"))["status"], "ok")
         self.assertEqual(self.card(self.known), ("approved", "KR7VG22", "KR7VG22"))
-        mcp_server.undo_plate_review(self.known)
+        mcp_server.undo_plate_review(self.known_car)
         self.assertEqual(self.card(self.known), ("pending", None, None))
-        self.assertEqual(json.loads(mcp_server.approve_plate(self.known, "KRÓL1"))["status"], "error")
-        mcp_server.reject_plate(self.known)
+        self.assertEqual(json.loads(mcp_server.approve_plate(self.known_car, "KRÓL1"))["status"], "error")
+        mcp_server.reject_plate(self.known_car)
         self.assertEqual(self.card(self.known)[0], "rejected")
+        self.assertEqual(json.loads(mcp_server.reject_plate(self.known_car))["status"], "error")   # nothing waits now
+        mcp_server.undo_plate_review(KNOWN)                                   # the last reviewed card, by VIN
+        self.assertEqual(self.card(self.known)[0], "pending")
+        self.assertIn("nie ma tablicy czekającej", mcp_server.show_plate_card("#999")[0])
+
+    def test_no_card_number_is_shown(self):
+        listed = json.loads(mcp_server.list_plate_cards())["cards"]
+        self.assertFalse(any("card_id" in c for c in listed))
 
     def test_origin_conflicts_are_listed_and_decided(self):
         conn = db.get_db()
@@ -188,7 +199,7 @@ class TestCarChecks(ReviewMcpCase):
         self.assertEqual(listed["not_checked"], 2)
         self.assertEqual([c["vin"] for c in listed["cars"]], [FOREIGN, KNOWN])
         notes = {c["vin"]: " | ".join(c["to_look_at"]) for c in listed["cars"]}
-        self.assertIn(f"karta {self.known}", notes[KNOWN])
+        self.assertIn("tablica czeka na weryfikację", notes[KNOWN])
         self.assertIn("uszkodzony przód", notes[KNOWN])
         self.assertNotIn("uszkodzon", notes[FOREIGN])
 
@@ -198,7 +209,7 @@ class TestCarChecks(ReviewMcpCase):
         info = json.loads(content[0])
         self.assertEqual(info["cepik"]["events"], [{"date": "2018-05-10", "event": "Pierwsza rejestracja za granicą"}])
         self.assertEqual(info["damage"]["marks"], [{"source": "otomoto", "reason": "text: uszkodzony przód", "dismissed": False}])
-        self.assertEqual(info["plate"]["cards"][0]["card_id"], self.known)
+        self.assertEqual(info["plate"]["cards"][0], {"status": "pending", "photo_reading": "KR7VG2Z", "reviewed_plate": None})
         self.assertEqual(info["first_registration_date"]["in_ads"], ["2018-05-10"])
         self.assertTrue(info["ads"][0]["description"].startswith("Pierwsza rejestracja"))
         self.assertEqual(sum(isinstance(c, Image) for c in content), 1)
@@ -227,7 +238,7 @@ class TestCarChecks(ReviewMcpCase):
     def test_a_checked_car_leaves_the_queue_but_not_while_its_plate_is_pending(self):
         self.assertIn("czeka jeszcze", mcp_server.mark_car_checked(KNOWN))
         self.assertEqual(mcp_server.mark_car_checked(FOREIGN.replace("9", "8")), f"Nie ma auta z VIN-em {FOREIGN.replace('9', '8')}.")
-        mcp_server.reject_plate(self.foreign)
+        mcp_server.reject_plate(self.foreign_car)
         mcp_server.mark_car_checked(FOREIGN)
         self.assertEqual([c["vin"] for c in self.queue()["cars"]], [KNOWN])
         mcp_server.mark_car_checked(FOREIGN, checked=False)
