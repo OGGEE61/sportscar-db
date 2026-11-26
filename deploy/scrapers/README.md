@@ -20,7 +20,8 @@ and the next night continues.
 How it works: the host's cron (`/etc/cron.d/sportscar-scrapers`, from [crontab](crontab)) calls
 [run.sh](run.sh), which starts one fresh container from the `sportscar-scraper` image. Only one
 job per source runs at a time; a run that finds the previous one still going is skipped.
-[update.sh](update.sh) pulls `master` hourly and rebuilds the image when it changed.
+[update.sh](update.sh) pulls `master` hourly, rebuilds the image when it changed and installs
+[crontab](crontab) when it differs from the installed one, so schedule changes need no login.
 
 ## Layout on the server
 

@@ -159,6 +159,9 @@ SCRAPER_MAP = {
     "rsq3_f3": [RSQ3_F3],
     "x3_m": [X3_M],
     "x3_m40i": [X3_M40I],
+    # Both X3 G01 models (they search the same URLs and sort cars by VIN); cron runs it twice a day
+    # on top of the rotation
+    "x3": [X3_M40I, X3_M],
     "all": ALL_FLEET,
     "fleet": ALL_FLEET,
 }
