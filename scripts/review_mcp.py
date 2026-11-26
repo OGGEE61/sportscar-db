@@ -275,6 +275,29 @@ def undo_plate_review(car: str) -> str:
 
 
 @server.tool(annotations=READ)
+def list_verify(issue: str = "marked", page: int = 1) -> str:
+    """One page (30 cars, newest ID first) of a Weryfikacja tab: "plate", "cepik", "origin", "notes",
+    "damage" (North American origin, no damage entry), "marked" (an ad marked damaged by the portal or
+    its text, no damage entry: write the entry from the ad with add_damage_history, or leave a note when
+    the ad does not say what was damaged), "unchecked", or "open" (what reviews left open). Each car
+    with its ad link, what is open on it, its notes and, for "marked", what the marks say."""
+    if issue != "open" and issue not in verification.VERIFY_ISSUES:
+        return f"Nieznana zakładka: {issue}. Są: open, " + ", ".join(verification.VERIFY_ISSUES)
+    conn = _db()
+    try:
+        counts = verification.verify_counts(conn)
+        cars, total = verification.verify_cars(conn, issue, "", max(1, page))
+    finally:
+        conn.close()
+    return json.dumps({
+        "issue": issue, "total": total, "page": max(1, page), "per_page": verification.VERIFY_PER_PAGE, "counts": counts,
+        "cars": [{"id": c["car_id"], "vin": c["vin"], "car": _car_name(c), "origin_market": c["origin_market"],
+                  "ad": c["ad_url"], "marks": c["marks"], "plate_waiting": bool(c["card_id"]),
+                  "notes": [n["note"] for n in c["notes"]]} for c in cars],
+    }, ensure_ascii=False, indent=1)
+
+
+@server.tool(annotations=READ)
 def list_origin_conflicts(limit: int = 20) -> str:
     """Cars whose origin market waits for a decision: Bielik (the AI that read the ads) disagrees with the
     stored one (his reasoning), or the ads list equipment only North American cars have (equipment_hint:

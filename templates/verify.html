@@ -68,6 +68,7 @@
         {% if c.has_origin %}<span class="badge issue-badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Rynek</span>{% endif %}
         {% if c.notes %}<span class="badge issue-badge bg-secondary-subtle text-secondary-emphasis border">{{ c.notes|length }} {{ 'notatka' if c.notes|length == 1 else 'notatki' if c.notes|length < 5 else 'notatek' }}</span>{% endif %}
         {% if c.has_damage %}<span class="badge issue-badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"><i class="bi bi-airplane"></i> Bez wpisu o szkodzie</span>{% endif %}
+        {% if c.has_marked and not c.has_damage %}<span class="badge issue-badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"><i class="bi bi-exclamation-octagon"></i> Szkoda bez wpisu</span>{% endif %}
         <a href="/vehicle/{{ c.vin }}" class="btn btn-sm btn-outline-primary py-0 ms-1">Strona auta <i class="bi bi-arrow-right"></i></a>
       </div>
     </div>
@@ -97,6 +98,15 @@
       <div class="small text-muted mt-1">dodane {{ (n.created_at or '')[:10] }}{% if n.ad_url %} · <a href="{{ n.ad_url }}" target="_blank" rel="noopener">ogłoszenie</a>{% endif %}</div>
     </div>
     {% endfor %}
+
+    {% if issue == 'marked' and c.marks %}
+    <div class="verify-detail small">
+      {% for reason in c.marks %}
+      <div>{% if reason.startswith('text: ') %}Z treści ogłoszenia: <em>„…{{ reason[6:] }}…”</em>{% else %}Ogłoszenie oznaczone na portalu jako uszkodzone{% endif %}</div>
+      {% endfor %}
+      <div class="mt-1"><a href="/vehicle/{{ c.vin }}#history">dodaj wpis</a> albo zdejmij oznaczenie na stronie auta, gdy to pomyłka</div>
+    </div>
+    {% endif %}
 
     {% if c.has_damage and issue == 'damage' %}
     <div class="verify-detail small d-flex flex-wrap align-items-center gap-2">

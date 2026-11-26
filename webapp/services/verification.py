@@ -169,6 +169,16 @@ VERIFY_ISSUES = {
                                             WHERE dv.origin_market IN {NORTH_AMERICA} AND dv.data_checked_at IS NULL
                                               AND NOT EXISTS (SELECT 1 FROM condition_reports cr
                                                               WHERE cr.vin = dv.vin AND cr.accident_free = 0)"""),
+    # Marked damaged (by the portal or the ad's text) and not dismissed, yet no damage history entry:
+    # the mark is automatic, the history is written by a person (or the review MCP) from what the ad says.
+    # Through pending_listings' unique (source, source_listing_id): one row per mark.
+    "marked": ("Szkoda w ogłoszeniu, bez wpisu", """SELECT mp.vin FROM damaged_listings md
+                                                  JOIN pending_listings mp ON mp.source = md.source
+                                                   AND mp.source_listing_id = md.source_listing_id
+                                                  JOIN vehicles mv ON mv.vin = mp.vin
+                                                  WHERE md.dismissed = 0 AND mv.data_checked_at IS NULL
+                                                    AND NOT EXISTS (SELECT 1 FROM condition_reports cr
+                                                                    WHERE cr.vin = mp.vin AND cr.accident_free = 0)"""),
     "unchecked": ("Niesprawdzone", "SELECT vin FROM vehicles WHERE data_checked_at IS NULL"),
 }
 # "Do zrobienia" (the default) is what a review left open; the last two are wider lists to go through
@@ -217,7 +227,8 @@ def verify_cars(conn, issue="open", q="", page=1):
                (SELECT p.source_url FROM pending_listings p WHERE p.vin = v.vin AND COALESCE(p.source_url, '') <> ''
                 ORDER BY p.id DESC LIMIT 1) AS ad_url,
                v.vin IN ({VERIFY_ISSUES["cepik"][1]}) AS has_cepik,
-               v.vin IN ({VERIFY_ISSUES["damage"][1]}) AS has_damage
+               v.vin IN ({VERIFY_ISSUES["damage"][1]}) AS has_damage,
+               v.vin IN ({VERIFY_ISSUES["marked"][1]}) AS has_marked
         FROM vehicles v
         WHERE v.vin IN ({cars_sql}){search}
         ORDER BY v.car_id DESC
@@ -231,6 +242,16 @@ def verify_cars(conn, issue="open", q="", page=1):
             WHERE resolved_at IS NULL AND vin IN ({marks}) ORDER BY created_at, id
         """, [c["vin"] for c in cars]):
             notes.setdefault(n["vin"], []).append(dict(n))
+    marks = {}
+    if issue == "marked" and cars:
+        # What the marks say, for the row: the quote from the ad, or the portal's own mark
+        for m in conn.execute(f"""
+            SELECT DISTINCT p.vin, d.reason FROM damaged_listings d
+            JOIN pending_listings p ON p.source = d.source AND p.source_listing_id = d.source_listing_id
+            WHERE d.dismissed = 0 AND p.vin IN ({", ".join("?" * len(cars))})
+        """, [c["vin"] for c in cars]):
+            marks.setdefault(m["vin"], []).append(m["reason"])
     for c in cars:
         c["notes"] = notes.get(c["vin"], [])
+        c["marks"] = marks.get(c["vin"], [])
     return cars, total
