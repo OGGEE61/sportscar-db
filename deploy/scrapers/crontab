@@ -6,6 +6,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Otomoto: the 3 models that waited longest, every 3 hours (about the pace GitHub kept before the
 # move: more often adds requests, not cars)
 15 */3 * * *    root  /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py next_3
+# Otomoto X3 (M40i and X3 M) twice a day on top of the rotation, which reaches each model about
+# every two days. At :35 between the :15 jobs that share the Otomoto lock
+35 8,20 * * *   root  /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py x3
 # Otomoto VINs and plates the scrapes left behind, an hour after each scrape. Within the scrapes'
 # shared limits (base_scraper.REVEALS_PER_DAY); same lock as the Otomoto scrape.
 15 1-22/3 * * * root  /opt/sportscar/deploy/scrapers/run.sh otomoto scripts/maintenance/reveal_pending_vins.py

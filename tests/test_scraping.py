@@ -929,6 +929,15 @@ class TestRotationPick(unittest.TestCase):
             self.assertEqual([c for c, _, _ in run_all.get_scheduled_models(count=1)], [cfg])
 
 
+class TestX3Schedule(unittest.TestCase):
+    def test_the_x3_target_runs_both_g01_models_and_cron_runs_it_twice_a_day(self):
+        import run_all
+        self.assertEqual({c.variant for c in run_all.SCRAPER_MAP["x3"]}, {"M40i G01", "F97"})
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        crontab = open(os.path.join(root, "deploy", "scrapers", "crontab")).read()
+        self.assertIn("35 8,20 * * *   root  /opt/sportscar/deploy/scrapers/run.sh otomoto scrapers/run_all.py x3\n", crontab)
+
+
 class TestAlpinaValidator(unittest.TestCase):
     def validators(self):
         from otomoto.bmw_alpina import validate_genuine_alpina as otomoto
