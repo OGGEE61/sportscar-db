@@ -135,8 +135,10 @@ def _vehicles_page(favorites_only: bool):
         # Not a number: no car has that ID, so the list is empty rather than unfiltered
         wheres.append("v.car_id = ?"); params.append(int(car_id) if car_id.isdigit() else -1)
     if q:
-        wheres.append("(v.make LIKE ? OR v.model LIKE ? OR v.vin LIKE ? OR v.variant LIKE ?)")
-        params += [f"%{q}%"] * 4
+        # The plate as stored or typed with spaces ("WE 1KM05"): compared without them
+        wheres.append("(v.make LIKE ? OR v.model LIKE ? OR v.vin LIKE ? OR v.variant LIKE ? "
+                      "OR UPPER(REPLACE(COALESCE(v.registration_plate, ''), ' ', '')) LIKE ?)")
+        params += [f"%{q}%"] * 4 + [f"%{q.replace(' ', '').upper()}%"]
     if make:
         wheres.append("v.make = ?"); params.append(make)
     if status:

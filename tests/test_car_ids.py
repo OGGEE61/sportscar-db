@@ -106,6 +106,18 @@ class TestSearch(CarIdCase):
         self.assertNotIn(OLD, page)
         self.assertIn("#2", self.client.get(f"/vehicle/{NEW}").get_data(as_text=True))
 
+    def test_the_vin_base_finds_a_car_by_its_plate(self):
+        self.add(OLD, model="M3")
+        self.add(NEW, model="M5")
+        conn = db.get_db()
+        conn.execute("UPDATE vehicles SET registration_plate = 'WE1KM05' WHERE vin = ?", (NEW,))
+        conn.commit()
+        conn.close()
+        for query in ("WE1KM05", "we 1km05", "1KM0"):
+            page = self.client.get("/vehicles", query_string={"q": query}).get_data(as_text=True)
+            self.assertIn(NEW, page, query)
+            self.assertNotIn(OLD, page, query)
+
 
 if __name__ == "__main__":
     unittest.main()
