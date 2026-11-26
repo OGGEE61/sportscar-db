@@ -26,7 +26,7 @@ from mcp_types import ToolAnnotations
 from PIL import Image as PILImage
 
 import db
-from validation import MARKETS, is_valid_first_registration_date
+from validation import MARKETS, OVERSEAS_ORIGINS, is_valid_first_registration_date
 from webapp.blueprints.plates import plate_cards, review_card
 from webapp.blueprints.review import ORIGIN_UNKNOWN, decide_origin, origin_conflicts
 from webapp.services import verification
@@ -276,8 +276,9 @@ def undo_plate_review(car: str) -> str:
 
 @server.tool(annotations=READ)
 def list_origin_conflicts(limit: int = 20) -> str:
-    """Cars where Bielik (the AI that read the ads) and the stored origin market disagree, with his
-    reasoning and the links to the car's live ads."""
+    """Cars whose origin market waits for a decision: Bielik (the AI that read the ads) disagrees with the
+    stored one (his reasoning), or the ads list equipment only North American cars have (equipment_hint:
+    the market it points to and why), with the links to the car's live ads."""
     conn = _db()
     try:
         cars, ads = origin_conflicts(conn)
@@ -287,6 +288,8 @@ def list_origin_conflicts(limit: int = 20) -> str:
         "conflicts": len(cars), "markets": MARKETS + [ORIGIN_UNKNOWN],
         "cars": [{**{"id": c["car_id"]}, **{k: c[k] for k in ("vin", "make", "model", "variant", "year", "origin_market",
                                        "ai_suggested_market", "ai_reasoning")},
+           "bielik_disagrees": bool(c["ai_conflict"]),
+           "equipment_hint": c["origin_hint"] and {"market": c["origin_hint_market"], "why": c["origin_hint"]},
                   "ads": [a["source_url"] for a in ads.get(c["vin"], [])]} for c in cars[:max(1, min(limit, 100))]],
     }, ensure_ascii=False, indent=1)
 
@@ -361,6 +364,8 @@ def list_cars_to_check(limit: int = 10, offset: int = 0) -> str:
             notes.append("brak rynku")
         if c["ai_conflict"]:
             notes.append(f"Bielik uważa, że rynek to {c['ai_suggested_market']}")
+        if c["origin_hint_market"] and not c["origin_checked_at"] and c["origin_market"] not in OVERSEAS_ORIGINS:
+            notes.append(f"wyposażenie wskazuje na {c['origin_hint_market']}: {c['origin_hint']}")
         active = [m["reason"] or "portal" for m in marks.get(vin, []) if not m["dismissed"]]
         if active:
             notes.append("oznaczone jako uszkodzone: " + "; ".join(active))
@@ -407,7 +412,9 @@ def show_car(vin: str, photos: int = 4) -> list:
                                     "in_ads": sorted({a["first_registration_date"] for a in ads if a["first_registration_date"]})},
         "origin": {"stored": car["origin_market"], "decided_by_hand_at": car.get("origin_checked_at"),
                    "bielik": car.get("ai_suggested_market"), "bielik_disagrees": bool(car.get("ai_conflict")),
-                   "bielik_reasoning": car.get("ai_reasoning")},
+                   "bielik_reasoning": car.get("ai_reasoning"),
+                   "equipment_hint": car.get("origin_hint") and {"market": car.get("origin_hint_market"),
+                                                                 "why": car.get("origin_hint")}},
         "damage": {"marks": [{"source": m["source"], "reason": m["reason"] or "portal", "dismissed": bool(m["dismissed"])}
                              for m in marks],
                    "history": [dict(h) for h in history]},

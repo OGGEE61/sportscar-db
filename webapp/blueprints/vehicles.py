@@ -283,8 +283,9 @@ def to_check_context(conn, vin, message=None, ok=True, needs_force=False):
         card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [""])[0]
         card["date"] = (plan["dates"][:1] or [""])[0] if plan else ""
     # Bielik disagreeing with the stored origin market: decided here as on the Weryfikacja page
-    origin = conn.execute("""
-        SELECT vin, origin_market, ai_suggested_market, ai_reasoning FROM vehicles WHERE vin = ? AND ai_conflict = 1
+    origin = conn.execute(f"""
+        SELECT vin, origin_market, ai_suggested_market, ai_reasoning, ai_conflict, origin_hint_market, origin_hint
+        FROM vehicles v WHERE vin = ? AND {verification.origin_open_sql("v")}
     """, (vin,)).fetchone()
     return {"vin": vin, "card": card, "notes": verification.review_notes(conn, vin=vin), "origin": origin,
             "markets": MARKETS, "unknown": ORIGIN_UNKNOWN,
@@ -453,9 +454,13 @@ def vehicle_detail(vin):
     # origin market tells: where the VIN says it was built does not (every X3 is built in the USA,
     # also those sold in Europe).
     north_american = vehicle["origin_market"] in OVERSEAS_ORIGINS
+    # Not decided yet, but the ads list equipment only North American cars have (validation.north_american_equipment)
+    equipment_hint = (vehicle["origin_hint"] if not north_american and vehicle["origin_hint_market"]
+                      and not vehicle["origin_checked_at"] else None)
     return render_template("vehicle.html",
         vehicle=vehicle,
         north_american=north_american,
+        equipment_hint=equipment_hint,
         wrong_model=wrong_model,
         damage_marks=damage_marks,
         sold_damaged=sold_damaged,

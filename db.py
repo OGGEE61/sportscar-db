@@ -932,6 +932,19 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_review_notes_resolved ON review_notes(resolved_at)")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(32,'review_notes')")
 
+    # ── Migration 33: North American equipment in the ads ────────────────────
+    # The origin market an ad's equipment points to (scrapers/market_resolver.north_american_equipment:
+    # a satellite tuner, the VIN label under the windscreen, a US or Canadian country version) and why.
+    # A hint for a person, not the origin: a car with one and no North American origin waits on the
+    # Weryfikacja page until the market is decided. The partial index keeps that list to the hinted cars.
+    v_cols = {r[1] for r in db.execute("PRAGMA table_info(vehicles)").fetchall()}
+    for col in ("origin_hint_market", "origin_hint"):
+        if col not in v_cols:
+            db.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_vehicles_origin_hint ON vehicles(vin) "
+               "WHERE origin_hint_market IS NOT NULL AND origin_checked_at IS NULL")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(33,'origin_hint')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()
