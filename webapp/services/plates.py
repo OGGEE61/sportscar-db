@@ -277,5 +277,19 @@ def plate_card_hints(card: dict) -> list:
     return hints
 
 
+# What the ads say under "Zarejestrowany w Polsce" (pending_listings.registered_in_pl, the highest of
+# the car's ads: one yes is enough). Only a yes is sure, see migration 34.
+REGISTERED_HINTS = {
+    1: "Ogłoszenie: zarejestrowany w Polsce, więc polska tablica powinna być.",
+    0: "Ogłoszenie: niezarejestrowany w Polsce, więc tablicy może nie być. Na autoplac „Nie” to też pole, "
+       "którego sprzedawca nie zaznaczył.",
+}
+
+
+def registered_rank(registered) -> int:
+    """Where a pending card goes in the queue by what its ads say: registered first, unknown, then not."""
+    return {1: 0, None: 1, 0: 2}.get(registered, 1)
+
+
 def _pairs_word(n: int) -> str:
     return "kombinację" if n == 1 else "kombinacje" if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else "kombinacji"

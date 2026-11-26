@@ -6,7 +6,7 @@ import re
 from flask import Blueprint, jsonify, request
 from db import get_db, make_placeholder_vin
 from webapp.model_catalog import get_model
-from validation import damage_in_text, is_import_offer
+from validation import damage_in_text, is_import_offer, yes_no
 from webapp.helpers import IS_PRODUCTION, NOW, WRONG_MODEL_NOTE, is_plausible_vin, is_valid_registration_plate, safe_float, safe_int
 
 from webapp.helpers import is_valid_first_registration_date, overseas_damaged_listing_sql
@@ -553,8 +553,8 @@ def api_ingest_pending():
                seller_type, seller_name,
                vin, vin_confidence,
                registration_plate, first_registration_date, origin_market,
-               is_listing_active, import_offer)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               is_listing_active, import_offer, registered_in_pl, first_owner)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             source, sid, p.get("source_url"),
             p.get("raw_title"), p.get("raw_description"),
@@ -571,6 +571,7 @@ def api_ingest_pending():
             vin or None, vc,
             reg_plate, p.get("first_registration_date"), p.get("origin_market"),
             1, int(is_import_offer(p.get("raw_title"), p.get("raw_description"))),
+            yes_no(p.get("registered_in_pl")), yes_no(p.get("first_owner")),
         ))
         conn.commit()
 
@@ -613,6 +614,11 @@ def api_ingest_pending():
                             continue
                         updates_pending[field] = val
                 
+                # Yes/no fields: 0 is a value too
+                for field in ("registered_in_pl", "first_owner"):
+                    if existing[field] is None and yes_no(p.get(field)) is not None:
+                        updates_pending[field] = yes_no(p.get(field))
+
                 if updates_pending:
                     set_clause = ", ".join(f"{k}=?" for k in updates_pending.keys())
                     vals = list(updates_pending.values()) + [existing["id"]]

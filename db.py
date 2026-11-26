@@ -945,6 +945,16 @@ def init_db():
                "WHERE origin_hint_market IS NOT NULL AND origin_checked_at IS NULL")
     db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(33,'origin_hint')")
 
+    # ── Migration 34: "Zarejestrowany w Polsce" and "Pierwszy właściciel" from the ad ────
+    # 1 / 0 as the portal gives them, NULL when it does not. Only a yes is sure: otomoto leaves an
+    # unticked field out, autoplac shows it as "Nie" (registered cars with a Polish plate too).
+    # A yes puts the car's /plates card first, a no marks it and puts it last.
+    p_cols = {r[1] for r in db.execute("PRAGMA table_info(pending_listings)").fetchall()}
+    for col in ("registered_in_pl", "first_owner"):
+        if col not in p_cols:
+            db.execute(f"ALTER TABLE pending_listings ADD COLUMN {col} INTEGER")
+    db.execute("INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(34,'registered_first_owner')")
+
     db.commit()
     db.close()
     backend = os.getenv("DB_BACKEND", "sqlite").lower()

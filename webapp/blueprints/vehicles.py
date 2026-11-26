@@ -10,7 +10,7 @@ from webapp.helpers import (CC_MAX, CC_MIN, CC_STEP, FUELS, NOW, WRONG_MODEL, WR
 from webapp.regions import CITY_TO_REGION, REGION_NAMES
 from webapp.services import verification
 from webapp.services.photos import store_photo
-from webapp.services.plates import (card_plates, check_card_in_cepik, normalize_plate, plate_card_hints,
+from webapp.services.plates import (REGISTERED_HINTS, card_plates, check_card_in_cepik, normalize_plate, plate_card_hints,
                                     plate_check_plan)
 from validation import MARKETS, MIN_FIRST_REGISTRATION_YEAR, ORIGIN_UNKNOWN, OVERSEAS_ORIGINS
 
@@ -278,6 +278,9 @@ def to_check_context(conn, vin, message=None, ok=True, needs_force=False):
         plan = plate_check_plan(conn, vin).get(card["id"])
         reading = normalize_plate(card["detected_plate"])
         card["hints"] = plate_card_hints(plan) if plan else []
+        registered = conn.execute("SELECT MAX(registered_in_pl) FROM pending_listings WHERE vin = ?", (vin,)).fetchone()[0]
+        if registered in REGISTERED_HINTS:
+            card["hints"].insert(0, REGISTERED_HINTS[registered])
         card["checks_left"] = len(plan["todo"]) if plan else 0
         # Only a reading that can be a Polish plate is offered; a junk one (a dealer badge) leaves the field empty
         card["suggested"] = (card_plates(reading, plan["car_plate"] if plan else None)[:1] or [""])[0]

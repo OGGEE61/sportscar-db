@@ -382,7 +382,9 @@ def show_car(vin: str, photos: int = 4) -> list:
     Everything needed to check one car's plate, first registration date, origin and damage: the car's
     stored data, its /plates cards, the CEPiK report with its events (e.g. "Pierwsza rejestracja za
     granicą"), Bielik's view of the origin, damage marks (the portal's or a quote from the ad) and damage
-    history, its live ads (up to 5, newest first, with descriptions), and up to `photos` photos (max 10)."""
+    history, its live ads (up to 5, newest first, with descriptions; registered_in_pl / first_owner: the
+    ad's "Zarejestrowany w Polsce" / "Pierwszy właściciel", 1 yes, 0 no, null not given, and only a yes is
+    sure), and up to `photos` photos (max 10)."""
     conn = _db()
     try:
         car = _find_car(conn, vin)
@@ -391,7 +393,7 @@ def show_car(vin: str, photos: int = 4) -> list:
         vin = car["vin"]
         ads = conn.execute("""
             SELECT source, source_url, status, scraped_at, raw_title, raw_description, photos, price_pln, mileage_km,
-                   location_city, seller_type, registration_plate, first_registration_date
+                   location_city, seller_type, registration_plate, first_registration_date, registered_in_pl, first_owner
             FROM pending_listings WHERE vin = ? AND status IN ('approved', 'pending') ORDER BY id DESC
         """, (vin,)).fetchall()
         marks = verification.damage_marks(conn, vin)
@@ -435,6 +437,7 @@ def show_car(vin: str, photos: int = 4) -> list:
         info["ads"].append({
             "source": a["source"], "url": a["source_url"], "status": a["status"], "scraped_at": a["scraped_at"],
             "title": a["raw_title"], "price_pln": a["price_pln"], "mileage_km": a["mileage_km"],
+            "registered_in_pl": a["registered_in_pl"], "first_owner": a["first_owner"],
             "city": a["location_city"], "seller_type": a["seller_type"], "plate": a["registration_plate"],
             "first_registration_date": a["first_registration_date"],
             "description": description[:DESCRIPTION_CHARS] + ("…" if len(description) > DESCRIPTION_CHARS else ""),

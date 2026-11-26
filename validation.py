@@ -269,3 +269,12 @@ def north_american_equipment(description: str):
         return None, []
     market = "Kanada" if any(m == "Kanada" for m, _ in found) else "USA"
     return market, [reason for _, reason in found]
+
+
+def yes_no(value):
+    """1 / 0 for a portal's yes-or-no field ("1"/"0", True/False), None when it is missing or unclear."""
+    if value is True or value in ("1", 1):
+        return 1
+    if value is False or value in ("0", 0):
+        return 0
+    return None

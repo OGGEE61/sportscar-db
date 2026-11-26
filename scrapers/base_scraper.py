@@ -36,7 +36,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from validation import OVERSEAS_ORIGINS, VIN_RE, damage_in_text, is_dealer_new, is_plausible_vin, is_valid_registration_plate  # noqa: E402,F401
+from validation import OVERSEAS_ORIGINS, VIN_RE, damage_in_text, is_dealer_new, is_plausible_vin, is_valid_registration_plate, yes_no  # noqa: E402,F401
 
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -1027,6 +1027,10 @@ def _fetch_autoplac_detail(html: str, url: str) -> dict:
         "price_currency":          (ad.get("priceInfo") or {}).get("currency"),
         "location_from_detail":    location_str,
         "origin_market":           resolve_market(vin_found, desc_clean, make=ad.get("brand") or ""),
+        # "Zarejestrowany w Polsce" / "Pierwszy właściciel": False is also what an unticked field gives
+        # (registered cars with a Polish plate show it), so only True is sure
+        "registered_in_pl":        yes_no(ad.get("registered")),
+        "first_owner":             yes_no(ad.get("firstOwner")),
     }
 
 
@@ -1288,6 +1292,11 @@ def parse_detail(html: str, url: str) -> dict:
             "price_currency":          (advert.get("price") or {}).get("currency"),
             "location_from_detail":    location_from_detail,
             "origin_market":           origin_market,
+            # "Zarejestrowany w Polsce" (registered) or a registration number given (has_registration);
+            # an unticked field is simply missing, so a missing one says nothing
+            "registered_in_pl":        1 if "1" in (_pd_val("registered"), _pd_val("has_registration"))
+                                       else yes_no(_pd_val("registered")),
+            "first_owner":             yes_no(_pd_val("original_owner")),
         }
 
     except Exception as e:
@@ -1896,6 +1905,8 @@ def run(cfg: ScraperConfig, post_to_api: bool = True) -> list:
                     "registration_plate":      detail.get("registration_plate"),
                     "first_registration_date": detail.get("first_registration_date"),
                     "origin_market":           final_origin_market,
+                    "registered_in_pl":        detail.get("registered_in_pl"),
+                    "first_owner":             detail.get("first_owner"),
                     "model_id":                car.model_id,
                     "found_by":                cfg.source,  # scraper; "source" is the ad's host
                 }
